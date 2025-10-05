@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useRealtime } from '@/lib/hooks/useRealtime';
 import { Card } from '@/views/shared/ui/card';
 import { Badge } from '@/views/shared/ui/badge';
@@ -192,9 +193,21 @@ export function CurrentOrderMonitor({
         {/* Header */}
         <Card className="mb-6 p-6 bg-gradient-to-r from-amber-600 to-orange-600 text-white">
           <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold mb-1">BeerHive PUB</h1>
-              <p className="text-amber-100">Your Current Bill</p>
+            <div className="flex items-center gap-4">
+              <div className="relative h-16 w-16 bg-white rounded-lg p-2">
+                <Image
+                  src="/beerhive-logo.png"
+                  alt="BeerHive Logo"
+                  width={64}
+                  height={64}
+                  className="object-contain"
+                  priority
+                />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold mb-1">BeerHive PUB</h1>
+                <p className="text-amber-100">Your Current Bill</p>
+              </div>
             </div>
             <div className="text-right">
               <div className="text-4xl font-bold">

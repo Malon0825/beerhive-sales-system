@@ -9,6 +9,11 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "BeerHive POS",
   description: "Point of Sale System for BeerHive PUB",
+  icons: {
+    icon: '/beerhive-logo.png',
+    shortcut: '/beerhive-logo.png',
+    apple: '/beerhive-logo.png',
+  },
 };
 
 export default function RootLayout({

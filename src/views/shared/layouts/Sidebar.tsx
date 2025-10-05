@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, 
@@ -137,7 +138,16 @@ export function Sidebar({ userRole = UserRole.CASHIER }: SidebarProps) {
     <aside className="hidden w-64 flex-col border-r bg-background lg:flex">
       <div className="flex h-16 items-center border-b px-6">
         <Link href="/" className="flex items-center gap-2 font-semibold">
-          <Wine className="h-6 w-6 text-amber-600" />
+          <div className="relative h-8 w-8">
+            <Image
+              src="/beerhive-logo.png"
+              alt="BeerHive Logo"
+              width={32}
+              height={32}
+              className="object-contain"
+              priority
+            />
+          </div>
           <span className="text-lg">BeerHive POS</span>
         </Link>
       </div>

@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Wine, AlertCircle, Loader2 } from 'lucide-react';
+import Image from 'next/image';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '../shared/ui/button';
 import { Input } from '../shared/ui/input';
 import { Label } from '../shared/ui/label';
@@ -50,8 +51,15 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
       <Card className="w-full max-w-md p-8 shadow-xl">
         <div className="mb-8 text-center">
           <div className="mb-4 flex justify-center">
-            <div className="rounded-full bg-amber-100 p-4">
-              <Wine className="h-12 w-12 text-amber-600" />
+            <div className="relative h-24 w-24">
+              <Image
+                src="/beerhive-logo.png"
+                alt="BeerHive Logo"
+                width={96}
+                height={96}
+                className="object-contain"
+                priority
+              />
             </div>
           </div>
           <h1 className="mb-2 text-3xl font-bold text-gray-900">
