@@ -144,6 +144,9 @@ sales_summary (materialized view for fast reporting)
   - `orders` table - Kitchen display system updates
   - `low_stock_alerts` - Real-time notifications for managers
   - `audit_logs` - Live activity monitoring for admin dashboard
+  - `kitchen_orders` table - Real-time kitchen/bartender order routing and status updates
+  - `restaurant_tables` table - Live table status updates across all terminals
+  - `customer_events` table - Alert cashiers when customers with active offers arrive
 
 **Implementation Example**:
 ```typescript
@@ -585,9 +588,14 @@ beerhive-pos/
 │   │   └── layout.tsx
 │   ├── (dashboard)/              # Main app routes
 │   │   ├── pos/                  # POS interface
+│   │   ├── kitchen/              # Kitchen display system
+│   │   ├── bartender/            # Bartender display system
+│   │   ├── tables/               # Table management
 │   │   ├── inventory/            # Inventory management
 │   │   ├── customers/            # Customer management
 │   │   ├── packages/             # Package configuration
+│   │   ├── happy-hours/          # Happy hour pricing configuration
+│   │   ├── events/               # Customer event offers management
 │   │   ├── reports/              # Analytics and reports
 │   │   └── settings/             # System settings
 │   ├── api/                      # API routes (for webhooks, external integrations)

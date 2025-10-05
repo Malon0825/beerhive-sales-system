@@ -56,7 +56,11 @@ graph TB
     QuickInvCheck --> CashierDash
     
     %% ORDER BUILDING FLOW
-    NewOrder --> CustomerSearch{Search Customer?}
+    NewOrder --> TableSelect{Assign Table?}
+    TableSelect -->|Yes| SelectTable[Select Table from Grid]
+    TableSelect -->|No| CustomerSearch
+    SelectTable --> UpdateTableStatus[Update Table Status to Occupied]
+    UpdateTableStatus --> CustomerSearch{Search Customer?}
     CustomerSearch -->|Yes| SearchCust[Search by Name/Phone/<br/>Customer ID]
     CustomerSearch -->|No| AnonymousOrder[Proceed as<br/>Walk-in/Anonymous]
     
@@ -66,8 +70,12 @@ graph TB
     NewCustReg --> SelectCust
     
     SelectCust --> CheckVIP{VIP<br/>Customer?}
-    CheckVIP -->|Yes| VIPMode[Enable VIP Pricing<br/>Show VIP Packages]
+    CheckVIP -->|Yes| CheckEventOffer{Active Event<br/>Offer?}
     CheckVIP -->|No| RegMode[Regular Pricing Mode]
+    
+    CheckEventOffer -->|Yes| ShowEventOffer[Display Birthday/<br/>Anniversary Badge<br/>Show Available Offer]
+    CheckEventOffer -->|No| VIPMode
+    ShowEventOffer --> VIPMode[Enable VIP Pricing<br/>Show VIP Packages]
     
     VIPMode --> BuildOrder[Build Order]
     RegMode --> BuildOrder
@@ -99,7 +107,10 @@ graph TB
     ValidateChoice -->|Yes| AddPackageFixed
     AddPackageFixed --> UpdateOrderSummary
     
-    UpdateOrderSummary --> CheckStock{Check Inventory<br/>Available?}
+    UpdateOrderSummary --> CheckHappyHour{Happy Hour<br/>Active?}
+    CheckHappyHour -->|Yes| ApplyHappyHour[Apply Happy Hour Pricing]
+    CheckHappyHour -->|No| CheckStock
+    ApplyHappyHour --> CheckStock{Check Inventory<br/>Available?}
     CheckStock -->|No| StockAlert[Show Low/Out of<br/>Stock Alert]
     StockAlert --> BuildOrder
     CheckStock -->|Yes| OrderContinue{Continue<br/>Building?}
@@ -181,13 +192,22 @@ graph TB
     TriggerAlert --> GenerateReceipt[Generate Receipt]
     
     GenerateReceipt --> PrintReceipt[Print Receipt<br/>Customer Copy]
-    PrintReceipt --> KitchenPrint{Food Items<br/>Included?}
-    KitchenPrint -->|Yes| PrintKitchen[Print Kitchen Order]
-    KitchenPrint -->|No| SaveTransaction
-    PrintKitchen --> SaveTransaction[(Save Complete<br/>Transaction to DB)]
+    PrintReceipt --> RouteOrders[Route Order Items<br/>to Kitchen/Bartender]
+    
+    RouteOrders --> AnalyzeItems{Analyze Each<br/>Order Item}
+    AnalyzeItems -->|Food Item| SendToKitchen[Send to Kitchen Display<br/>Status: Pending]
+    AnalyzeItems -->|Beverage| SendToBartender[Send to Bartender Display<br/>Status: Pending]
+    AnalyzeItems -->|Both| SendToBoth[Send to Both Stations]
+    
+    SendToKitchen --> SaveTransaction
+    SendToBartender --> SaveTransaction
+    SendToBoth --> SaveTransaction[(Save Complete<br/>Transaction to DB)]
     
     SaveTransaction --> AuditLog[Create Audit Log Entry<br/>User/Time/Action]
-    AuditLog --> TransactionComplete[Transaction Complete]
+    AuditLog --> UpdateTableAfterPayment{Table<br/>Assigned?}
+    UpdateTableAfterPayment -->|Yes| SetTableAvailable[Set Table Status<br/>to Available]
+    UpdateTableAfterPayment -->|No| TransactionComplete
+    SetTableAvailable --> TransactionComplete[Transaction Complete]
     TransactionComplete --> CashierDash
     
     %% VOID/CANCEL FLOW
@@ -270,3 +290,12 @@ graph TB
     style VoidAuth fill:#F44336,color:#fff
     style CheckVIP fill:#9C27B0,color:#fff
     style VIPMode fill:#9C27B0,color:#fff
+    style CheckEventOffer fill:#FF6F00,color:#fff
+    style ShowEventOffer fill:#FF6F00,color:#fff
+    style CheckHappyHour fill:#00BCD4,color:#fff
+    style ApplyHappyHour fill:#00BCD4,color:#fff
+    style SendToKitchen fill:#4CAF50,color:#fff
+    style SendToBartender fill:#2196F3,color:#fff
+    style SendToBoth fill:#9C27B0,color:#fff
+    style TableSelect fill:#FFC107,color:#000
+    style SelectTable fill:#FFC107,color:#000
