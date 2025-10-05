@@ -1,11 +1,18 @@
-import { Metadata } from 'next';
+'use client';
+
 import HappyHourManager from '@/views/happy-hours/HappyHourManager';
+import { RouteGuard } from '@/views/shared/guards/RouteGuard';
+import { UserRole } from '@/models/enums/UserRole';
 
-export const metadata: Metadata = {
-  title: 'Happy Hours | BeerHive POS',
-  description: 'Manage happy hour pricing and promotions',
-};
-
+/**
+ * Happy Hours Page
+ * Manage happy hour pricing and promotions
+ * Protected route - only accessible by managers and admins
+ */
 export default function HappyHoursPage() {
-  return <HappyHourManager />;
+  return (
+    <RouteGuard requiredRoles={[UserRole.ADMIN, UserRole.MANAGER]}>
+      <HappyHourManager />
+    </RouteGuard>
+  );
 }

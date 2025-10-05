@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Product } from '@/models/entities/Product';
 import { InventoryService } from '@/core/services/inventory/InventoryService';
+import { supabase } from '@/data/supabase/client';
 import { Button } from '../shared/ui/button';
 import { Input } from '../shared/ui/input';
 import { Label } from '../shared/ui/label';
@@ -22,8 +23,8 @@ export default function StockAdjustmentForm({
   const [formData, setFormData] = useState({
     movement_type: 'stock_in',
     reason: 'purchase',
-    quantity_change: 0,
-    unit_cost: 0,
+    quantity_change: '',
+    unit_cost: '',
     notes: '',
   });
 
@@ -41,9 +42,10 @@ export default function StockAdjustmentForm({
     if (!product) return;
 
     // Validate adjustment
+    const quantityChange = parseFloat(formData.quantity_change as string) || 0;
     const validation = InventoryService.validateAdjustment(
       product.current_stock,
-      formData.quantity_change,
+      quantityChange,
       formData.movement_type
     );
 
@@ -58,7 +60,7 @@ export default function StockAdjustmentForm({
     // Check if requires approval
     const needsApproval = InventoryService.requiresManagerApproval(
       product.current_stock,
-      formData.quantity_change
+      quantityChange
     );
     setRequiresApproval(needsApproval);
   };
@@ -70,19 +72,30 @@ export default function StockAdjustmentForm({
     setLoading(true);
 
     try {
+      // Get current session for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      
       const payload = {
         product_id: product.id,
-        quantity_change: formData.quantity_change,
+        quantity_change: parseFloat(formData.quantity_change as string) || 0,
         movement_type: formData.movement_type,
         reason: formData.reason,
-        unit_cost: formData.unit_cost || undefined,
+        unit_cost: formData.unit_cost ? parseFloat(formData.unit_cost as string) : undefined,
         notes: formData.notes || undefined,
-        manager_approved: requiresApproval ? false : undefined, // Would need manager PIN in real implementation
       };
+
+      // Include Authorization header with session token
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
 
       const response = await fetch('/api/inventory/adjust', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
       });
 
@@ -111,7 +124,7 @@ export default function StockAdjustmentForm({
     );
   }
 
-  const newStock = product.current_stock + formData.quantity_change;
+  const newStock = product.current_stock + (parseFloat(formData.quantity_change as string) || 0);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -176,7 +189,7 @@ export default function StockAdjustmentForm({
           step="0.01"
           value={formData.quantity_change}
           onChange={(e) =>
-            setFormData({ ...formData, quantity_change: parseFloat(e.target.value) || 0 })
+            setFormData({ ...formData, quantity_change: e.target.value })
           }
           required
           placeholder="Enter positive for increase, negative for decrease"
@@ -198,7 +211,7 @@ export default function StockAdjustmentForm({
           min="0"
           value={formData.unit_cost}
           onChange={(e) =>
-            setFormData({ ...formData, unit_cost: parseFloat(e.target.value) || 0 })
+            setFormData({ ...formData, unit_cost: e.target.value })
           }
           placeholder="Optional"
         />
@@ -239,7 +252,7 @@ export default function StockAdjustmentForm({
         <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
           Cancel
         </Button>
-        <Button type="submit" disabled={loading || (warning && newStock < 0)}>
+        <Button type="submit" disabled={loading || (!!warning && newStock < 0)}>
           {loading ? 'Adjusting...' : 'Adjust Stock'}
         </Button>
       </div>

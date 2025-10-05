@@ -1,32 +1,10 @@
-import { InventoryRepository } from '@/data/repositories/InventoryRepository';
-import { AppError } from '@/lib/errors/AppError';
-
 /**
  * InventoryService
- * Business logic for inventory management
+ * Business logic utilities for inventory management (client-side safe)
+ * Note: This service only contains pure utility functions.
+ * For data access, use API routes that call InventoryRepository server-side.
  */
 export class InventoryService {
-  /**
-   * Get inventory overview with statistics
-   */
-  static async getOverview() {
-    try {
-      const [stats, lowStock] = await Promise.all([
-        InventoryRepository.getStockStatistics(),
-        InventoryRepository.getLowStockProducts(),
-      ]);
-
-      return {
-        statistics: stats,
-        lowStockProducts: lowStock,
-        alerts: lowStock.length,
-      };
-    } catch (error) {
-      console.error('Get inventory overview error:', error);
-      throw error instanceof AppError ? error : new AppError('Failed to get inventory overview', 500);
-    }
-  }
-
   /**
    * Validate stock adjustment
    */

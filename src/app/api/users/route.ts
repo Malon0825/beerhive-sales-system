@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { UserRepository } from '@/data/repositories/UserRepository';
 import { UserService } from '@/core/services/users/UserService';
 import { AppError } from '@/lib/errors/AppError';
+import { requireManagerOrAbove } from '@/lib/utils/api-auth';
 
 /**
  * GET /api/users
- * Get all users (Admin only)
+ * Get all users (Admin/Manager only)
  */
 export async function GET(request: NextRequest) {
   try {
-    // TODO: Add admin authentication check
+    // Verify user has manager or admin role
+    await requireManagerOrAbove(request);
+    
     const users = await UserRepository.getAll();
 
     return NextResponse.json({
@@ -36,17 +39,27 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/users
- * Create new user (Admin only)
+ * Create new user (Admin/Manager only)
  */
 export async function POST(request: NextRequest) {
   try {
-    // TODO: Add admin authentication check
+    // Verify user has manager or admin role
+    await requireManagerOrAbove(request);
+    
     const body = await request.json();
-    const { username, email, password, full_name, role } = body;
+    const { username, email, password, full_name, role, roles } = body;
 
-    if (!username || !email || !password || !full_name || !role) {
+    if (!username || !email || !password || !full_name) {
       return NextResponse.json(
-        { success: false, error: 'All fields are required' },
+        { success: false, error: 'Username, email, password, and full name are required' },
+        { status: 400 }
+      );
+    }
+    
+    // Require at least one role
+    if (!roles && !role) {
+      return NextResponse.json(
+        { success: false, error: 'At least one role is required' },
         { status: 400 }
       );
     }
@@ -56,7 +69,8 @@ export async function POST(request: NextRequest) {
       email,
       password,
       full_name,
-      role,
+      role,    // Backward compatibility
+      roles,   // Preferred
     });
 
     return NextResponse.json({

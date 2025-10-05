@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { AuthService, AuthUser } from '@/core/services/auth/AuthService';
 import { SessionService } from '@/core/services/auth/SessionService';
 import { useRouter } from 'next/navigation';
-import { UserRole } from '@/models/enums/UserRole';
+import { getDefaultRouteForRole } from '@/lib/utils/roleBasedAccess';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -19,29 +19,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 interface AuthProviderProps {
   children: React.ReactNode;
-}
-
-/**
- * Get default route based on user role
- * Each role is redirected to their primary workspace
- */
-function getDefaultRouteForRole(role: string): string {
-  switch (role) {
-    case UserRole.ADMIN:
-      return '/'; // Dashboard
-    case UserRole.MANAGER:
-      return '/reports'; // Manager starts at reports
-    case UserRole.CASHIER:
-      return '/pos'; // Cashier goes to POS
-    case UserRole.KITCHEN:
-      return '/kitchen'; // Kitchen staff to kitchen display
-    case UserRole.BARTENDER:
-      return '/bartender'; // Bartender to bartender display
-    case UserRole.WAITER:
-      return '/waiter'; // Waiter to waiter display
-    default:
-      return '/'; // Default to dashboard
-  }
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
@@ -59,45 +36,89 @@ export function AuthProvider({ children }: AuthProviderProps) {
     loadUser();
   }, []);
 
+  /**
+   * Load current user from authentication service
+   * Called on mount and when refreshUser is invoked
+   */
   const loadUser = async () => {
     try {
+      console.log('🔄 [AuthContext] Loading user...');
       setLoading(true);
       const currentUser = await AuthService.getCurrentUser();
-      setUser(currentUser);
+      
+      if (currentUser) {
+        console.log('✅ [AuthContext] User loaded successfully:', {
+          username: currentUser.username,
+          fullName: currentUser.full_name,
+          roles: currentUser.roles,
+          userId: currentUser.id
+        });
+        setUser(currentUser);
+      } else {
+        console.log('❌ [AuthContext] No user found (not authenticated)');
+        setUser(null);
+      }
     } catch (error) {
-      console.error('Error loading user:', error);
+      console.error('❌ [AuthContext] Error loading user:', error);
       setUser(null);
     } finally {
+      console.log('🏁 [AuthContext] User loading completed, loading = false');
       setLoading(false);
     }
   };
 
+  /**
+   * Login user with username and password
+   * After successful login, redirects to root page (/) which handles role-based routing
+   */
   const login = useCallback(async (username: string, password: string) => {
     try {
+      console.log('🔐 [AuthContext] Attempting login for:', username);
       const authUser = await AuthService.login({ username, password });
       setUser(authUser);
       
-      // Route user to their role-specific page
-      const defaultRoute = getDefaultRouteForRole(authUser.role);
-      console.log(`✅ Login successful: ${authUser.username} (${authUser.role}) → redirecting to ${defaultRoute}`);
-      router.push(defaultRoute);
+      console.log('✅ [AuthContext] Login successful:', {
+        username: authUser.username,
+        fullName: authUser.full_name,
+        roles: authUser.roles,
+        userId: authUser.id
+      });
+      
+      // Always redirect to root page after login
+      // Root page will handle role-based redirects
+      console.log('🚀 [AuthContext] Redirecting to root page for role-based routing...');
+      router.push('/');
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ [AuthContext] Login error:', error);
       throw error;
     }
   }, [router]);
 
+  /**
+   * Logout current user
+   * Clears session and redirects to login page
+   */
   const logout = useCallback(async () => {
     try {
+      console.log('🚪 [AuthContext] Logging out user:', user?.username);
+      
+      // Call logout API to clear cookies
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+      });
+      
+      // Clear local session
       await AuthService.logout();
       setUser(null);
       SessionService.clearSession();
+      
+      console.log('✅ [AuthContext] Logout successful, redirecting to login...');
       router.push('/login');
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('❌ [AuthContext] Logout error:', error);
       throw error;
     }
-  }, [router]);
+  }, [router, user]);
 
   const refreshUser = useCallback(async () => {
     await loadUser();

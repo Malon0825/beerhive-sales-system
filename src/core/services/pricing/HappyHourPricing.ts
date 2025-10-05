@@ -1,113 +1,67 @@
 import { HappyHour } from '@/models/entities/HappyHour';
 import { Product } from '@/models/entities/Product';
 import { HappyHourRepository } from '@/data/repositories/HappyHourRepository';
+import { HappyHourUtils } from './HappyHourUtils';
 import { AppError } from '@/lib/errors/AppError';
 
 /**
  * HappyHourPricing Service
- * Handles happy hour pricing logic and time-based validations
+ * Server-side service for happy hour pricing with database access
+ * WARNING: Only use this in API routes and server components
+ * For client components, use HappyHourUtils instead
  */
 export class HappyHourPricing {
   /**
    * Check if happy hour is currently active
+   * @deprecated Use HappyHourUtils.isActive() in client components
    */
   static isActive(happyHour: HappyHour): boolean {
-    const now = new Date();
-    
-    // Check time window
-    if (!this.isWithinTimeWindow(happyHour)) {
-      return false;
-    }
-
-    // Check day of week
-    if (!this.isValidDayOfWeek(happyHour)) {
-      return false;
-    }
-
-    // Check date validity
-    if (!this.isWithinDateRange(happyHour)) {
-      return false;
-    }
-
-    return happyHour.is_active;
+    return HappyHourUtils.isActive(happyHour);
   }
 
   /**
    * Check if current time is within happy hour time window
+   * @deprecated Use HappyHourUtils.isWithinTimeWindow() in client components
    */
   static isWithinTimeWindow(happyHour: HappyHour): boolean {
-    const now = new Date();
-    const currentTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
-
-    return currentTime >= happyHour.start_time && currentTime <= happyHour.end_time;
+    return HappyHourUtils.isWithinTimeWindow(happyHour);
   }
 
   /**
    * Check if current day is valid for happy hour
+   * @deprecated Use HappyHourUtils.isValidDayOfWeek() in client components
    */
   static isValidDayOfWeek(happyHour: HappyHour): boolean {
-    if (!happyHour.days_of_week || happyHour.days_of_week.length === 0) {
-      return true; // No restriction
-    }
-
-    const currentDay = new Date().getDay() || 7; // 1-7 (Monday-Sunday)
-    return happyHour.days_of_week.includes(currentDay);
+    return HappyHourUtils.isValidDayOfWeek(happyHour);
   }
 
   /**
    * Check if current date is within happy hour validity range
+   * @deprecated Use HappyHourUtils.isWithinDateRange() in client components
    */
   static isWithinDateRange(happyHour: HappyHour): boolean {
-    const now = new Date();
-    const currentDate = now.toISOString().split('T')[0];
-
-    // Check start date
-    if (happyHour.valid_from && currentDate < happyHour.valid_from) {
-      return false;
-    }
-
-    // Check end date
-    if (happyHour.valid_until && currentDate > happyHour.valid_until) {
-      return false;
-    }
-
-    return true;
+    return HappyHourUtils.isWithinDateRange(happyHour);
   }
 
   /**
    * Apply happy hour discount to a price
+   * @deprecated Use HappyHourUtils.apply() in client components
    */
   static apply(
     basePrice: number,
     happyHour: HappyHour,
     orderTotal?: number
   ): number {
-    // Check minimum order amount
-    if (happyHour.min_order_amount && orderTotal) {
-      if (orderTotal < happyHour.min_order_amount) {
-        return basePrice; // Minimum not met
-      }
-    }
-
-    // Apply discount based on type
-    switch (happyHour.discount_type) {
-      case 'percentage':
-        const percentageDiscount = (basePrice * happyHour.discount_value) / 100;
-        return Math.max(0, basePrice - percentageDiscount);
-
-      case 'fixed_amount':
-        return Math.max(0, basePrice - happyHour.discount_value);
-
-      case 'complimentary':
-        return 0;
-
-      default:
-        return basePrice;
-    }
+    return HappyHourUtils.apply(basePrice, happyHour, orderTotal);
   }
 
   /**
-   * Get the best happy hour price for a product
+   * Get the best happy hour price for a product (server-side only)
+   * This method requires database access and should only be used in API routes
+   * @param product The product to calculate price for
+   * @param quantity Quantity of the product
+   * @param orderSubtotal Optional order subtotal for minimum order validation
+   * @returns Object with price, original price, discount and applied happy hour
    */
   static async getBestPrice(
     product: Product,
@@ -136,7 +90,7 @@ export class HappyHourPricing {
 
       for (const happyHour of activeHappyHours) {
         // Check if happy hour is truly active
-        if (!this.isActive(happyHour)) {
+        if (!HappyHourUtils.isActive(happyHour)) {
           continue;
         }
 
@@ -157,7 +111,7 @@ export class HappyHourPricing {
         }
 
         // Apply discount
-        const discountedPrice = this.apply(
+        const discountedPrice = HappyHourUtils.apply(
           product.base_price,
           happyHour,
           orderSubtotal
@@ -226,48 +180,17 @@ export class HappyHourPricing {
 
   /**
    * Format time window for display
+   * @deprecated Use HappyHourUtils.formatTimeWindow() in client components
    */
   static formatTimeWindow(happyHour: HappyHour): string {
-    const start = happyHour.start_time.substring(0, 5); // HH:MM
-    const end = happyHour.end_time.substring(0, 5); // HH:MM
-    return `${start} - ${end}`;
+    return HappyHourUtils.formatTimeWindow(happyHour);
   }
 
   /**
    * Format days of week for display
+   * @deprecated Use HappyHourUtils.formatDaysOfWeek() in client components
    */
   static formatDaysOfWeek(daysOfWeek: number[]): string {
-    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    
-    if (!daysOfWeek || daysOfWeek.length === 0) {
-      return 'Every day';
-    }
-
-    if (daysOfWeek.length === 7) {
-      return 'Every day';
-    }
-
-    // Check for weekdays (Mon-Fri)
-    if (
-      daysOfWeek.length === 5 &&
-      daysOfWeek.includes(1) &&
-      daysOfWeek.includes(2) &&
-      daysOfWeek.includes(3) &&
-      daysOfWeek.includes(4) &&
-      daysOfWeek.includes(5)
-    ) {
-      return 'Weekdays';
-    }
-
-    // Check for weekends (Sat-Sun)
-    if (daysOfWeek.length === 2 && daysOfWeek.includes(6) && daysOfWeek.includes(7)) {
-      return 'Weekends';
-    }
-
-    // Return specific days
-    return daysOfWeek
-      .sort()
-      .map(day => dayNames[day - 1])
-      .join(', ');
+    return HappyHourUtils.formatDaysOfWeek(daysOfWeek);
   }
 }

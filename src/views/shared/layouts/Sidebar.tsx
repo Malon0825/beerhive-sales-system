@@ -15,7 +15,9 @@ import {
   Clock, 
   BarChart3, 
   Settings,
-  Warehouse
+  Warehouse,
+  UserCheck,
+  Monitor
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { UserRole } from '@/models/enums/UserRole';
@@ -57,10 +59,28 @@ const menuItems: MenuItem[] = [
     roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.BARTENDER],
   },
   {
+    label: 'Waiter',
+    icon: <UserCheck className="h-5 w-5" />,
+    href: '/waiter',
+    roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.WAITER],
+  },
+  {
     label: 'Tables',
     icon: <LayoutGrid className="h-5 w-5" />,
     href: '/tables',
     roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER],
+  },
+  {
+    label: 'Current Orders',
+    icon: <Clock className="h-5 w-5" />,
+    href: '/current-orders',
+    roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER],
+  },
+  {
+    label: 'Order Board',
+    icon: <Monitor className="h-5 w-5" />,
+    href: '/order-board',
+    roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.KITCHEN, UserRole.BARTENDER, UserRole.WAITER],
   },
   {
     label: 'Inventory',

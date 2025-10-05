@@ -22,7 +22,7 @@ export default function HappyHourForm({ happyHour, onSuccess, onCancel }: HappyH
     valid_from: '',
     valid_until: '',
     discount_type: 'percentage' as 'percentage' | 'fixed_amount' | 'complimentary',
-    discount_value: 0,
+    discount_value: '',
     applies_to_all_products: true,
     min_order_amount: '',
   });
@@ -40,7 +40,7 @@ export default function HappyHourForm({ happyHour, onSuccess, onCancel }: HappyH
         valid_from: happyHour.valid_from || '',
         valid_until: happyHour.valid_until || '',
         discount_type: happyHour.discount_type,
-        discount_value: happyHour.discount_value,
+        discount_value: happyHour.discount_value?.toString() || '',
         applies_to_all_products: happyHour.applies_to_all_products,
         min_order_amount: happyHour.min_order_amount?.toString() || '',
       });
@@ -226,7 +226,7 @@ export default function HappyHourForm({ happyHour, onSuccess, onCancel }: HappyH
             step="0.01"
             min="0"
             value={formData.discount_value}
-            onChange={(e) => setFormData({ ...formData, discount_value: Number(e.target.value) })}
+            onChange={(e) => setFormData({ ...formData, discount_value: e.target.value })}
             required
           />
         </div>

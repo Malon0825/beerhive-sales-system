@@ -1,7 +1,7 @@
 'use client';
 
 import { HappyHour } from '@/models/entities/HappyHour';
-import { HappyHourPricing } from '@/core/services/pricing/HappyHourPricing';
+import { HappyHourUtils } from '@/core/services/pricing/HappyHourUtils';
 import { Badge } from '../shared/ui/Badge';
 import { Button } from '../shared/ui/Button';
 import { Edit, Trash2, Clock, Calendar, Percent, DollarSign } from 'lucide-react';
@@ -60,7 +60,7 @@ interface HappyHourCardProps {
 }
 
 function HappyHourCard({ happyHour, onEdit, onDelete }: HappyHourCardProps) {
-  const isCurrentlyActive = HappyHourPricing.isActive(happyHour);
+  const isCurrentlyActive = HappyHourUtils.isActive(happyHour);
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
@@ -89,7 +89,7 @@ function HappyHourCard({ happyHour, onEdit, onDelete }: HappyHourCardProps) {
               <div>
                 <div className="font-medium text-gray-900">Time Window</div>
                 <div className="text-gray-600">
-                  {HappyHourPricing.formatTimeWindow(happyHour)}
+                  {HappyHourUtils.formatTimeWindow(happyHour)}
                 </div>
               </div>
             </div>
@@ -100,7 +100,7 @@ function HappyHourCard({ happyHour, onEdit, onDelete }: HappyHourCardProps) {
               <div>
                 <div className="font-medium text-gray-900">Days</div>
                 <div className="text-gray-600">
-                  {HappyHourPricing.formatDaysOfWeek(happyHour.days_of_week)}
+                  {HappyHourUtils.formatDaysOfWeek(happyHour.days_of_week)}
                 </div>
               </div>
             </div>
@@ -161,7 +161,7 @@ function HappyHourCard({ happyHour, onEdit, onDelete }: HappyHourCardProps) {
             Edit
           </Button>
           <Button
-            variant="danger"
+            variant="destructive"
             size="sm"
             onClick={() => onDelete(happyHour.id)}
             className="flex items-center gap-1"

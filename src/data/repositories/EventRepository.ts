@@ -1,4 +1,4 @@
-import { supabase } from '../supabase/client';
+import { supabaseAdmin } from '../supabase/server-client';
 import { AppError } from '@/lib/errors/AppError';
 import {
   CustomerEvent,
@@ -10,10 +10,13 @@ import {
 /**
  * EventRepository
  * Data access layer for customer events and offers
+ * Uses server-side admin client for elevated database permissions
  */
 export class EventRepository {
   /**
-   * Get all events
+   * Get all events with optional filters
+   * @param filters Optional filters for customer ID, event type, and redemption status
+   * @returns Array of customer events with customer details
    */
   static async getAll(filters?: {
     customerId?: string;
@@ -21,7 +24,7 @@ export class EventRepository {
     isRedeemed?: boolean;
   }): Promise<CustomerEvent[]> {
     try {
-      let query = supabase
+      let query = supabaseAdmin
         .from('customer_events')
         .select(`
           *,
@@ -55,11 +58,13 @@ export class EventRepository {
   }
 
   /**
-   * Get event by ID
+   * Get event by ID with customer details
+   * @param id Event ID
+   * @returns Customer event with customer details or null if not found
    */
   static async getById(id: string): Promise<CustomerEvent | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('customer_events')
         .select(`
           *,
@@ -87,7 +92,7 @@ export class EventRepository {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('customer_events')
         .select('*')
         .eq('customer_id', customerId)
@@ -112,7 +117,7 @@ export class EventRepository {
    */
   static async create(input: CreateCustomerEventInput): Promise<CustomerEvent> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('customer_events')
         .insert(input)
         .select()
@@ -134,7 +139,7 @@ export class EventRepository {
    */
   static async update(id: string, input: UpdateCustomerEventInput): Promise<CustomerEvent> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('customer_events')
         .update(input)
         .eq('id', id)
@@ -157,7 +162,7 @@ export class EventRepository {
    */
   static async delete(id: string): Promise<void> {
     try {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('customer_events')
         .delete()
         .eq('id', id);
@@ -176,7 +181,7 @@ export class EventRepository {
    */
   static async redeem(id: string, redemptionData: RedeemEventInput): Promise<CustomerEvent> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('customer_events')
         .update({
           is_redeemed: true,
@@ -222,7 +227,7 @@ export class EventRepository {
       const todayStr = today.toISOString().split('T')[0];
       const futureDateStr = futureDate.toISOString().split('T')[0];
 
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('customer_events')
         .select(`
           *,
@@ -249,7 +254,7 @@ export class EventRepository {
    */
   static async markNotificationSent(id: string): Promise<void> {
     try {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('customer_events')
         .update({
           notification_sent: true,

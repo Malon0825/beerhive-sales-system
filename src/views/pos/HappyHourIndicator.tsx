@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { HappyHour } from '@/models/entities/HappyHour';
-import { HappyHourPricing } from '@/core/services/pricing/HappyHourPricing';
+import { HappyHourUtils } from '@/core/services/pricing/HappyHourUtils';
 import { Clock, Percent, Info } from 'lucide-react';
 import { Badge } from '../shared/ui/Badge';
 
@@ -56,7 +56,7 @@ export default function HappyHourIndicator() {
             <div className="text-left">
               <div className="font-bold text-sm">HAPPY HOUR ACTIVE!</div>
               <div className="text-xs opacity-90">
-                {primaryHappyHour.name} • {HappyHourPricing.formatTimeWindow(primaryHappyHour)}
+                {primaryHappyHour.name} • {HappyHourUtils.formatTimeWindow(primaryHappyHour)}
               </div>
             </div>
           </div>
@@ -85,7 +85,7 @@ export default function HappyHourIndicator() {
               <div className="flex flex-wrap gap-2 text-sm">
                 <Badge variant="info">
                   <Clock className="w-3 h-3 mr-1" />
-                  {HappyHourPricing.formatTimeWindow(hh)}
+                  {HappyHourUtils.formatTimeWindow(hh)}
                 </Badge>
                 <Badge variant="success">
                   <Percent className="w-3 h-3 mr-1" />

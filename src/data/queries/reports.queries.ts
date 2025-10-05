@@ -3,13 +3,13 @@
  * Database queries for generating various reports
  */
 
-import { createClient } from '@/data/supabase/client';
+import { supabaseAdmin } from '@/data/supabase/server-client';
 
 /**
  * Get sales data by date range
  */
 export async function getSalesByDateRange(startDate: string, endDate: string) {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   const { data, error } = await supabase
     .from('orders')
@@ -40,54 +40,43 @@ export async function getSalesByDateRange(startDate: string, endDate: string) {
  * Get daily sales summary
  */
 export async function getDailySalesSummary(startDate: string, endDate: string) {
-  const supabase = createClient();
-
-  const { data, error } = await supabase.rpc('get_daily_sales_summary', {
-    start_date: startDate,
-    end_date: endDate
+  // Aggregate sales data by date manually
+  const orders = await getSalesByDateRange(startDate, endDate);
+  
+  // Group by date
+  const dailyMap = new Map();
+  orders.forEach((order: any) => {
+    const date = order.completed_at.split('T')[0];
+    if (!dailyMap.has(date)) {
+      dailyMap.set(date, {
+        date,
+        total_revenue: 0,
+        transaction_count: 0,
+        total_discounts: 0,
+        unique_customers: new Set()
+      });
+    }
+    const daily = dailyMap.get(date);
+    daily.total_revenue += parseFloat(order.total_amount);
+    daily.transaction_count += 1;
+    daily.total_discounts += parseFloat(order.discount_amount || 0);
+    if (order.customer?.id) {
+      daily.unique_customers.add(order.customer.id);
+    }
   });
 
-  if (error) {
-    // Fallback to manual aggregation if RPC doesn't exist
-    const orders = await getSalesByDateRange(startDate, endDate);
-    
-    // Group by date
-    const dailyMap = new Map();
-    orders.forEach((order: any) => {
-      const date = order.completed_at.split('T')[0];
-      if (!dailyMap.has(date)) {
-        dailyMap.set(date, {
-          date,
-          total_revenue: 0,
-          transaction_count: 0,
-          total_discounts: 0,
-          unique_customers: new Set()
-        });
-      }
-      const daily = dailyMap.get(date);
-      daily.total_revenue += parseFloat(order.total_amount);
-      daily.transaction_count += 1;
-      daily.total_discounts += parseFloat(order.discount_amount || 0);
-      if (order.customer?.id) {
-        daily.unique_customers.add(order.customer.id);
-      }
-    });
-
-    return Array.from(dailyMap.values()).map(d => ({
-      ...d,
-      unique_customers: d.unique_customers.size,
-      average_transaction: d.total_revenue / d.transaction_count
-    }));
-  }
-
-  return data;
+  return Array.from(dailyMap.values()).map(d => ({
+    ...d,
+    unique_customers: d.unique_customers.size,
+    average_transaction: d.total_revenue / d.transaction_count
+  }));
 }
 
 /**
  * Get sales by hour (for peak hours analysis)
  */
 export async function getSalesByHour(date: string) {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   const startDate = `${date}T00:00:00`;
   const endDate = `${date}T23:59:59`;
@@ -121,7 +110,7 @@ export async function getSalesByHour(date: string) {
  * Get top selling products
  */
 export async function getTopProducts(startDate: string, endDate: string, limit = 10) {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   const { data, error } = await supabase
     .from('order_items')
@@ -169,7 +158,7 @@ export async function getTopProducts(startDate: string, endDate: string, limit =
  * Get sales by payment method
  */
 export async function getSalesByPaymentMethod(startDate: string, endDate: string) {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   const { data, error } = await supabase
     .from('orders')
@@ -199,7 +188,7 @@ export async function getSalesByPaymentMethod(startDate: string, endDate: string
  * Get sales by category
  */
 export async function getSalesByCategory(startDate: string, endDate: string) {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   const { data, error } = await supabase
     .from('order_items')
@@ -247,7 +236,7 @@ export async function getSalesByCategory(startDate: string, endDate: string) {
  * Get sales by cashier
  */
 export async function getSalesByCashier(startDate: string, endDate: string) {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   const { data, error } = await supabase
     .from('orders')
@@ -292,7 +281,7 @@ export async function getSalesByCashier(startDate: string, endDate: string) {
  * Get low stock items
  */
 export async function getLowStockItems() {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   const { data, error } = await supabase
     .from('products')
@@ -306,19 +295,22 @@ export async function getLowStockItems() {
       unit_of_measure,
       category:category_id(name)
     `)
-    .lte('current_stock', supabase.raw('reorder_point'))
     .eq('is_active', true)
     .order('current_stock', { ascending: true });
 
   if (error) throw error;
-  return data;
+  
+  // Filter for low stock items (where current_stock <= reorder_point)
+  return data.filter((product: any) => 
+    (product.current_stock || 0) <= (product.reorder_point || 0)
+  );
 }
 
 /**
  * Get voided transactions
  */
 export async function getVoidedTransactions(startDate: string, endDate: string) {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   const { data, error } = await supabase
     .from('orders')
@@ -345,7 +337,7 @@ export async function getVoidedTransactions(startDate: string, endDate: string) 
  * Get discount analysis
  */
 export async function getDiscountAnalysis(startDate: string, endDate: string) {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   const { data, error } = await supabase
     .from('discounts')
@@ -369,7 +361,7 @@ export async function getDiscountAnalysis(startDate: string, endDate: string) {
  * Get customer visit frequency
  */
 export async function getCustomerVisitFrequency(startDate: string, endDate: string) {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   const { data, error } = await supabase
     .from('orders')
@@ -417,7 +409,7 @@ export async function getCustomerVisitFrequency(startDate: string, endDate: stri
  * Get inventory turnover data
  */
 export async function getInventoryTurnover(startDate: string, endDate: string) {
-  const supabase = createClient();
+  const supabase = supabaseAdmin;
 
   // Get products with their sales
   const { data: salesData, error: salesError } = await supabase
@@ -458,14 +450,18 @@ export async function getInventoryTurnover(startDate: string, endDate: string) {
   );
 
   return Array.from(productMap.values())
-    .map(p => ({
-      product_id: p.id,
-      product_name: p.name,
-      sku: p.sku,
-      current_stock: p.current_stock,
-      quantity_sold: p.quantity_sold,
-      turnover_rate: p.current_stock > 0 ? p.quantity_sold / p.current_stock : 0,
-      days_to_sell: p.quantity_sold > 0 ? (p.current_stock / (p.quantity_sold / daysDiff)) : null
-    }))
+    .map(p => {
+      const currentStock = p.current_stock || 0;
+      const quantitySold = p.quantity_sold || 0;
+      return {
+        product_id: p.id,
+        product_name: p.name,
+        sku: p.sku,
+        current_stock: currentStock,
+        quantity_sold: quantitySold,
+        turnover_rate: currentStock > 0 ? quantitySold / currentStock : 0,
+        days_to_sell: quantitySold > 0 ? (currentStock / (quantitySold / daysDiff)) : null
+      };
+    })
     .sort((a, b) => (a.turnover_rate || 0) - (b.turnover_rate || 0));
 }

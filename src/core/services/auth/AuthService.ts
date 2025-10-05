@@ -7,12 +7,27 @@ export interface LoginCredentials {
   password: string;
 }
 
+/**
+ * Authenticated User Interface
+ * Represents the currently logged-in user
+ * 
+ * MULTI-ROLE SUPPORT:
+ * - `roles` array contains all assigned roles
+ * - `role` (singular) is the primary role - kept for backward compatibility
+ * - Access checks should use `roles` array
+ */
 export interface AuthUser {
   id: string;
   username: string;
   email: string;
   full_name: string;
+  
+  /** @deprecated Use `roles` array instead. Kept for backward compatibility. */
   role: UserRole;
+  
+  /** Array of all roles assigned to this user. Use this for access control. */
+  roles: UserRole[];
+  
   is_active: boolean;
 }
 
@@ -110,26 +125,44 @@ export class AuthService {
   }
 
   /**
-   * Check if user has required role
+   * Check if user has any of the required roles
+   * Supports multi-role users - returns true if user has ANY of the allowed roles
+   * 
+   * @param user - The user to check
+   * @param allowedRoles - Array of roles that are allowed
+   * @returns true if user has at least one of the allowed roles
    */
   static hasRole(user: AuthUser | null, allowedRoles: UserRole[]): boolean {
     if (!user) return false;
-    return allowedRoles.includes(user.role);
+    
+    // Check if ANY of user's roles matches ANY of the allowed roles
+    return user.roles.some(userRole => allowedRoles.includes(userRole));
   }
 
   /**
    * Check if user has admin privileges
+   * Admin role takes precedence in multi-role scenarios
+   * 
+   * @param user - The user to check
+   * @returns true if user has admin role
    */
   static isAdmin(user: AuthUser | null): boolean {
-    return user?.role === UserRole.ADMIN;
+    if (!user) return false;
+    return user.roles.includes(UserRole.ADMIN);
   }
 
   /**
    * Check if user has manager or admin privileges
+   * Returns true if user has either manager or admin in their roles
+   * 
+   * @param user - The user to check
+   * @returns true if user has manager or admin role
    */
   static isManagerOrAbove(user: AuthUser | null): boolean {
     if (!user) return false;
-    return [UserRole.ADMIN, UserRole.MANAGER].includes(user.role);
+    return user.roles.some(role => 
+      [UserRole.ADMIN, UserRole.MANAGER].includes(role)
+    );
   }
 
   /**

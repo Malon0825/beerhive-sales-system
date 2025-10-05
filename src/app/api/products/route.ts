@@ -5,6 +5,11 @@ import { AppError } from '@/lib/errors/AppError';
 /**
  * GET /api/products
  * Get all products or filter by query params
+ * Query params:
+ * - categoryId: Filter by category
+ * - featured: Get featured products only
+ * - lowStock: Get low stock products only
+ * - includeInactive: Include inactive products (default: false)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -12,6 +17,7 @@ export async function GET(request: NextRequest) {
     const categoryId = searchParams.get('categoryId');
     const featured = searchParams.get('featured');
     const lowStock = searchParams.get('lowStock');
+    const includeInactive = searchParams.get('includeInactive') === 'true';
 
     let products;
 
@@ -22,7 +28,7 @@ export async function GET(request: NextRequest) {
     } else if (categoryId) {
       products = await ProductRepository.getByCategory(categoryId);
     } else {
-      products = await ProductRepository.getAll();
+      products = await ProductRepository.getAll(includeInactive);
     }
 
     return NextResponse.json({
@@ -55,7 +61,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     
     // TODO: Add authentication check for admin/manager role
-    const userId = request.headers.get('x-user-id') || 'system';
+    // For now, pass null instead of 'system' to avoid UUID error
+    const userId = request.headers.get('x-user-id');
 
     const product = await ProductRepository.create(body, userId);
 

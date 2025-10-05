@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { UserService } from '@/core/services/users/UserService';
 import { AppError } from '@/lib/errors/AppError';
+import { requireManagerOrAbove } from '@/lib/utils/api-auth';
 
 /**
  * POST /api/users/[userId]/deactivate
- * Deactivate user (Admin only)
+ * Deactivate user (Admin/Manager only)
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { userId: string } }
 ) {
   try {
-    // TODO: Add admin authentication check
+    // Verify user has manager or admin role
+    await requireManagerOrAbove(request);
+    
     const { userId } = params;
 
     await UserService.deactivateUser(userId);

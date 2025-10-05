@@ -1,17 +1,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useToast } from '@/lib/hooks/useToast';
 import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
 import { Label } from '../../shared/ui/label';
 import { AlertCircle } from 'lucide-react';
+import { supabase } from '@/data/supabase/client';
 
 interface User {
   id: string;
   username: string;
   email: string;
   full_name: string;
-  role: string;
+  role: string;  // Primary role (backward compatibility)
+  roles?: string[];  // Multiple roles
   is_active: boolean;
 }
 
@@ -22,11 +25,12 @@ interface UserFormProps {
 }
 
 export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     full_name: '',
-    role: 'cashier',
+    roles: ['cashier'] as string[],  // Multi-role support
     password: '',
     confirmPassword: '',
   });
@@ -36,11 +40,16 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
 
   useEffect(() => {
     if (user) {
+      // Use roles array if available, otherwise convert single role to array
+      const userRoles = user.roles && user.roles.length > 0 
+        ? user.roles 
+        : [user.role];
+      
       setFormData({
         username: user.username,
         email: user.email,
         full_name: user.full_name,
-        role: user.role,
+        roles: userRoles,
         password: '',
         confirmPassword: '',
       });
@@ -91,6 +100,9 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
     return Object.keys(newErrors).length === 0;
   };
 
+  /**
+   * Submit form to create or update user
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -101,11 +113,17 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
     setLoading(true);
 
     try {
+      // Get auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
       const payload: any = {
         username: formData.username,
         email: formData.email,
         full_name: formData.full_name,
-        role: formData.role,
+        roles: formData.roles,  // Send roles array
       };
 
       // Only include password for new users
@@ -118,20 +136,36 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
 
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify(payload),
       });
 
       const result = await response.json();
 
       if (result.success) {
+        toast({
+          variant: 'success',
+          title: 'Success',
+          description: user ? 'User updated successfully' : 'User created successfully',
+        });
         onSuccess();
       } else {
-        alert(result.error || 'Failed to save user');
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: result.error || 'Failed to save user',
+        });
       }
     } catch (error) {
       console.error('Save user error:', error);
-      alert('Failed to save user');
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to save user. Please try again.',
+      });
     } finally {
       setLoading(false);
     }
@@ -197,21 +231,48 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
         )}
       </div>
 
-      {/* Role */}
+      {/* Roles */}
       <div>
-        <Label htmlFor="role">Role *</Label>
-        <select
-          id="role"
-          value={formData.role}
-          onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="admin">Admin</option>
-          <option value="manager">Manager</option>
-          <option value="cashier">Cashier</option>
-          <option value="kitchen">Kitchen</option>
-          <option value="bartender">Bartender</option>
-        </select>
+        <Label htmlFor="roles">Roles *</Label>
+        <div className="space-y-2">
+          <div className="text-sm text-gray-600 mb-2">
+            Select one or more roles. First role selected will be the primary role.
+          </div>
+          <div className="space-y-2 border border-gray-300 rounded-md p-3">
+            {['admin', 'manager', 'cashier', 'kitchen', 'bartender', 'waiter'].map((role) => (
+              <label key={role} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                <input
+                  type="checkbox"
+                  checked={formData.roles.includes(role)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      // Add role
+                      setFormData({ ...formData, roles: [...formData.roles, role] });
+                    } else {
+                      // Remove role (but keep at least one)
+                      if (formData.roles.length > 1) {
+                        setFormData({ ...formData, roles: formData.roles.filter(r => r !== role) });
+                      }
+                    }
+                  }}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="capitalize text-sm">{role}</span>
+              </label>
+            ))}
+          </div>
+          {formData.roles.length > 0 && (
+            <div className="text-sm text-gray-600">
+              <span className="font-medium">Primary role:</span> <span className="capitalize">{formData.roles[0]}</span>
+              {formData.roles.length > 1 && (
+                <>
+                  {' | '}
+                  <span className="font-medium">Additional:</span> <span className="capitalize">{formData.roles.slice(1).join(', ')}</span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Password (only for new users) */}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { InventoryRepository } from '@/data/repositories/InventoryRepository';
 import { InventoryService } from '@/core/services/inventory/InventoryService';
 import { AppError } from '@/lib/errors/AppError';
+import { supabaseAdmin } from '@/data/supabase/server-client';
 
 /**
  * POST /api/inventory/adjust
@@ -12,20 +13,51 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     // Validate required fields
-    if (!body.product_id || !body.quantity_change || !body.movement_type || !body.reason) {
+    if (!body.product_id || body.quantity_change === undefined || !body.movement_type || !body.reason) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    // TODO: Get user ID from session
-    const userId = body.performed_by || 'system';
+    // Ensure quantity_change is a number
+    const quantityChange = parseFloat(body.quantity_change);
+    if (isNaN(quantityChange)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid quantity change' },
+        { status: 400 }
+      );
+    }
 
-    // Get current product stock
-    const { data: product, error: productError } = await (
-      await import('@/data/supabase/client')
-    ).supabase
+    // Get user from Authorization header
+    const authHeader = request.headers.get('authorization');
+    let userId: string | null = null;
+    let userRole: string | null = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.replace('Bearer ', '');
+      
+      // Verify token and get user
+      const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+      
+      if (!authError && user) {
+        userId = user.id;
+        
+        // Get user role from users table
+        const { data: userData } = await supabaseAdmin
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        
+        if (userData) {
+          userRole = userData.role;
+        }
+      }
+    }
+
+    // Get current product stock using the server-side Supabase admin client
+    const { data: product, error: productError } = await supabaseAdmin
       .from('products')
       .select('current_stock')
       .eq('id', body.product_id)
@@ -38,10 +70,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const currentStock = product.current_stock ?? 0;
+
     // Validate adjustment
     const validation = InventoryService.validateAdjustment(
-      product.current_stock,
-      body.quantity_change,
+      currentStock,
+      quantityChange,
       body.movement_type
     );
 
@@ -54,11 +88,15 @@ export async function POST(request: NextRequest) {
 
     // Check if requires manager approval
     const requiresApproval = InventoryService.requiresManagerApproval(
-      product.current_stock,
-      body.quantity_change
+      currentStock,
+      quantityChange
     );
 
-    if (requiresApproval && !body.manager_approved) {
+    // Auto-approve if current user is manager or admin
+    const isManagerOrAdmin = userRole === 'manager' || userRole === 'admin';
+    const hasManagerApproval = body.manager_approved || isManagerOrAdmin;
+
+    if (requiresApproval && !hasManagerApproval) {
       return NextResponse.json(
         {
           success: false,
@@ -69,13 +107,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Perform adjustment
+    // Perform adjustment (use 'system' as fallback if no authenticated user)
     const result = await InventoryRepository.adjustStock(
       body.product_id,
-      body.quantity_change,
+      quantityChange,
       body.movement_type,
       body.reason,
-      userId,
+      userId || 'system',
       body.notes,
       body.unit_cost
     );

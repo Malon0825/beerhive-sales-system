@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import RoleBadge from './RoleBadge';
+import RoleBadges from './RoleBadges';
 import PasswordResetDialog from './PasswordResetDialog';
+import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { Button } from '../../shared/ui/button';
 import { Badge } from '../../shared/ui/badge';
 import { Edit, Power, PowerOff, Key } from 'lucide-react';
@@ -12,7 +13,8 @@ interface User {
   username: string;
   email: string;
   full_name: string;
-  role: string;
+  role: string;  // Primary role (backward compatibility)
+  roles?: string[];  // Multiple roles
   is_active: boolean;
   last_login: string | null;
   created_at: string;
@@ -37,6 +39,9 @@ export default function UserList({
 }: UserListProps) {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [showReactivateConfirm, setShowReactivateConfirm] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const handlePasswordReset = (userId: string) => {
     setSelectedUserId(userId);
@@ -46,6 +51,36 @@ export default function UserList({
   const handlePasswordResetClose = () => {
     setShowPasswordReset(false);
     setSelectedUserId(null);
+  };
+
+  const handleDeactivateClick = (userId: string) => {
+    setSelectedUserId(userId);
+    setShowDeactivateConfirm(true);
+  };
+
+  const handleDeactivateConfirm = async () => {
+    if (selectedUserId) {
+      setActionLoading(true);
+      await onDeactivate(selectedUserId);
+      setActionLoading(false);
+      setShowDeactivateConfirm(false);
+      setSelectedUserId(null);
+    }
+  };
+
+  const handleReactivateClick = (userId: string) => {
+    setSelectedUserId(userId);
+    setShowReactivateConfirm(true);
+  };
+
+  const handleReactivateConfirm = async () => {
+    if (selectedUserId) {
+      setActionLoading(true);
+      await onReactivate(selectedUserId);
+      setActionLoading(false);
+      setShowReactivateConfirm(false);
+      setSelectedUserId(null);
+    }
   };
 
   if (loading) {
@@ -102,8 +137,8 @@ export default function UserList({
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-900">{user.email}</div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <RoleBadge role={user.role} />
+                <td className="px-6 py-4">
+                  <RoleBadges roles={user.roles && user.roles.length > 0 ? user.roles : user.role} />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   {user.is_active ? (
@@ -143,7 +178,7 @@ export default function UserList({
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => onDeactivate(user.id)}
+                        onClick={() => handleDeactivateClick(user.id)}
                         className="flex items-center gap-1"
                         title="Deactivate user"
                       >
@@ -153,7 +188,7 @@ export default function UserList({
                       <Button
                         variant="default"
                         size="sm"
-                        onClick={() => onReactivate(user.id)}
+                        onClick={() => handleReactivateClick(user.id)}
                         className="flex items-center gap-1"
                         title="Reactivate user"
                       >
@@ -175,6 +210,28 @@ export default function UserList({
           onSuccess={onRefresh}
         />
       )}
+
+      <ConfirmDialog
+        open={showDeactivateConfirm}
+        onOpenChange={setShowDeactivateConfirm}
+        title="Deactivate User"
+        description="Are you sure you want to deactivate this user? They will no longer be able to log in to the system."
+        confirmText="Deactivate"
+        variant="destructive"
+        onConfirm={handleDeactivateConfirm}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
+        open={showReactivateConfirm}
+        onOpenChange={setShowReactivateConfirm}
+        title="Reactivate User"
+        description="Are you sure you want to reactivate this user? They will be able to log in to the system again."
+        confirmText="Reactivate"
+        variant="default"
+        onConfirm={handleReactivateConfirm}
+        loading={actionLoading}
+      />
     </>
   );
 }

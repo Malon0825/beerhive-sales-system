@@ -2,17 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { UserRepository } from '@/data/repositories/UserRepository';
 import { UserService } from '@/core/services/users/UserService';
 import { AppError } from '@/lib/errors/AppError';
+import { requireManagerOrAbove } from '@/lib/utils/api-auth';
 
 /**
  * GET /api/users/[userId]
- * Get user by ID (Admin only)
+ * Get user by ID (Admin/Manager only)
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: { userId: string } }
 ) {
   try {
-    // TODO: Add admin authentication check
+    // Verify user has manager or admin role
+    await requireManagerOrAbove(request);
+    
     const { userId } = params;
 
     const user = await UserRepository.getById(userId);
@@ -47,14 +50,16 @@ export async function GET(
 
 /**
  * PATCH /api/users/[userId]
- * Update user (Admin only)
+ * Update user (Admin/Manager only)
  */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { userId: string } }
 ) {
   try {
-    // TODO: Add admin authentication check
+    // Verify user has manager or admin role
+    await requireManagerOrAbove(request);
+    
     const { userId } = params;
     const body = await request.json();
 
@@ -84,14 +89,16 @@ export async function PATCH(
 
 /**
  * DELETE /api/users/[userId]
- * Delete user (Admin only)
+ * Delete user (Admin/Manager only)
  */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { userId: string } }
 ) {
   try {
-    // TODO: Add admin authentication check
+    // Verify user has manager or admin role
+    await requireManagerOrAbove(request);
+    
     const { userId } = params;
 
     await UserRepository.delete(userId);

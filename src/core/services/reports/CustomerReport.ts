@@ -4,7 +4,7 @@
  */
 
 import { getCustomerVisitFrequency } from '@/data/queries/reports.queries';
-import { supabase } from '@/data/supabase/client';
+import { supabaseAdmin } from '@/data/supabase/server-client';
 import { subDays } from 'date-fns';
 
 export interface CustomerReportParams {
@@ -82,7 +82,7 @@ export class CustomerReportService {
    */
   static async getTierDistribution(params: CustomerReportParams = {}): Promise<TierDistribution[]> {
 
-    const { data: customers, error } = await supabase
+    const { data: customers, error } = await supabaseAdmin
       .from('customers')
       .select('id, tier, total_spent')
       .eq('is_active', true);
@@ -120,7 +120,7 @@ export class CustomerReportService {
     const endDate = params.endDate || new Date().toISOString();
     const startDate = params.startDate || subDays(new Date(endDate), 30).toISOString();
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('customers')
       .select('id, customer_number, full_name, tier, created_at, phone, email')
       .gte('created_at', startDate)
@@ -139,7 +139,7 @@ export class CustomerReportService {
     const startDate = params.startDate || subDays(new Date(endDate), 30).toISOString();
 
     // Get customers who made purchases in the period
-    const { data: orders, error } = await supabase
+    const { data: orders, error } = await supabaseAdmin
       .from('orders')
       .select('customer_id, completed_at')
       .gte('completed_at', startDate)
@@ -173,7 +173,7 @@ export class CustomerReportService {
    */
   static async getCustomerLifetimeValue() {
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('customers')
       .select(`
         id,
@@ -217,9 +217,9 @@ export class CustomerReportService {
     const startDate = params.startDate || subDays(new Date(endDate), 30).toISOString();
 
     const [allCustomers, newCustomers, activeCustomers] = await Promise.all([
-      supabase.from('customers').select('tier, loyalty_points, total_spent').eq('is_active', true),
+      supabaseAdmin.from('customers').select('tier, loyalty_points, total_spent').eq('is_active', true),
       this.getNewCustomers(params),
-      supabase
+      supabaseAdmin
         .from('orders')
         .select('customer_id')
         .gte('completed_at', startDate)
@@ -266,7 +266,7 @@ export class CustomerReportService {
   static async getCustomersAtRisk(daysSinceLastVisit = 60) {
     const thresholdDate = subDays(new Date(), daysSinceLastVisit).toISOString();
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('customers')
       .select(`
         id,

@@ -11,6 +11,7 @@ export * from './enums/KitchenOrderStatus';
 export * from './enums/EventType';
 export * from './enums/PaymentMethod';
 export * from './enums/CustomerTier';
+export * from './enums/NotificationType';
 
 // Entity Models
 export * from './entities/User';
@@ -27,6 +28,7 @@ export * from './entities/InventoryMovement';
 export * from './entities/Supplier';
 export * from './entities/PurchaseOrder';
 export * from './entities/AuditLog';
+export * from './entities/Notification';
 
 // DTOs
 export * from './dtos/CreateOrderDTO';

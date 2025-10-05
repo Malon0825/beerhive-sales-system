@@ -7,14 +7,16 @@ export interface CreateUserInput {
   email: string;
   password: string;
   full_name: string;
-  role: UserRole;
+  role?: UserRole;  // Single role (backward compatibility)
+  roles?: UserRole[];  // Multiple roles (preferred)
 }
 
 export interface UpdateUserInput {
   username?: string;
   email?: string;
   full_name?: string;
-  role?: UserRole;
+  role?: UserRole;  // Single role (backward compatibility)
+  roles?: UserRole[];  // Multiple roles (preferred)
   is_active?: boolean;
 }
 
@@ -30,7 +32,7 @@ export class UserRepository {
     try {
       const { data, error } = await supabaseAdmin
         .from('users')
-        .select('id, username, email, full_name, role, is_active, last_login, created_at')
+        .select('id, username, email, full_name, role, roles, is_active, last_login, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw new AppError(error.message, 500);
@@ -49,7 +51,7 @@ export class UserRepository {
     try {
       const { data, error } = await supabaseAdmin
         .from('users')
-        .select('id, username, email, full_name, role, is_active, last_login, created_at, updated_at')
+        .select('id, username, email, full_name, role, roles, is_active, last_login, created_at, updated_at')
         .eq('id', id)
         .single();
 
@@ -125,6 +127,14 @@ export class UserRepository {
 
       if (authError) throw new AppError(authError.message, 500);
 
+      // Determine roles array
+      // Prefer roles array if provided, otherwise convert single role to array
+      const rolesArray = input.roles && input.roles.length > 0 
+        ? input.roles 
+        : (input.role ? [input.role] : ['cashier']);
+      
+      const primaryRole = rolesArray[0];
+
       // Then create user record in users table
       const { data, error } = await supabaseAdmin
         .from('users')
@@ -133,7 +143,8 @@ export class UserRepository {
           username: input.username,
           email: input.email,
           full_name: input.full_name,
-          role: input.role,
+          role: primaryRole,  // Primary role (first in array)
+          roles: rolesArray,  // All roles
           password_hash: 'managed_by_supabase_auth', // Placeholder
           is_active: true,
           created_at: new Date().toISOString(),
@@ -160,10 +171,26 @@ export class UserRepository {
    */
   static async update(id: string, input: UpdateUserInput): Promise<any> {
     try {
+      // Prepare update data
       const updateData: any = {
-        ...input,
         updated_at: new Date().toISOString(),
       };
+      
+      // Handle roles update
+      if (input.roles && input.roles.length > 0) {
+        updateData.roles = input.roles;
+        updateData.role = input.roles[0];  // Update primary role
+      } else if (input.role) {
+        // Backward compatibility: single role provided
+        updateData.role = input.role;
+        updateData.roles = [input.role];
+      }
+      
+      // Add other fields
+      if (input.username !== undefined) updateData.username = input.username;
+      if (input.email !== undefined) updateData.email = input.email;
+      if (input.full_name !== undefined) updateData.full_name = input.full_name;
+      if (input.is_active !== undefined) updateData.is_active = input.is_active;
 
       const { data, error } = await supabaseAdmin
         .from('users')

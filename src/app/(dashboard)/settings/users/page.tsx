@@ -6,7 +6,10 @@ export const metadata: Metadata = {
   description: 'Manage system users and access control',
 };
 
+/**
+ * Users Page
+ * Manage system users - accessible only to Admin and Manager roles
+ */
 export default function UsersPage() {
-  // TODO: Add admin-only access guard
   return <UserManagement />;
 }

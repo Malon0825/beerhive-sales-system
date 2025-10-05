@@ -5,7 +5,10 @@ import { Product } from '@/models/entities/Product';
 import { InventoryService } from '@/core/services/inventory/InventoryService';
 import { Badge } from '../shared/ui/badge';
 import { Button } from '../shared/ui/button';
-import { Edit, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { Edit, AlertCircle, CheckCircle, XCircle, Power, Eye, EyeOff } from 'lucide-react';
+import StockAdjustmentDialog from './StockAdjustmentDialog';
+import EditProductDialog from './EditProductDialog';
+import { toast } from '@/lib/hooks/useToast';
 
 interface InventoryListProps {
   onStatsUpdate?: (stats: {
@@ -16,19 +19,30 @@ interface InventoryListProps {
   }) => void;
 }
 
+/**
+ * InventoryList Component
+ * Displays inventory products with edit, toggle active, and stock adjustment features
+ */
 export default function InventoryList({ onStatsUpdate }: InventoryListProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
+  const [isAdjustDialogOpen, setIsAdjustDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   useEffect(() => {
     loadProducts();
   }, []);
 
+  /**
+   * Load all products from API
+   */
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/products');
+      const response = await fetch('/api/products?includeInactive=true');
       const result = await response.json();
 
       if (result.success) {
@@ -42,25 +56,116 @@ export default function InventoryList({ onStatsUpdate }: InventoryListProps) {
     }
   };
 
+  /**
+   * Update statistics for dashboard
+   */
   const updateStats = (productList: Product[]) => {
     if (!onStatsUpdate) return;
 
+    // Only count active products for stats
+    const activeProducts = productList.filter(p => p.is_active !== false);
+
     const stats = {
-      total: productList.length,
-      lowStock: productList.filter(
+      total: activeProducts.length,
+      lowStock: activeProducts.filter(
         (p) => p.current_stock <= p.reorder_point && p.current_stock > 0
       ).length,
-      outOfStock: productList.filter((p) => p.current_stock <= 0).length,
-      adequate: productList.filter((p) => p.current_stock > p.reorder_point).length,
+      outOfStock: activeProducts.filter((p) => p.current_stock <= 0).length,
+      adequate: activeProducts.filter((p) => p.current_stock > p.reorder_point).length,
     };
 
     onStatsUpdate(stats);
   };
 
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.sku.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  /**
+   * Filter products by search term and active/inactive status
+   */
+  const filteredProducts = products.filter((product) => {
+    const matchesSearch = 
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.sku.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesActiveFilter = showInactive ? true : (product.is_active !== false);
+    
+    return matchesSearch && matchesActiveFilter;
+  });
+
+  /**
+   * Handle opening adjustment dialog for a product
+   */
+  const handleAdjustClick = (product: Product) => {
+    setSelectedProduct(product);
+    setIsAdjustDialogOpen(true);
+  };
+
+  /**
+   * Handle opening edit dialog for a product
+   */
+  const handleEditClick = (product: Product) => {
+    setSelectedProduct(product);
+    setIsEditDialogOpen(true);
+  };
+
+  /**
+   * Toggle product active/inactive status
+   */
+  const handleToggleActive = async (product: Product) => {
+    const newStatus = !product.is_active;
+    const action = newStatus ? 'activated' : 'deactivated';
+
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: newStatus }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: `Product ${action}`,
+          description: `${product.name} has been ${action}.`,
+        });
+        loadProducts();
+      } else {
+        toast({
+          title: 'Error',
+          description: result.error || `Failed to ${action.slice(0, -1)} product`,
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Toggle active error:', error);
+      toast({
+        title: 'Error',
+        description: 'An error occurred while updating the product status',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  /**
+   * Handle successful stock adjustment
+   */
+  const handleAdjustmentSuccess = () => {
+    toast({
+      title: 'Stock adjusted successfully',
+      description: 'Inventory has been updated.',
+    });
+    loadProducts();
+  };
+
+  /**
+   * Handle successful product edit
+   */
+  const handleEditSuccess = () => {
+    toast({
+      title: 'Product updated successfully',
+      description: 'Product details have been updated.',
+    });
+    loadProducts();
+  };
 
   if (loading) {
     return (
@@ -72,15 +177,23 @@ export default function InventoryList({ onStatsUpdate }: InventoryListProps) {
 
   return (
     <div>
-      {/* Search */}
-      <div className="mb-4">
+      {/* Search and Filter Controls */}
+      <div className="mb-4 flex gap-3">
         <input
           type="text"
           placeholder="Search products by name or SKU..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+        <Button
+          variant={showInactive ? 'default' : 'outline'}
+          onClick={() => setShowInactive(!showInactive)}
+          className="flex items-center gap-2"
+        >
+          {showInactive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          {showInactive ? 'Showing Inactive' : 'Show Inactive'}
+        </Button>
       </div>
 
       {/* Products Table */}
@@ -98,7 +211,7 @@ export default function InventoryList({ onStatsUpdate }: InventoryListProps) {
                 Current Stock
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Reorder Point
+                Reorder Threshold
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
@@ -121,11 +234,22 @@ export default function InventoryList({ onStatsUpdate }: InventoryListProps) {
                 product.current_stock,
                 product.cost_price || 0
               );
+              const isInactive = product.is_active === false;
 
               return (
-                <tr key={product.id} className="hover:bg-gray-50">
+                <tr 
+                  key={product.id} 
+                  className={`hover:bg-gray-50 ${isInactive ? 'bg-gray-100 opacity-60' : ''}`}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{product.name}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-medium text-gray-900">{product.name}</div>
+                      {isInactive && (
+                        <Badge variant="secondary" className="bg-gray-500 text-white text-xs">
+                          Inactive
+                        </Badge>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">{product.sku}</div>
@@ -150,10 +274,39 @@ export default function InventoryList({ onStatsUpdate }: InventoryListProps) {
                     <div className="text-sm text-gray-900">₱{stockValue.toFixed(2)}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <Button variant="outline" size="sm" className="flex items-center gap-1">
-                      <Edit className="w-4 h-4" />
-                      Adjust
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex items-center gap-1"
+                        onClick={() => handleEditClick(product)}
+                        title="Edit product"
+                      >
+                        <Edit className="w-4 h-4" />
+                        Edit
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex items-center gap-1"
+                        onClick={() => handleAdjustClick(product)}
+                        disabled={isInactive}
+                        title="Adjust stock"
+                      >
+                        <Edit className="w-4 h-4" />
+                        Stock
+                      </Button>
+                      <Button 
+                        variant={isInactive ? 'default' : 'outline'}
+                        size="sm" 
+                        className={`flex items-center gap-1 ${isInactive ? 'bg-green-600 hover:bg-green-700' : 'text-red-600 hover:bg-red-50'}`}
+                        onClick={() => handleToggleActive(product)}
+                        title={isInactive ? 'Activate product' : 'Deactivate product'}
+                      >
+                        <Power className="w-4 h-4" />
+                        {isInactive ? 'Activate' : 'Deactivate'}
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -167,6 +320,22 @@ export default function InventoryList({ onStatsUpdate }: InventoryListProps) {
           </div>
         )}
       </div>
+
+      {/* Edit Product Dialog */}
+      <EditProductDialog
+        product={selectedProduct}
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        onSuccess={handleEditSuccess}
+      />
+
+      {/* Stock Adjustment Dialog */}
+      <StockAdjustmentDialog
+        open={isAdjustDialogOpen}
+        onOpenChange={setIsAdjustDialogOpen}
+        product={selectedProduct}
+        onSuccess={handleAdjustmentSuccess}
+      />
     </div>
   );
 }

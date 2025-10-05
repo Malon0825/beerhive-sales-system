@@ -1,24 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { UserService } from '@/core/services/users/UserService';
 import { AppError } from '@/lib/errors/AppError';
+import { requireManagerOrAbove } from '@/lib/utils/api-auth';
 
 /**
  * POST /api/users/[userId]/reset-password
- * Reset user password (Admin only)
+ * Reset user password (Admin/Manager only)
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { userId: string } }
 ) {
   try {
-    // TODO: Add admin authentication check
+    // Verify user has manager or admin role
+    await requireManagerOrAbove(request);
+    
     const { userId } = params;
 
-    const tempPassword = await UserService.resetPassword(userId);
+    const temporaryPassword = await UserService.resetPassword(userId);
 
     return NextResponse.json({
       success: true,
-      data: { tempPassword },
+      temporaryPassword,
       message: 'Password reset successfully. Temporary password generated.',
     });
   } catch (error) {

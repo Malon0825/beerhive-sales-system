@@ -9,19 +9,29 @@ import { AppError } from '@/lib/errors/AppError';
  */
 export class ProductRepository {
   /**
-   * Get all active products
+   * Get all products (optionally include inactive)
+   * @param includeInactive - If true, returns both active and inactive products
    */
-  static async getAll(): Promise<Product[]> {
+  static async getAll(includeInactive: boolean = false): Promise<Product[]> {
     try {
-      const { data, error } = await supabaseAdmin
+      let query = supabaseAdmin
         .from('products')
         .select(`
           *,
           category:product_categories(id, name, color_code)
-        `)
-        .eq('is_active', true)
+        `);
+
+      // Only filter by is_active if not including inactive
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+
+      query = query
+        .order('is_active', { ascending: false }) // Active products first
         .order('display_order', { ascending: true })
         .order('name', { ascending: true });
+
+      const { data, error } = await query;
 
       if (error) throw new AppError(error.message, 500);
       return data as Product[];
@@ -110,11 +120,11 @@ export class ProductRepository {
   /**
    * Create new product (admin/manager only)
    */
-  static async create(product: Partial<Product>, userId: string): Promise<Product> {
+  static async create(product: Partial<Product>, userId: string | null): Promise<Product> {
     try {
       const productData: any = {
         ...product,
-        created_by: userId,
+        created_by: userId || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };

@@ -1,11 +1,18 @@
-import { Metadata } from 'next';
+'use client';
+
 import InventoryDashboard from '@/views/inventory/InventoryDashboard';
+import { RouteGuard } from '@/views/shared/guards/RouteGuard';
+import { UserRole } from '@/models/enums/UserRole';
 
-export const metadata: Metadata = {
-  title: 'Inventory Management | BeerHive POS',
-  description: 'Manage product inventory and stock levels',
-};
-
+/**
+ * Inventory Page
+ * Manage product inventory and stock levels
+ * Protected route - only accessible by managers and admins
+ */
 export default function InventoryPage() {
-  return <InventoryDashboard />;
+  return (
+    <RouteGuard requiredRoles={[UserRole.ADMIN, UserRole.MANAGER]}>
+      <InventoryDashboard />
+    </RouteGuard>
+  );
 }

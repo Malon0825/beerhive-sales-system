@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Bell, User, LogOut, Menu } from 'lucide-react';
+import React, { useState } from 'react';
+import { User, LogOut, Menu } from 'lucide-react';
 import { Button } from '../ui/button';
 import {
   DropdownMenu,
@@ -14,6 +14,8 @@ import {
 import { Badge } from '../ui/badge';
 import { AuthUser } from '@/core/services/auth/AuthService';
 import { UserRole } from '@/models/enums/UserRole';
+import { ProfileDialog } from '../profile/ProfileDialog';
+import { NotificationBell } from '../ui/NotificationBell';
 
 interface HeaderProps {
   user?: AuthUser | null;
@@ -55,9 +57,16 @@ const getRoleLabel = (role: UserRole) => {
   }
 };
 
+/**
+ * Header Component
+ * Top navigation bar with user profile menu and profile dialog
+ */
 export function Header({ user, onLogout, onMenuClick }: HeaderProps) {
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background px-4 lg:px-6">
+    <>
+      <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background px-4 lg:px-6">
       {/* Mobile menu button */}
       <Button
         variant="ghost"
@@ -78,13 +87,7 @@ export function Header({ user, onLogout, onMenuClick }: HeaderProps) {
       {/* Right side actions */}
       <div className="flex items-center gap-2">
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
-          <span className="absolute right-1 top-1 flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
-          </span>
-        </Button>
+        <NotificationBell />
 
         {/* User menu */}
         <DropdownMenu>
@@ -123,7 +126,7 @@ export function Header({ user, onLogout, onMenuClick }: HeaderProps) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setProfileDialogOpen(true)}>
               <User className="mr-2 h-4 w-4" />
               <span>Profile</span>
             </DropdownMenuItem>
@@ -139,5 +142,12 @@ export function Header({ user, onLogout, onMenuClick }: HeaderProps) {
         </DropdownMenu>
       </div>
     </header>
+
+      {/* Profile Dialog */}
+      <ProfileDialog 
+        open={profileDialogOpen} 
+        onOpenChange={setProfileDialogOpen} 
+      />
+    </>
   );
 }

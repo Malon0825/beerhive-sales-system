@@ -21,8 +21,12 @@ export class UserService {
       // Validate password strength
       this.validatePasswordStrength(input.password);
 
-      // Validate role
-      this.validateRole(input.role);
+      // Validate roles
+      const roles = input.roles && input.roles.length > 0 ? input.roles : (input.role ? [input.role] : []);
+      if (roles.length === 0) {
+        throw new AppError('At least one role is required', 400);
+      }
+      roles.forEach(role => this.validateRole(role));
 
       // Create user
       return await UserRepository.create(input);
@@ -53,8 +57,13 @@ export class UserService {
         await this.validateEmail(input.email);
       }
 
-      // Validate role if provided
-      if (input.role) {
+      // Validate roles if provided
+      if (input.roles && input.roles.length > 0) {
+        if (input.roles.length === 0) {
+          throw new AppError('At least one role is required', 400);
+        }
+        input.roles.forEach(role => this.validateRole(role));
+      } else if (input.role) {
         this.validateRole(input.role);
       }
 

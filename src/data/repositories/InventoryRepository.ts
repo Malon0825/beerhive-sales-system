@@ -1,10 +1,10 @@
-import { supabase } from '../supabase/client';
 import { supabaseAdmin } from '../supabase/server-client';
 import { AppError } from '@/lib/errors/AppError';
 
 /**
  * InventoryRepository
  * Data access layer for inventory movements and stock management
+ * Uses supabaseAdmin for server-side operations to bypass RLS
  */
 export class InventoryRepository {
   /**
@@ -18,7 +18,7 @@ export class InventoryRepository {
     limit?: number;
   }) {
     try {
-      let query = supabase
+      let query = supabaseAdmin
         .from('inventory_movements')
         .select(`
           *,
@@ -65,7 +65,7 @@ export class InventoryRepository {
    */
   static async getMovementById(id: string) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('inventory_movements')
         .select(`
           *,
@@ -107,7 +107,7 @@ export class InventoryRepository {
     notes?: string;
   }) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('inventory_movements')
         .insert(movement)
         .select()
@@ -129,16 +129,16 @@ export class InventoryRepository {
    */
   static async getLowStockProducts() {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('products')
         .select('*')
-        .lte('current_stock', supabase.rpc('get_reorder_point', {}))
+        .lte('current_stock', supabaseAdmin.rpc('get_reorder_point', {}))
         .eq('is_active', true)
         .order('current_stock', { ascending: true });
 
       if (error) {
         // Fallback query if RPC doesn't exist
-        const { data: fallbackData, error: fallbackError } = await supabase
+        const { data: fallbackData, error: fallbackError } = await supabaseAdmin
           .from('products')
           .select('*')
           .eq('is_active', true)
@@ -164,7 +164,7 @@ export class InventoryRepository {
    */
   static async updateStock(productId: string, newStock: number) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('products')
         .update({ current_stock: newStock })
         .eq('id', productId)
@@ -196,7 +196,7 @@ export class InventoryRepository {
   ) {
     try {
       // Get current product
-      const { data: product, error: productError } = await supabase
+      const { data: product, error: productError } = await supabaseAdmin
         .from('products')
         .select('*')
         .eq('id', productId)
@@ -245,7 +245,7 @@ export class InventoryRepository {
    */
   static async getStockStatistics() {
     try {
-      const { data: products, error } = await supabase
+      const { data: products, error } = await supabaseAdmin
         .from('products')
         .select('current_stock, reorder_point')
         .eq('is_active', true);
@@ -276,7 +276,7 @@ export class InventoryRepository {
    */
   static async getMovementsByProduct(productId: string, limit: number = 50) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('inventory_movements')
         .select(`
           *,

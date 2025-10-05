@@ -9,6 +9,9 @@ import { useState, useEffect } from 'react';
 import { DateRangeFilter, DatePeriod } from './DateRangeFilter';
 import { SalesChart } from './SalesChart';
 import { TopProductsTable } from './TopProductsTable';
+import { ExportReportButton } from './ExportReportButton';
+import { ExcelExportButton, ExcelExportMultiSheet } from './ExcelExportButton';
+import { ExcelHeader } from '@/core/services/export/ExcelExportService';
 import { DollarSign, ShoppingCart, Users, TrendingUp, Package, AlertTriangle } from 'lucide-react';
 
 interface DashboardData {
@@ -81,6 +84,52 @@ export function ReportsDashboard() {
     return new Intl.NumberFormat('en-PH').format(value);
   };
 
+  /**
+   * Define Excel headers for sales data export
+   */
+  const salesHeaders: ExcelHeader[] = [
+    { key: 'date', label: 'Date', width: 12, format: 'date' },
+    { key: 'total_revenue', label: 'Revenue', width: 15, format: 'currency' },
+    { key: 'transaction_count', label: 'Orders', width: 10, format: 'number' },
+    { key: 'average_transaction', label: 'Avg Order Value', width: 15, format: 'currency' },
+  ];
+
+  /**
+   * Define Excel headers for top products export
+   */
+  const productsHeaders: ExcelHeader[] = [
+    { key: 'product_name', label: 'Product Name', width: 25 },
+    { key: 'quantity_sold', label: 'Quantity Sold', width: 15, format: 'number' },
+    { key: 'total_revenue', label: 'Revenue', width: 15, format: 'currency' },
+  ];
+
+  /**
+   * Define Excel headers for categories export
+   */
+  const categoriesHeaders: ExcelHeader[] = [
+    { key: 'category_name', label: 'Category', width: 20 },
+    { key: 'total_revenue', label: 'Revenue', width: 15, format: 'currency' },
+    { key: 'product_count', label: 'Products', width: 12, format: 'number' },
+  ];
+
+  /**
+   * Define Excel headers for payment methods export
+   */
+  const paymentHeaders: ExcelHeader[] = [
+    { key: 'payment_method', label: 'Payment Method', width: 20 },
+    { key: 'total_amount', label: 'Total Amount', width: 15, format: 'currency' },
+    { key: 'count', label: 'Transaction Count', width: 15, format: 'number' },
+  ];
+
+  /**
+   * Define Excel headers for cashiers export
+   */
+  const cashiersHeaders: ExcelHeader[] = [
+    { key: 'cashier_name', label: 'Cashier Name', width: 25 },
+    { key: 'total_sales', label: 'Total Sales', width: 15, format: 'currency' },
+    { key: 'transaction_count', label: 'Transactions', width: 15, format: 'number' },
+  ];
+
   if (error) {
     return (
       <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
@@ -97,6 +146,62 @@ export function ReportsDashboard() {
           <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
           <p className="text-gray-600 mt-1">Comprehensive business insights and metrics</p>
         </div>
+        
+        {/* Export Buttons */}
+        {dashboardData && (
+          <div className="flex gap-3">
+            {/* CSV Export */}
+            <ExportReportButton 
+              data={dashboardData?.sales.daily_sales || []} 
+              filename="sales_report"
+            />
+            
+            {/* Excel Single Sheet Export */}
+            <ExcelExportButton
+              data={dashboardData?.sales.daily_sales || []}
+              filename="sales_report"
+              headers={salesHeaders}
+              sheetName="Daily Sales"
+              formatting={{
+                totalsRow: true,
+                alternateRows: true
+              }}
+            />
+            
+            {/* Excel Multi-Sheet Export */}
+            <ExcelExportMultiSheet
+              sheets={[
+                {
+                  name: 'Sales Summary',
+                  data: dashboardData?.sales.daily_sales || [],
+                  headers: salesHeaders,
+                  formatting: { totalsRow: true }
+                },
+                {
+                  name: 'Top Products',
+                  data: dashboardData?.sales.top_products || [],
+                  headers: productsHeaders
+                },
+                {
+                  name: 'Categories',
+                  data: dashboardData?.sales.categories || [],
+                  headers: categoriesHeaders
+                },
+                {
+                  name: 'Payment Methods',
+                  data: dashboardData?.sales.payment_methods || [],
+                  headers: paymentHeaders
+                },
+                {
+                  name: 'Top Cashiers',
+                  data: dashboardData?.sales.cashiers || [],
+                  headers: cashiersHeaders
+                }
+              ]}
+              filename="comprehensive_report"
+            />
+          </div>
+        )}
       </div>
 
       {/* Date Range Filter */}

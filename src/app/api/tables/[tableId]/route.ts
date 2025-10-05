@@ -86,6 +86,14 @@ export async function PATCH(
           table = await TableService.cancelReservation(params.tableId, supabaseAdmin);
           break;
 
+        case 'deactivate':
+          table = await TableRepository.deactivate(params.tableId, supabaseAdmin);
+          break;
+
+        case 'reactivate':
+          table = await TableRepository.reactivate(params.tableId, supabaseAdmin);
+          break;
+
         default:
           return NextResponse.json(
             { success: false, error: 'Invalid action' },

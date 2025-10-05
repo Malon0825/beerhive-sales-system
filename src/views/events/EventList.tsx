@@ -1,7 +1,7 @@
 'use client';
 
 import { CustomerEvent } from '@/models/entities/CustomerEvent';
-import { RedemptionService } from '@/core/services/events/RedemptionService';
+import { RedemptionUtils } from '@/core/services/events/RedemptionUtils';
 import { Badge } from '../shared/ui/Badge';
 import { Button } from '../shared/ui/Button';
 import { Edit, Trash2, Calendar, Gift, AlertCircle } from 'lucide-react';
@@ -61,8 +61,8 @@ interface EventCardProps {
 }
 
 function EventCard({ event, onEdit, onDelete }: EventCardProps) {
-  const daysUntilExpiry = RedemptionService.getDaysUntilExpiry(event);
-  const isExpiringSoon = RedemptionService.isExpiringSoon(event);
+  const daysUntilExpiry = RedemptionUtils.getDaysUntilExpiry(event);
+  const isExpiringSoon = RedemptionUtils.isExpiringSoon(event);
   const isExpired = event.offer_valid_until && new Date(event.offer_valid_until) < new Date();
 
   const getEventTypeIcon = () => {
@@ -227,3 +227,4 @@ function EventCard({ event, onEdit, onDelete }: EventCardProps) {
       </div>
     </div>
   );
+}

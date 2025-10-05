@@ -32,9 +32,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user details from users table (using admin client to bypass RLS)
+    // Fetch both role (singular) and roles (array) for backward compatibility
     const { data: userData, error } = await supabaseAdmin
       .from('users')
-      .select('id, username, email, full_name, role, is_active')
+      .select('id, username, email, full_name, role, roles, is_active')
       .eq('id', user.id)
       .single();
 
@@ -46,6 +47,15 @@ export async function GET(request: NextRequest) {
       }, { status: 404 });
     }
 
+    // Ensure roles array exists (backward compatibility)
+    // If database has roles array, use it; otherwise convert single role to array
+    const userRoles = userData.roles && Array.isArray(userData.roles) && userData.roles.length > 0
+      ? userData.roles
+      : [userData.role];
+
+    // Ensure role (singular) matches first role in array
+    const primaryRole = userRoles[0];
+
     return NextResponse.json({
       success: true,
       data: {
@@ -53,7 +63,8 @@ export async function GET(request: NextRequest) {
         username: userData.username,
         email: userData.email,
         full_name: userData.full_name,
-        role: userData.role,
+        role: primaryRole, // Primary role (backward compatibility)
+        roles: userRoles,  // All roles (new)
         is_active: userData.is_active,
       },
     });

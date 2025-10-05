@@ -17,6 +17,7 @@ export interface CreateProductDTO {
   size_variant?: string;
   alcohol_percentage?: number;
   image_url?: string;
+  is_featured?: boolean;
 }
 
 export interface UpdateProductDTO {

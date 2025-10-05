@@ -24,40 +24,48 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
   const handlePeriodChange = (newPeriod: DatePeriod) => {
     setPeriod(newPeriod);
     
-    const now = new Date();
     let start: Date;
-    let end: Date = now;
+    let end: Date;
 
     switch (newPeriod) {
       case 'today':
-        start = new Date(now.setHours(0, 0, 0, 0));
-        end = new Date(now.setHours(23, 59, 59, 999));
+        start = new Date();
+        start.setHours(0, 0, 0, 0);
+        end = new Date();
+        end.setHours(23, 59, 59, 999);
         break;
       case 'yesterday':
-        start = new Date(now.setDate(now.getDate() - 1));
+        start = new Date();
+        start.setDate(start.getDate() - 1);
         start.setHours(0, 0, 0, 0);
-        end = new Date(start);
+        end = new Date();
+        end.setDate(end.getDate() - 1);
         end.setHours(23, 59, 59, 999);
         break;
       case 'week':
-        start = new Date(now.setDate(now.getDate() - 7));
+        start = new Date();
+        start.setDate(start.getDate() - 7);
+        end = new Date();
         break;
       case 'month':
-        start = new Date(now.setDate(now.getDate() - 30));
+        start = new Date();
+        start.setDate(start.getDate() - 30);
+        end = new Date();
         break;
       case 'custom':
         return; // Wait for user to select dates
       default:
-        start = new Date(now.setDate(now.getDate() - 7));
+        start = new Date();
+        start.setDate(start.getDate() - 7);
+        end = new Date();
     }
 
-    if (newPeriod !== 'custom') {
-      const startStr = format(start, "yyyy-MM-dd'T'HH:mm:ss");
-      const endStr = format(end, "yyyy-MM-dd'T'HH:mm:ss");
-      setStartDate(startStr);
-      setEndDate(endStr);
-      onDateRangeChange(startStr, endStr, newPeriod);
-    }
+    // Convert to ISO strings and trigger the callback
+    const startStr = start.toISOString();
+    const endStr = end.toISOString();
+    setStartDate(startStr);
+    setEndDate(endStr);
+    onDateRangeChange(startStr, endStr, newPeriod);
   };
 
   const handleCustomDateChange = () => {

@@ -1,11 +1,18 @@
-import { Metadata } from 'next';
+'use client';
+
 import EventManager from '@/views/events/EventManager';
+import { RouteGuard } from '@/views/shared/guards/RouteGuard';
+import { UserRole } from '@/models/enums/UserRole';
 
-export const metadata: Metadata = {
-  title: 'Customer Events | BeerHive POS',
-  description: 'Manage customer events and special offers',
-};
-
+/**
+ * Events Page
+ * Manage customer events and special offers
+ * Protected route - only accessible by managers and admins
+ */
 export default function EventsPage() {
-  return <EventManager />;
+  return (
+    <RouteGuard requiredRoles={[UserRole.ADMIN, UserRole.MANAGER]}>
+      <EventManager />
+    </RouteGuard>
+  );
 }

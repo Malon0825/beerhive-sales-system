@@ -76,6 +76,7 @@ export class OrderService {
 
   /**
    * Get order summary with totals
+   * Returns complete order data with customer, cashier, table, and order items for receipt printing
    */
   static async getOrderSummary(orderId: string) {
     try {

@@ -13,12 +13,14 @@ import { AuditLogService } from '@/core/services/audit/AuditLogService';
 export class VoidOrderService {
   /**
    * Void order with manager authorization
+   * @param skipSessionCheck - If true, skips checking current logged-in user (used when PIN auth already validated)
    */
   static async voidOrder(
     orderId: string,
     managerUserId: string,
     reason: string,
-    returnInventory: boolean = true
+    returnInventory: boolean = true,
+    skipSessionCheck: boolean = false
   ) {
     try {
       // Step 1: Get order
@@ -38,10 +40,14 @@ export class VoidOrderService {
       }
 
       // Step 3: Verify manager authorization
-      const manager = await AuthService.getCurrentUser();
-      if (!manager || !AuthService.isManagerOrAbove(manager)) {
-        throw new AppError('Only managers or admins can void orders', 403);
+      // Skip session check if PIN authorization was already validated in API
+      if (!skipSessionCheck) {
+        const manager = await AuthService.getCurrentUser();
+        if (!manager || !AuthService.isManagerOrAbove(manager)) {
+          throw new AppError('Only managers or admins can void orders', 403);
+        }
       }
+      // If skipSessionCheck=true, PIN auth already validated manager in API endpoint
 
       // Step 4: Void the order
       const voidedOrder = await OrderRepository.void(orderId, managerUserId, reason);

@@ -1,4 +1,4 @@
-import { supabase } from '../supabase/client';
+import { supabaseAdmin } from '../supabase/server-client';
 import { AppError } from '@/lib/errors/AppError';
 import { HappyHour, CreateHappyHourInput, UpdateHappyHourInput, HappyHourProduct } from '@/models/entities/HappyHour';
 
@@ -12,7 +12,7 @@ export class HappyHourRepository {
    */
   static async getAll(includeInactive: boolean = false): Promise<HappyHour[]> {
     try {
-      let query = supabase
+      let query = supabaseAdmin
         .from('happy_hour_pricing')
         .select('*')
         .order('created_at', { ascending: false });
@@ -39,7 +39,7 @@ export class HappyHourRepository {
    */
   static async getById(id: string): Promise<HappyHour | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('happy_hour_pricing')
         .select('*')
         .eq('id', id)
@@ -67,7 +67,7 @@ export class HappyHourRepository {
       const currentDay = now.getDay() || 7; // 1-7 (Monday-Sunday)
       const currentDate = now.toISOString().split('T')[0];
 
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('happy_hour_pricing')
         .select('*')
         .eq('is_active', true)
@@ -96,12 +96,12 @@ export class HappyHourRepository {
   /**
    * Create new happy hour
    */
-  static async create(input: CreateHappyHourInput, createdBy: string): Promise<HappyHour> {
+  static async create(input: CreateHappyHourInput, createdBy: string | null): Promise<HappyHour> {
     try {
       const { product_ids, ...happyHourData } = input;
 
       // Insert happy hour
-      const { data: happyHour, error: insertError } = await supabase
+      const { data: happyHour, error: insertError } = await supabaseAdmin
         .from('happy_hour_pricing')
         .insert({
           ...happyHourData,
@@ -132,7 +132,7 @@ export class HappyHourRepository {
    */
   static async update(id: string, input: UpdateHappyHourInput): Promise<HappyHour> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('happy_hour_pricing')
         .update(input)
         .eq('id', id)
@@ -155,7 +155,7 @@ export class HappyHourRepository {
    */
   static async delete(id: string): Promise<void> {
     try {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('happy_hour_pricing')
         .update({ is_active: false })
         .eq('id', id);
@@ -175,7 +175,7 @@ export class HappyHourRepository {
   static async associateProducts(happyHourId: string, productIds: string[]): Promise<void> {
     try {
       // Remove existing associations
-      await supabase
+      await supabaseAdmin
         .from('happy_hour_products')
         .delete()
         .eq('happy_hour_id', happyHourId);
@@ -187,7 +187,7 @@ export class HappyHourRepository {
           product_id: productId,
         }));
 
-        const { error } = await supabase
+        const { error } = await supabaseAdmin
           .from('happy_hour_products')
           .insert(associations);
 
@@ -206,7 +206,7 @@ export class HappyHourRepository {
    */
   static async getHappyHourProducts(happyHourId: string): Promise<HappyHourProduct[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('happy_hour_products')
         .select('*')
         .eq('happy_hour_id', happyHourId);

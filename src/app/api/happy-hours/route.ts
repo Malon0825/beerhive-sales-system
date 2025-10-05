@@ -43,8 +43,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // TODO: Get user ID from auth session
-    const userId = 'system'; // Placeholder
+    // Get user ID from headers (set by middleware/auth) or use null
+    const userId = request.headers.get('x-user-id') || null;
 
     // Validate required fields
     if (!body.name || !body.start_time || !body.end_time) {

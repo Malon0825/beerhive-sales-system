@@ -239,21 +239,73 @@ export class OrderRepository {
   /**
    * Get orders by customer
    * Uses admin client to bypass RLS policies
+   * Includes order items and table information
    */
-  static async getByCustomer(customerId: string, limit: number = 50): Promise<Order[]> {
+  static async getByCustomer(customerId: string, limit: number = 50): Promise<any[]> {
     try {
       // Use admin client to bypass RLS issues
       const { data, error } = await supabaseAdmin
         .from('orders')
-        .select('*')
+        .select(`
+          *,
+          order_items(*),
+          table:restaurant_tables(id, table_number, area)
+        `)
         .eq('customer_id', customerId)
         .order('created_at', { ascending: false })
         .limit(limit);
 
       if (error) throw new AppError(error.message, 500);
-      return data as Order[];
+      return data || [];
     } catch (error) {
       console.error('Error fetching customer orders:', error);
+      throw error instanceof AppError ? error : new AppError('Failed to fetch orders', 500);
+    }
+  }
+
+  /**
+   * Get all orders with full details for order board display
+   * Uses admin client to bypass RLS policies
+   * Includes customer, table, and order items information
+   */
+  static async getAllWithDetails(options?: {
+    status?: string;
+    limit?: number;
+  }): Promise<any[]> {
+    try {
+      let query = supabaseAdmin
+        .from('orders')
+        .select(`
+          *,
+          customer:customers(id, full_name, customer_number, tier),
+          table:restaurant_tables(id, table_number, area),
+          order_items(
+            id,
+            item_name,
+            quantity,
+            unit_price,
+            total,
+            notes
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      // Apply status filter if provided
+      if (options?.status) {
+        query = query.eq('status', options.status as OrderStatus);
+      }
+
+      // Apply limit if provided
+      if (options?.limit) {
+        query = query.limit(options.limit);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw new AppError(error.message, 500);
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching all orders with details:', error);
       throw error instanceof AppError ? error : new AppError('Failed to fetch orders', 500);
     }
   }

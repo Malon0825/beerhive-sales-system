@@ -1,11 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import InventoryList from './InventoryList';
 import LowStockAlert from './LowStockAlert';
+import AddProductDialog from './AddProductDialog';
 import { Button } from '../shared/ui/button';
-import { Package, AlertTriangle, TrendingDown, TrendingUp } from 'lucide-react';
+import { Package, AlertTriangle, TrendingDown, TrendingUp, FileBarChart } from 'lucide-react';
 
+/**
+ * InventoryDashboard Component
+ * Main dashboard for inventory management with Add Product functionality
+ */
 export default function InventoryDashboard() {
   const [stats, setStats] = useState({
     total: 0,
@@ -15,11 +21,16 @@ export default function InventoryDashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'low-stock'>('all');
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     loadStatistics();
   }, []);
 
+  /**
+   * Load inventory statistics from API
+   */
   const loadStatistics = async () => {
     try {
       setLoading(true);
@@ -38,6 +49,16 @@ export default function InventoryDashboard() {
     }
   };
 
+  /**
+   * Handle successful product creation
+   * Refreshes the product list and statistics
+   */
+  const handleProductAdded = () => {
+    // Trigger reload of inventory list by changing the key
+    setRefreshKey(prev => prev + 1);
+    loadStatistics();
+  };
+
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
@@ -45,10 +66,24 @@ export default function InventoryDashboard() {
           <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
           <p className="text-gray-600 mt-1">Monitor and manage product stock levels</p>
         </div>
-        <Button className="flex items-center gap-2">
-          <Package className="w-5 h-5" />
-          Add Product
-        </Button>
+        <div className="flex gap-3">
+          <Link href="/inventory/reports">
+            <Button 
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <FileBarChart className="w-5 h-5" />
+              View Reports
+            </Button>
+          </Link>
+          <Button 
+            className="flex items-center gap-2"
+            onClick={() => setIsAddDialogOpen(true)}
+          >
+            <Package className="w-5 h-5" />
+            Add Product
+          </Button>
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -129,12 +164,19 @@ export default function InventoryDashboard() {
 
         <div className="p-6">
           {activeTab === 'all' ? (
-            <InventoryList onStatsUpdate={setStats} />
+            <InventoryList onStatsUpdate={setStats} key={refreshKey} />
           ) : (
             <LowStockAlert />
           )}
         </div>
       </div>
+
+      {/* Add Product Dialog */}
+      <AddProductDialog
+        open={isAddDialogOpen}
+        onOpenChange={setIsAddDialogOpen}
+        onSuccess={handleProductAdded}
+      />
     </div>
   );
 }

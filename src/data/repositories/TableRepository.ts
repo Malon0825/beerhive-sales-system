@@ -295,4 +295,119 @@ export class TableRepository {
       return 0;
     }
   }
+
+  /**
+   * Deactivate a table
+   * Sets is_active to false and ensures table is available before deactivation
+   * @param id - Table ID
+   * @param client - Optional Supabase client instance (for server-side usage)
+   * @returns Updated table
+   */
+  static async deactivate(id: string, client?: SupabaseClient<Database>): Promise<Table> {
+    try {
+      const db = client || supabaseAdmin;
+      
+      // First, check if table is occupied or has active order
+      const table = await TableRepository.getById(id, db);
+      if (!table) {
+        throw new AppError('Table not found', 404);
+      }
+
+      if (table.status === TableStatus.OCCUPIED || table.current_order_id) {
+        throw new AppError('Cannot deactivate table with active order', 400);
+      }
+
+      // Deactivate the table
+      const { data, error } = await db
+        .from('restaurant_tables')
+        .update({ 
+          is_active: false,
+          status: TableStatus.AVAILABLE, // Reset to available when deactivating
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw new AppError(error.message, 500);
+      return data as Table;
+    } catch (error) {
+      console.error('Error deactivating table:', error);
+      throw error instanceof AppError ? error : new AppError('Failed to deactivate table', 500);
+    }
+  }
+
+  /**
+   * Reactivate a table
+   * Sets is_active to true and status to available
+   * @param id - Table ID
+   * @param client - Optional Supabase client instance (for server-side usage)
+   * @returns Updated table
+   */
+  static async reactivate(id: string, client?: SupabaseClient<Database>): Promise<Table> {
+    try {
+      const db = client || supabaseAdmin;
+      
+      const { data, error } = await db
+        .from('restaurant_tables')
+        .update({ 
+          is_active: true,
+          status: TableStatus.AVAILABLE,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw new AppError(error.message, 500);
+      return data as Table;
+    } catch (error) {
+      console.error('Error reactivating table:', error);
+      throw error instanceof AppError ? error : new AppError('Failed to reactivate table', 500);
+    }
+  }
+
+  /**
+   * Get all inactive tables
+   * @param client - Optional Supabase client instance (for server-side usage)
+   * @returns Array of inactive tables
+   */
+  static async getInactive(client?: SupabaseClient<Database>): Promise<Table[]> {
+    try {
+      const db = client || supabase;
+      const { data, error } = await db
+        .from('restaurant_tables')
+        .select('*')
+        .eq('is_active', false)
+        .order('table_number', { ascending: true });
+
+      if (error) throw new AppError(error.message, 500);
+      return data as Table[];
+    } catch (error) {
+      console.error('Error fetching inactive tables:', error);
+      throw error instanceof AppError ? error : new AppError('Failed to fetch inactive tables', 500);
+    }
+  }
+
+  /**
+   * Get all tables including inactive ones (admin only)
+   * @param client - Optional Supabase client instance (for server-side usage)
+   * @returns Array of all tables
+   */
+  static async getAllIncludingInactive(client?: SupabaseClient<Database>): Promise<Table[]> {
+    try {
+      const db = client || supabase;
+      const { data, error } = await db
+        .from('restaurant_tables')
+        .select('*')
+        .order('is_active', { ascending: false })
+        .order('table_number', { ascending: true });
+
+      if (error) throw new AppError(error.message, 500);
+      return data as Table[];
+    } catch (error) {
+      console.error('Error fetching all tables:', error);
+      throw error instanceof AppError ? error : new AppError('Failed to fetch all tables', 500);
+    }
+  }
 }

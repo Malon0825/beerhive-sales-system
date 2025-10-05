@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useToast } from '@/lib/hooks/useToast';
 import { Button } from '../../shared/ui/button';
 import { X, Copy, CheckCircle, AlertCircle } from 'lucide-react';
+import { supabase } from '@/data/supabase/client';
 
 interface PasswordResetDialogProps {
   userId: string;
@@ -15,39 +17,64 @@ export default function PasswordResetDialog({
   onClose,
   onSuccess,
 }: PasswordResetDialogProps) {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  /**
+   * Reset user password
+   */
   const handleReset = async () => {
-    if (!confirm('Are you sure you want to reset this user\'s password?')) {
-      return;
-    }
-
     setLoading(true);
 
     try {
+      // Get auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
       const response = await fetch(`/api/users/${userId}/reset-password`, {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
       });
 
       const result = await response.json();
 
       if (result.success) {
         setNewPassword(result.temporaryPassword);
+        toast({
+          variant: 'success',
+          title: 'Success',
+          description: 'Password reset successfully',
+        });
       } else {
-        alert(result.error || 'Failed to reset password');
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: result.error || 'Failed to reset password',
+        });
         onClose();
       }
     } catch (error) {
       console.error('Reset password error:', error);
-      alert('Failed to reset password');
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to reset password. Please try again.',
+      });
       onClose();
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Copy password to clipboard
+   */
   const handleCopy = async () => {
     if (!newPassword) return;
 
@@ -55,9 +82,18 @@ export default function PasswordResetDialog({
       await navigator.clipboard.writeText(newPassword);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      toast({
+        variant: 'success',
+        title: 'Copied',
+        description: 'Password copied to clipboard',
+      });
     } catch (error) {
       console.error('Copy error:', error);
-      alert('Failed to copy password');
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to copy password',
+      });
     }
   };
 
@@ -92,16 +128,21 @@ export default function PasswordResetDialog({
                   <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-yellow-800">
                     <p className="font-medium mb-1">This will generate a new temporary password.</p>
-                    <p>The user will need to use this password to log in and should change it immediately.</p>
+                    <ul className="list-disc list-inside mt-2 space-y-1">
+                      <li>The user's current password will be invalidated</li>
+                      <li>A new temporary password will be generated</li>
+                      <li>The user must use this password to log in</li>
+                      <li>The user should change it after first login</li>
+                    </ul>
                   </div>
                 </div>
               </div>
 
               <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={onClose}>
+                <Button variant="outline" onClick={onClose} disabled={loading}>
                   Cancel
                 </Button>
-                <Button onClick={handleReset} disabled={loading}>
+                <Button onClick={handleReset} disabled={loading} variant="default">
                   {loading ? 'Resetting...' : 'Reset Password'}
                 </Button>
               </div>

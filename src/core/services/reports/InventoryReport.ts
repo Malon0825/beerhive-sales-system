@@ -4,7 +4,7 @@
  */
 
 import { getLowStockItems, getInventoryTurnover } from '@/data/queries/reports.queries';
-import { supabase } from '@/data/supabase/client';
+import { supabaseAdmin } from '@/data/supabase/server-client';
 import { subDays, format } from 'date-fns';
 
 export interface InventoryReportParams {
@@ -136,7 +136,7 @@ export class InventoryReportService {
    */
   static async getInventoryValueByCategory() {
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('products')
       .select(`
         current_stock,
@@ -174,7 +174,7 @@ export class InventoryReportService {
     params: InventoryReportParams & { productId?: string } = {}
   ) {
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('inventory_movements')
       .select(`
         id,
@@ -216,7 +216,7 @@ export class InventoryReportService {
    */
   static async getInventorySummary(params: InventoryReportParams = {}): Promise<InventorySummary> {
 
-    const { data: products, error } = await supabase
+    const { data: products, error } = await supabaseAdmin
       .from('products')
       .select('id, current_stock, reorder_point, cost_price')
       .eq('is_active', true);

@@ -11,8 +11,9 @@ import TableCard from './TableCard';
 import ReservationDialog from './ReservationDialog';
 import OccupyTableDialog from './OccupyTableDialog';
 import AddTableDialog from './AddTableDialog';
+import DeactivateTableDialog from './DeactivateTableDialog';
 import { supabase } from '@/data/supabase/client';
-import { Plus } from 'lucide-react';
+import { Plus, Eye, EyeOff } from 'lucide-react';
 
 export default function TableGrid() {
   const [tables, setTables] = useState<Table[]>([]);
@@ -23,6 +24,8 @@ export default function TableGrid() {
   const [showReservationDialog, setShowReservationDialog] = useState(false);
   const [showOccupyDialog, setShowOccupyDialog] = useState(false);
   const [showAddTableDialog, setShowAddTableDialog] = useState(false);
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
+  const [showInactiveTables, setShowInactiveTables] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Show toast notification
@@ -31,15 +34,23 @@ export default function TableGrid() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Fetch tables
-  const fetchTables = useCallback(async () => {
+  /**
+   * Fetch tables based on active/inactive filter
+   * @param {boolean} includeInactive - Whether to include inactive tables
+   */
+  const fetchTables = useCallback(async (includeInactive: boolean = false) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      let query = supabase
         .from('restaurant_tables')
         .select('*')
-        .eq('is_active', true)
         .order('table_number', { ascending: true });
+
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setTables((data as Table[]) || []);
@@ -51,10 +62,10 @@ export default function TableGrid() {
     }
   }, []);
 
-  // Initial fetch
+  // Initial fetch and refetch when showInactiveTables changes
   useEffect(() => {
-    fetchTables();
-  }, [fetchTables]);
+    fetchTables(showInactiveTables);
+  }, [fetchTables, showInactiveTables]);
 
   // Set up real-time subscription
   useEffect(() => {
@@ -147,6 +158,16 @@ export default function TableGrid() {
     setShowOccupyDialog(true);
   };
 
+  /**
+   * Handle deactivate button click
+   * Opens the deactivation confirmation dialog
+   * @param {Table} table - Table to deactivate
+   */
+  const handleDeactivateClick = (table: Table) => {
+    setSelectedTable(table);
+    setShowDeactivateDialog(true);
+  };
+
   // Confirm reservation
   const handleConfirmReservation = async (tableId: string, notes?: string) => {
     await handleStatusChange(tableId, 'reserve', notes);
@@ -160,6 +181,52 @@ export default function TableGrid() {
   // Handle other status changes
   const handleQuickStatusChange = async (tableId: string, action: 'release' | 'markCleaned' | 'cancelReservation') => {
     await handleStatusChange(tableId, action);
+  };
+
+  /**
+   * Handle table deactivation
+   * Calls the API to deactivate the table
+   * @param {string} tableId - Table ID to deactivate
+   */
+  const handleConfirmDeactivate = async (tableId: string) => {
+    await handleStatusChange(tableId, 'deactivate' as any);
+  };
+
+  /**
+   * Handle table reactivation
+   * Calls the API to reactivate an inactive table
+   * @param {string} tableId - Table ID to reactivate
+   */
+  const handleReactivate = async (tableId: string) => {
+    try {
+      const response = await fetch(`/api/tables/${tableId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'reactivate' }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to reactivate table');
+      }
+
+      // Optimistically update local state
+      if (data.data) {
+        setTables((prev) =>
+          prev.map((table) =>
+            table.id === tableId ? (data.data as Table) : table
+          )
+        );
+      }
+
+      showToast('Table reactivated successfully', 'success');
+    } catch (error) {
+      console.error('Error reactivating table:', error);
+      showToast(error instanceof Error ? error.message : 'Failed to reactivate table', 'error');
+    }
   };
 
   /**
@@ -214,23 +281,30 @@ export default function TableGrid() {
     // Future: Navigate to table details or order management
   };
 
-  // Filter tables
+  /**
+   * Filter tables based on status, area, and active state
+   */
   const filteredTables = tables.filter((table) => {
     const statusMatch = filter === 'all' || table.status === filter;
     const areaMatch = areaFilter === 'all' || table.area === areaFilter;
     return statusMatch && areaMatch;
   });
 
+  // Separate active and inactive tables
+  const activeTables = filteredTables.filter(t => t.is_active);
+  const inactiveTables = filteredTables.filter(t => !t.is_active);
+
   // Get unique areas
   const areas = Array.from(new Set(tables.map((t) => t.area).filter(Boolean)));
 
-  // Get table statistics
+  // Get table statistics (only active tables)
   const stats = {
-    total: tables.length,
-    available: tables.filter((t) => t.status === TableStatus.AVAILABLE).length,
-    occupied: tables.filter((t) => t.status === TableStatus.OCCUPIED).length,
-    reserved: tables.filter((t) => t.status === TableStatus.RESERVED).length,
-    cleaning: tables.filter((t) => t.status === TableStatus.CLEANING).length,
+    total: activeTables.length,
+    available: activeTables.filter((t) => t.status === TableStatus.AVAILABLE).length,
+    occupied: activeTables.filter((t) => t.status === TableStatus.OCCUPIED).length,
+    reserved: activeTables.filter((t) => t.status === TableStatus.RESERVED).length,
+    cleaning: activeTables.filter((t) => t.status === TableStatus.CLEANING).length,
+    inactive: inactiveTables.length,
   };
 
   if (loading) {
@@ -324,6 +398,14 @@ export default function TableGrid() {
               </button>
             )}
             <button
+              onClick={() => setShowInactiveTables(!showInactiveTables)}
+              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors flex items-center gap-2 whitespace-nowrap"
+              title={showInactiveTables ? 'Hide inactive tables' : 'Show inactive tables'}
+            >
+              {showInactiveTables ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showInactiveTables ? 'Hide' : 'Show'} Inactive ({stats.inactive})
+            </button>
+            <button
               onClick={() => setShowAddTableDialog(true)}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2 whitespace-nowrap"
             >
@@ -334,8 +416,8 @@ export default function TableGrid() {
         </div>
       </div>
 
-      {/* Table Grid */}
-      {filteredTables.length === 0 ? (
+      {/* Active Tables Grid */}
+      {activeTables.length === 0 && !showInactiveTables ? (
         <div className="text-center py-12 bg-white rounded-lg shadow">
           <svg
             className="mx-auto h-12 w-12 text-gray-400"
@@ -350,21 +432,63 @@ export default function TableGrid() {
               d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
             />
           </svg>
-          <p className="mt-4 text-gray-600">No tables found matching the filters</p>
+          <p className="mt-4 text-gray-600">No active tables found matching the filters</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredTables.map((table) => (
-            <TableCard
-              key={table.id}
-              table={table}
-              onReserve={handleReserveClick}
-              onOccupy={handleOccupyClick}
-              onQuickAction={handleQuickStatusChange}
-              onClick={handleTableClick}
-            />
-          ))}
-        </div>
+        <>
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Active Tables</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {activeTables.map((table) => (
+                <TableCard
+                  key={table.id}
+                  table={table}
+                  onReserve={handleReserveClick}
+                  onOccupy={handleOccupyClick}
+                  onQuickAction={handleQuickStatusChange}
+                  onDeactivate={handleDeactivateClick}
+                  onClick={handleTableClick}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Inactive Tables Section */}
+          {showInactiveTables && inactiveTables.length > 0 && (
+            <div className="mt-8">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <EyeOff className="h-5 w-5 text-gray-500" />
+                Inactive Tables ({inactiveTables.length})
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {inactiveTables.map((table) => (
+                  <div key={table.id} className="relative">
+                    <div className="absolute top-2 right-2 z-10">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-600 text-white">
+                        Inactive
+                      </span>
+                    </div>
+                    <div className="opacity-60">
+                      <TableCard
+                        table={table}
+                        onClick={handleTableClick}
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleReactivate(table.id)}
+                      className="mt-2 w-full px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm font-medium flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Reactivate Table
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Dialogs */}
@@ -386,6 +510,13 @@ export default function TableGrid() {
         isOpen={showAddTableDialog}
         onClose={() => setShowAddTableDialog(false)}
         onConfirm={handleAddTable}
+      />
+
+      <DeactivateTableDialog
+        table={selectedTable}
+        isOpen={showDeactivateDialog}
+        onClose={() => setShowDeactivateDialog(false)}
+        onConfirm={handleConfirmDeactivate}
       />
 
       {/* Toast Notification */}

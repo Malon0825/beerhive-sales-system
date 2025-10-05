@@ -14,6 +14,7 @@ interface TableCardProps {
   onReserve?: (table: Table) => void;
   onOccupy?: (table: Table) => void;
   onQuickAction?: (tableId: string, action: 'release' | 'markCleaned' | 'cancelReservation') => Promise<void>;
+  onDeactivate?: (table: Table) => void;
   onClick?: (table: Table) => void;
 }
 
@@ -26,7 +27,8 @@ export default function TableCard({
   table, 
   onReserve, 
   onOccupy, 
-  onQuickAction, 
+  onQuickAction,
+  onDeactivate, 
   onClick 
 }: TableCardProps) {
   /**
@@ -65,6 +67,16 @@ export default function TableCard({
   const handleCardClick = () => {
     if (onClick) {
       onClick(table);
+    }
+  };
+
+  /**
+   * Handle deactivate button click
+   */
+  const handleDeactivateClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDeactivate) {
+      onDeactivate(table);
     }
   };
 
@@ -203,6 +215,22 @@ export default function TableCard({
           </button>
         )}
       </div>
+
+      {/* Deactivate Button - Only show if table is not occupied */}
+      {table.status !== TableStatus.OCCUPIED && !table.current_order_id && onDeactivate && (
+        <div className="mt-2 pt-2 border-t border-gray-200">
+          <button
+            onClick={handleDeactivateClick}
+            className="w-full text-xs px-2 py-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors font-medium flex items-center justify-center gap-1"
+            title="Deactivate this table"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+            Deactivate Table
+          </button>
+        </div>
+      )}
     </div>
   );
 }
