@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CurrentOrderRepository } from '@/data/repositories/CurrentOrderRepository';
 import { cookies } from 'next/headers';
-import { supabase } from '@/data/supabase/client';
 
 // Force dynamic rendering for this route
 export const dynamic = 'force-dynamic';
