@@ -475,4 +475,47 @@ export class CurrentOrderRepository {
       throw error instanceof AppError ? error : new AppError('Failed to clear items', 500);
     }
   }
+
+  /**
+   * Clear all current orders for a specific cashier
+   * Deletes all draft orders belonging to the specified cashier
+   * Uses supabaseAdmin to bypass RLS (security validated via cashier_id match)
+   * 
+   * @param {string} cashierId - The ID of the cashier whose orders to clear
+   * @returns {Promise<number>} Number of orders deleted
+   * 
+   * @example
+   * const deletedCount = await CurrentOrderRepository.clearAllByCashier('cashier-123');
+   */
+  static async clearAllByCashier(cashierId: string): Promise<number> {
+    try {
+      // First get count of orders to be deleted
+      const { data: orders, error: countError } = await supabaseAdmin
+        .from('current_orders')
+        .select('id')
+        .eq('cashier_id', cashierId);
+      
+      if (countError) throw new AppError(countError.message, 500);
+      
+      const orderCount = orders?.length || 0;
+      
+      if (orderCount === 0) {
+        return 0; // No orders to delete
+      }
+
+      // Delete all current orders for this cashier
+      // Cascade delete will automatically remove all items and addons
+      const { error } = await supabaseAdmin
+        .from('current_orders')
+        .delete()
+        .eq('cashier_id', cashierId);
+
+      if (error) throw new AppError(error.message, 500);
+      
+      return orderCount;
+    } catch (error) {
+      console.error('Error clearing all current orders for cashier:', error);
+      throw error instanceof AppError ? error : new AppError('Failed to clear all orders', 500);
+    }
+  }
 }

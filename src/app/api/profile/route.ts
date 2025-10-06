@@ -10,7 +10,29 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/profile
- * Get current user's profile
+ * Retrieve the authenticated user's profile information
+ * 
+ * @param {NextRequest} request - The Next.js request object with Authorization header
+ * @returns {Promise<NextResponse>} JSON response with user profile data
+ * 
+ * @description
+ * Fetches the complete profile for the currently authenticated user.
+ * Requires a valid JWT token in the Authorization header.
+ * 
+ * Returns user data including:
+ * - id: Unique user identifier
+ * - username: User's username
+ * - email: User's email address
+ * - full_name: User's display name
+ * - role: Primary user role
+ * - roles: Array of all assigned roles
+ * - is_active: Account status
+ * - last_login: Timestamp of last login
+ * - created_at: Account creation timestamp
+ * 
+ * @throws {401} Unauthorized - Missing or invalid authentication token
+ * @throws {404} Not Found - User profile not found in database
+ * @throws {500} Internal Server Error - Database or server errors
  */
 export async function GET(request: NextRequest) {
   try {
@@ -50,7 +72,9 @@ export async function GET(request: NextRequest) {
       data: profile,
     });
   } catch (error) {
+    // Enhanced error logging for debugging
     console.error('GET /api/profile error:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
 
     if (error instanceof AppError) {
       return NextResponse.json(
@@ -58,6 +82,10 @@ export async function GET(request: NextRequest) {
         { status: error.statusCode }
       );
     }
+
+    // Log detailed error for server-side debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Unhandled error in profile fetch:', errorMessage);
 
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
@@ -68,9 +96,29 @@ export async function GET(request: NextRequest) {
 
 /**
  * PATCH /api/profile
- * Update current user's profile
- * Users can update their own: username, email, full_name, password
- * Users CANNOT update: role, roles, is_active (business-sensitive data)
+ * Update current user's profile information
+ * 
+ * @param {NextRequest} request - The Next.js request object with Authorization header
+ * @returns {Promise<NextResponse>} JSON response with updated user data
+ * 
+ * @description
+ * Allows authenticated users to update their personal information:
+ * - username: Unique identifier (must be available)
+ * - email: Email address (must be unique and valid format)
+ * - full_name: User's display name
+ * - password: Optional password change (requires current password verification)
+ * 
+ * Security:
+ * - Users can update their own: username, email, full_name, password
+ * - Users CANNOT update: role, roles, is_active (business-sensitive data)
+ * - Password change requires current password verification
+ * - All updates are validated before persisting
+ * 
+ * @throws {401} Unauthorized - Missing or invalid authentication token
+ * @throws {400} Bad Request - Validation errors or missing required fields
+ * @throws {404} Not Found - User profile not found
+ * @throws {409} Conflict - Username or email already exists
+ * @throws {500} Internal Server Error - Database or server errors
  */
 export async function PATCH(request: NextRequest) {
   try {
@@ -86,9 +134,9 @@ export async function PATCH(request: NextRequest) {
     const token = authHeader.substring(7);
 
     // Create a Supabase client with the user's token to verify the session
-    // Use server-only env names to avoid inlining NEXT_PUBLIC_* values in server bundles
-    const supabaseUrl = process.env.SUPABASE_URL!;
-    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
+    // Use environment variables matching .env.local naming convention
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
@@ -139,9 +187,7 @@ export async function PATCH(request: NextRequest) {
       }
 
       // Verify current password by attempting to sign in with regular client
-      // Use server-only env names to avoid leaking NEXT_PUBLIC_* into server builds
-      const supabaseUrl = process.env.SUPABASE_URL!;
-      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
+      // Reuse the already declared supabaseUrl and supabaseAnonKey variables
       const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
       const { data: signInData, error: signInError } = await supabaseClient.auth.signInWithPassword({
@@ -217,7 +263,9 @@ export async function PATCH(request: NextRequest) {
       message: 'Profile updated successfully',
     });
   } catch (error) {
+    // Enhanced error logging for debugging
     console.error('PATCH /api/profile error:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
 
     if (error instanceof AppError) {
       return NextResponse.json(
@@ -225,6 +273,10 @@ export async function PATCH(request: NextRequest) {
         { status: error.statusCode }
       );
     }
+
+    // Log detailed error for server-side debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Unhandled error in profile update:', errorMessage);
 
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
