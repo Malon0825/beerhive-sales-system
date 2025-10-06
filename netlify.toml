@@ -1,0 +1,131 @@
+# Netlify Configuration for BeerHive POS System
+# This file defines the build settings, environment variables, and deployment configurations
+# for deploying the Next.js application to Netlify.
+
+[build]
+  # Specifies the command to build the Next.js application
+  command = "npm run build"
+  
+  # Directory where the build output is stored
+  publish = ".next"
+  
+  # Node.js version requirement (must match package.json engines)
+  NODE_VERSION = "18.17.0"
+
+# Build environment variables
+[build.environment]
+  # Next.js specific environment variables for optimal Netlify deployment
+  NEXT_TELEMETRY_DISABLED = "1"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# Plugin configuration for Next.js on Netlify
+# The @netlify/plugin-nextjs plugin provides Next.js optimizations
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Production deployment settings
+[context.production]
+  # Production environment variables (actual values set in Netlify UI)
+  # These are placeholders - set actual values in Netlify dashboard
+  [context.production.environment]
+    NEXT_PUBLIC_APP_URL = "https://your-production-domain.netlify.app"
+    NODE_ENV = "production"
+
+# Development/Preview deployment settings
+[context.deploy-preview]
+  # Command for preview deployments
+  command = "npm run build"
+  
+  [context.deploy-preview.environment]
+    NEXT_PUBLIC_APP_URL = "https://deploy-preview-$DEPLOY_ID--your-site-name.netlify.app"
+    NODE_ENV = "development"
+
+# Branch-specific deployment settings
+[context.branch-deploy]
+  command = "npm run build"
+
+# HTTP Headers for security and performance
+[[headers]]
+  # Apply to all routes
+  for = "/*"
+  
+  [headers.values]
+    # Security headers
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    
+    # Performance headers
+    X-DNS-Prefetch-Control = "on"
+    
+    # Content Security Policy (adjust based on your needs)
+    Content-Security-Policy = """
+      default-src 'self';
+      script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.supabase.co;
+      style-src 'self' 'unsafe-inline';
+      img-src 'self' data: https: blob:;
+      font-src 'self' data:;
+      connect-src 'self' https://*.supabase.co wss://*.supabase.co;
+      frame-src 'self';
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+    """
+
+# Cache static assets for better performance
+[[headers]]
+  for = "/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Redirects configuration
+# Handle legacy routes or custom redirects here
+[[redirects]]
+  from = "/admin/*"
+  to = "/dashboard/:splat"
+  status = 301
+  force = false
+
+# Redirect HTTP to HTTPS
+[[redirects]]
+  from = "http://*"
+  to = "https://:splat"
+  status = 301
+  force = true
+
+# Functions configuration (if using Netlify Functions)
+[functions]
+  # Directory for serverless functions (optional)
+  directory = "netlify/functions"
+  
+  # Node.js runtime for functions
+  node_bundler = "esbuild"
+
+# Development server configuration
+[dev]
+  # Command to start local development server
+  command = "npm run dev"
+  
+  # Port for local development
+  port = 3000
+  
+  # Auto-launch browser on start
+  autoLaunch = false
+  
+  # Framework detection
+  framework = "#custom"
+  
+  # Target port for proxy
+  targetPort = 3000
+
+# Edge Functions configuration (for faster serverless functions at edge locations)
+# Uncomment if needed
+# [[edge_functions]]
+#   function = "auth-check"
+#   path = "/api/*"
