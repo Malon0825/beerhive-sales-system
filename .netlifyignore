@@ -1,0 +1,50 @@
+# Netlify Ignore File
+# Files and directories listed here will be excluded from the Netlify build
+# This helps prevent false positives in secret scanning and reduces build size
+
+# Documentation files (not needed for production)
+*.md
+!README.md
+docs/
+summary/
+
+# Test files
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__/
+tests/
+
+# Example and template files
+*.example
+*.template
+
+# Development configuration
+.vscode/
+.idea/
+*.log
+.DS_Store
+
+# Git files
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD workflows (not needed in Netlify build)
+.github/
+
+# Build artifacts from other platforms
+.vercel/
+build-*.log
+*.tsbuildinfo
+
+# Scripts that aren't needed in production
+scripts/
+
+# Migration files (already applied to Supabase)
+migrations/
+
+# Local environment files
+.env*.local
+.env.development
