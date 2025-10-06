@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Package } from '@/models/entities/Package';
 import { Product } from '@/models/entities/Product';
 import PackageForm from '@/views/packages/PackageForm';
@@ -12,7 +12,12 @@ import { ArrowLeft } from 'lucide-react';
  * Package Edit Page
  * Edit existing package details and items
  */
-export default function PackageEditPage({ params }: { params: { packageId: string } }) {
+/**
+ * Package Edit Page (Client Component)
+ * Uses `useParams()` to access dynamic route params in Next 15.
+ */
+export default function PackageEditPage() {
+  const { packageId } = useParams() as { packageId: string };
   const router = useRouter();
   const [packageData, setPackageData] = useState<(Package & { items?: any[] }) | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -21,7 +26,7 @@ export default function PackageEditPage({ params }: { params: { packageId: strin
   useEffect(() => {
     loadPackageData();
     loadProducts();
-  }, [params.packageId]);
+  }, [packageId]);
 
   /**
    * Load package data with items
@@ -29,7 +34,7 @@ export default function PackageEditPage({ params }: { params: { packageId: strin
   const loadPackageData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/packages/${params.packageId}`);
+      const response = await fetch(`/api/packages/${packageId}`);
       const result = await response.json();
 
       if (result.success) {
@@ -68,7 +73,7 @@ export default function PackageEditPage({ params }: { params: { packageId: strin
    */
   const handleSubmit = async (data: any) => {
     try {
-      const response = await fetch(`/api/packages/${params.packageId}`, {
+      const response = await fetch(`/api/packages/${packageId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -80,7 +85,7 @@ export default function PackageEditPage({ params }: { params: { packageId: strin
 
       if (result.success) {
         alert('Package updated successfully!');
-        router.push(`/packages/${params.packageId}`);
+        router.push(`/packages/${packageId}`);
       } else {
         alert(result.error || 'Failed to update package');
       }
@@ -94,7 +99,7 @@ export default function PackageEditPage({ params }: { params: { packageId: strin
    * Handle form cancellation
    */
   const handleCancel = () => {
-    router.push(`/packages/${params.packageId}`);
+    router.push(`/packages/${packageId}`);
   };
 
   if (loading) {
@@ -119,7 +124,7 @@ export default function PackageEditPage({ params }: { params: { packageId: strin
       <div className="mb-6">
         <Button
           variant="outline"
-          onClick={() => router.push(`/packages/${params.packageId}`)}
+          onClick={() => router.push(`/packages/${packageId}`)}
           className="mb-4 flex items-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" />

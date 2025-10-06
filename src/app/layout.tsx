@@ -16,13 +16,25 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Root Layout Component
+ * 
+ * This is the top-level layout for the entire application.
+ * It wraps all pages with common providers and components.
+ * 
+ * @param children - The child components/pages to render
+ * 
+ * Note: suppressHydrationWarning is used on the html element to prevent
+ * hydration mismatch errors caused by browser extensions (e.g., DarkReader)
+ * that modify HTML attributes before React hydrates.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <AuthProvider>
           {children}

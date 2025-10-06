@@ -1,0 +1,9 @@
+# Netlify Redirects Configuration for BeerHive POS System
+# This file handles client-side routing for Next.js Single Page Application
+# All routes are redirected to index.html to enable client-side routing
+
+# API routes should be handled by Next.js API routes
+/api/*  /.netlify/functions/:splat  200
+
+# All other routes should serve the Next.js app
+/*    /index.html   200

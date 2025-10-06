@@ -1,6 +1,6 @@
 // @ts-nocheck - Supabase type inference issues
 import { supabase } from '../supabase/client';
-import { Notification, CreateNotificationDTO } from '@/models/entities/Notification';
+import type { Notification, CreateNotificationDTO } from '@/models/entities/Notification';
 import { NotificationType } from '@/models/enums/NotificationType';
 
 /**

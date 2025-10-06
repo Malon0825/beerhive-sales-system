@@ -1,6 +1,10 @@
 /**
  * Receipt Template Component (PDF)
  * PDF receipt template using @react-pdf/renderer
+ * 
+ * IMPORTANT: This component should ONLY be dynamically imported on the server-side
+ * to prevent build-time conflicts with Next.js static page generation.
+ * Use dynamic imports: const { ReceiptTemplate } = await import('@/views/receipts/ReceiptTemplate');
  */
 
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';

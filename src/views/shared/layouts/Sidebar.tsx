@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
@@ -18,15 +18,22 @@ import {
   Settings,
   Warehouse,
   UserCheck,
-  Monitor
+  Monitor,
+  Beer
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { UserRole } from '@/models/enums/UserRole';
 
+/**
+ * Props for the Sidebar component
+ */
 interface SidebarProps {
   userRole?: UserRole;
 }
 
+/**
+ * Menu item structure defining navigation links
+ */
 interface MenuItem {
   label: string;
   icon: React.ReactNode;
@@ -34,6 +41,10 @@ interface MenuItem {
   roles: UserRole[];
 }
 
+/**
+ * Navigation menu items with role-based access control
+ * Each item specifies which user roles can access the route
+ */
 const menuItems: MenuItem[] = [
   {
     label: 'Dashboard',
@@ -127,34 +138,62 @@ const menuItems: MenuItem[] = [
   },
 ];
 
+/**
+ * Sidebar Component
+ * Displays navigation menu with role-based access control
+ * Shows logo, menu items filtered by user role, and copyright notice
+ * 
+ * @param {SidebarProps} props - Component props
+ * @param {UserRole} props.userRole - Current user's role for menu filtering
+ */
 export function Sidebar({ userRole = UserRole.CASHIER }: SidebarProps) {
   const pathname = usePathname();
+  const [imageError, setImageError] = useState(false);
 
+  // Filter menu items based on user role permissions
   const filteredMenuItems = menuItems.filter((item) =>
     item.roles.includes(userRole)
   );
 
+  /**
+   * Handle image load errors by setting fallback state
+   */
+  const handleImageError = () => {
+    console.error('Failed to load BeerHive logo from /beerhive-logo.png');
+    setImageError(true);
+  };
+
   return (
     <aside className="hidden w-64 flex-col border-r bg-background lg:flex">
+      {/* Logo and brand section */}
       <div className="flex h-16 items-center border-b px-6">
         <Link href="/" className="flex items-center gap-2 font-semibold">
-          <div className="relative h-8 w-8">
-            <Image
-              src="/beerhive-logo.png"
-              alt="BeerHive Logo"
-              width={32}
-              height={32}
-              className="object-contain"
-              priority
-            />
+          <div className="relative h-8 w-8 flex items-center justify-center">
+            {!imageError ? (
+              <Image
+                src="/beerhive-logo.png"
+                alt="BeerHive Logo"
+                width={32}
+                height={32}
+                className="object-contain"
+                priority
+                onError={handleImageError}
+                unoptimized
+              />
+            ) : (
+              // Fallback icon if logo fails to load
+              <Beer className="h-8 w-8 text-amber-600" />
+            )}
           </div>
           <span className="text-lg">BeerHive POS</span>
         </Link>
       </div>
 
+      {/* Navigation menu with role-based filtering */}
       <nav className="flex-1 overflow-y-auto py-4">
         <ul className="space-y-1 px-3">
           {filteredMenuItems.map((item) => {
+            // Determine if current route is active
             const isActive = pathname === item.href || 
               (item.href !== '/' && pathname.startsWith(item.href));
 
@@ -178,6 +217,7 @@ export function Sidebar({ userRole = UserRole.CASHIER }: SidebarProps) {
         </ul>
       </nav>
 
+      {/* Copyright footer */}
       <div className="border-t p-4">
         <p className="text-xs text-muted-foreground text-center">
           © 2025 BeerHive POS

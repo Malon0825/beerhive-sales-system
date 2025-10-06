@@ -9,15 +9,31 @@ import { ToastProvider, ToastViewport } from '../ui/toast';
 import { ErrorBoundary } from '../feedback/ErrorBoundary';
 import { NotificationProvider } from '@/lib/contexts/NotificationContext';
 
+/**
+ * Props for DashboardLayout component
+ */
 interface DashboardLayoutProps {
   children: React.ReactNode;
   user?: AuthUser | null;
 }
 
+/**
+ * DashboardLayout Component
+ * Main layout wrapper for authenticated dashboard pages
+ * Provides sidebar navigation, header, and content area with providers
+ * 
+ * @param {DashboardLayoutProps} props - Component props
+ * @param {React.ReactNode} props.children - Page content to render
+ * @param {AuthUser | null} props.user - Currently authenticated user
+ */
 export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const router = useRouter();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
+  /**
+   * Handle user logout
+   * Calls AuthService to clear session and redirects to login page
+   */
   const handleLogout = async () => {
     try {
       await AuthService.logout();
@@ -27,6 +43,9 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
     }
   };
 
+  /**
+   * Toggle mobile sidebar visibility
+   */
   const handleMenuClick = () => {
     setIsMobileSidebarOpen(!isMobileSidebarOpen);
   };

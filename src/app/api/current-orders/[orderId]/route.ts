@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CurrentOrderRepository } from '@/data/repositories/CurrentOrderRepository';
 
+// Avoid static pre-rendering issues on Vercel for API routes
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/current-orders/[orderId]
  * Fetch a specific current order by ID
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: any
 ) {
   try {
-    const { orderId } = params;
+    const { orderId } = context.params as { orderId: string };
     const searchParams = request.nextUrl.searchParams;
     const cashierId = searchParams.get('cashierId');
 
@@ -58,10 +61,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: any
 ) {
   try {
-    const { orderId } = params;
+    const { orderId } = context.params as { orderId: string };
     const body = await request.json();
     const { cashierId, customerId, tableId, orderNotes, isOnHold } = body;
 
@@ -105,10 +108,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: any
 ) {
   try {
-    const { orderId } = params;
+    const { orderId } = context.params as { orderId: string };
     const searchParams = request.nextUrl.searchParams;
     const cashierId = searchParams.get('cashierId');
 

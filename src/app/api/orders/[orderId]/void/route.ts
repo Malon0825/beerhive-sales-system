@@ -4,10 +4,18 @@ import { AppError } from '@/lib/errors/AppError';
 import { supabaseAdmin } from '@/data/supabase/server-client';
 import { UserRole } from '@/models/enums/UserRole';
 
+// Force dynamic rendering to avoid pre-rendering issues on Vercel
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/orders/[orderId]/void
  * Void an order (requires manager authorization via PIN or user ID)
  * Supports both completed order returns and regular voids
+ *
+ * Notes:
+ * - Uses a Supabase lookup by manager PIN. The Database types may lag migrations
+ *   (e.g., missing `manager_pin`), so we cast the client to `any` for this query
+ *   to avoid type-level build failures that can abort Next.js manifest emission.
  */
 export async function POST(
   request: NextRequest,
@@ -25,7 +33,9 @@ export async function POST(
     if (body.managerPin && !managerUserId) {
       // Look up ANY user with matching PIN who has manager or admin role
       // Does not matter who is currently logged in - any authorized manager can void
-      const { data: userRaw, error } = await supabaseAdmin
+      // Cast supabase client to any to bypass strict column name checks when
+      // Database types might not include `manager_pin` yet after migrations.
+      const { data: userRaw, error } = await (supabaseAdmin as any)
         .from('users')
         .select('id, role, manager_pin, full_name, username')
         .eq('manager_pin', body.managerPin)

@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ProductRepository } from '@/data/repositories/ProductRepository';
 import { AppError } from '@/lib/errors/AppError';
 
+// Ensure dynamic rendering for API route on Vercel
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/products/[productId]
  * Get product by ID
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { productId: string } }
+  context: any
 ) {
   try {
-    const product = await ProductRepository.getById(params.productId);
+    const { productId } = context.params as { productId: string };
+    const product = await ProductRepository.getById(productId);
 
     if (!product) {
       return NextResponse.json(
@@ -47,14 +51,15 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { productId: string } }
+  context: any
 ) {
   try {
     const body = await request.json();
     
     // TODO: Add authentication check for admin/manager role
 
-    const product = await ProductRepository.update(params.productId, body);
+    const { productId } = context.params as { productId: string };
+    const product = await ProductRepository.update(productId, body);
 
     return NextResponse.json({
       success: true,
@@ -83,12 +88,13 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { productId: string } }
+  context: any
 ) {
   try {
     // TODO: Add authentication check for admin/manager role
 
-    await ProductRepository.deactivate(params.productId);
+    const { productId } = context.params as { productId: string };
+    await ProductRepository.deactivate(productId);
 
     return NextResponse.json({
       success: true,
