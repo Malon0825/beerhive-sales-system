@@ -75,6 +75,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       console.log('🔐 [AuthContext] Attempting login for:', username);
       const authUser = await AuthService.login({ username, password });
+      
+      // Update user state immediately
       setUser(authUser);
       
       console.log('✅ [AuthContext] Login successful:', {
@@ -84,10 +86,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
         userId: authUser.id
       });
       
+      // Small delay to ensure cookies are set and session is synchronized
+      // This prevents race conditions where middleware checks auth before cookies are ready
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       // Always redirect to root page after login
       // Root page will handle role-based redirects
       console.log('🚀 [AuthContext] Redirecting to root page for role-based routing...');
-      router.push('/');
+      
+      // Use router.replace instead of router.push to prevent back button issues
+      // Also use hard navigation to ensure cookies are sent with first request
+      window.location.href = '/';
     } catch (error) {
       console.error('❌ [AuthContext] Login error:', error);
       throw error;
