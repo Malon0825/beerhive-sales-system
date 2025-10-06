@@ -1,9 +1,17 @@
 # Netlify Redirects Configuration for BeerHive POS System
 # This file handles client-side routing for Next.js Single Page Application
-# All routes are redirected to index.html to enable client-side routing
+# 
+# IMPORTANT: When using @netlify/plugin-nextjs, API routes are automatically
+# handled by the plugin. DO NOT add manual redirects for /api/* routes as
+# this will cause conflicts and 404 errors.
+#
+# The @netlify/plugin-nextjs plugin automatically:
+# - Handles Next.js API routes (/api/*)
+# - Manages Next.js rewrites and redirects
+# - Optimizes static and dynamic pages
+#
+# This file should ONLY contain SPA fallback for client-side routing
 
-# API routes should be handled by Next.js API routes
-/api/*  /.netlify/functions/:splat  200
-
-# All other routes should serve the Next.js app
+# Single Page Application fallback - serve index.html for all non-API routes
+# This enables client-side routing to work properly
 /*    /index.html   200
