@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { HappyHourRepository } from '@/data/repositories/HappyHourRepository';
 import { AppError } from '@/lib/errors/AppError';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/happy-hours
  * Get all happy hours

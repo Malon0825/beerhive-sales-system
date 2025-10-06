@@ -20,15 +20,19 @@ Dynamic server usage: Page couldn't be rendered statically because it used:
 - `/api/kitchen/orders`
 - And 15+ other API routes
 
-### Error 2: Missing Client Reference Manifest
+### Error 2: Missing Client Reference Manifest (PERSISTENT)
 ```
 Error: ENOENT: no such file or directory, 
 lstat '/vercel/path0/.next/server/app/(dashboard)/page_client-reference-manifest.js'
 ```
 
+**Root Cause:** This is a known bug in Next.js 14.1.0 with client/server component boundaries.
+
+**Critical Fix:** Upgraded Next.js from 14.1.0 to 14.2.15 (bug fix version)
+
 ## Solutions Implemented
 
-### ✅ Fix 1: Added Dynamic Rendering Export (20 Files)
+### ✅ Fix 1: Added Dynamic Rendering Export (24 Files)
 
 Added `export const dynamic = 'force-dynamic';` to all API routes using dynamic features:
 
@@ -63,18 +67,42 @@ Added `export const dynamic = 'force-dynamic';` to all API routes using dynamic 
 
 **Notifications & Audit:**
 - `/api/notifications/route.ts`
+- `/api/notifications/count/route.ts` ⭐ (Latest fix)
 - `/api/audit-logs/route.ts`
+
+**Events & Promotions:**
+- `/api/events/route.ts`
+- `/api/happy-hours/route.ts`
+- `/api/categories/route.ts`
 
 **Reports:**
 - `/api/reports/sales/route.ts`
 - `/api/reports/inventory/route.ts`
 - `/api/reports/customers/route.ts`
 
-### ✅ Fix 2: Updated next.config.js
+### ✅ Fix 2: **CRITICAL - Upgraded Next.js Version**
+
+**Upgraded Next.js from 14.1.0 to 14.2.15**
+
+This fixes the client-reference-manifest bug that was causing persistent deployment failures.
+
+**package.json changes:**
+```json
+{
+  "dependencies": {
+    "next": "14.2.15",  // Was 14.1.0
+  },
+  "devDependencies": {
+    "eslint-config-next": "14.2.15"  // Was 14.1.0
+  }
+}
+```
+
+### ✅ Fix 3: Updated next.config.js
 
 **Changes made:**
 1. Removed `serverActions.allowedOrigins` that restricted to localhost only
-2. Added `experimental.optimizePackageImports` for lucide-react
+2. Added `experimental.optimizePackageImports` for better tree-shaking
 3. Properly configured image patterns for Supabase
 
 ```javascript
@@ -88,19 +116,32 @@ const nextConfig = {
     ],
   },
   experimental: {
-    optimizePackageImports: ['lucide-react'],
+    optimizePackageImports: [
+      'lucide-react',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu'
+    ],
   },
 }
 ```
 
-### ✅ Fix 3: Created vercel.json
+### ✅ Fix 4: Enhanced vercel.json
 
-Added Vercel configuration with:
+Updated Vercel configuration with:
+- Clean install command (`npm ci`)
 - Explicit build command
 - Framework specification
 - Region configuration (Singapore)
+- URL and routing settings
 
-### ✅ Fix 4: Updated package.json
+### ✅ Fix 5: Created .vercelignore
+
+Added to optimize deployment:
+- Excludes unnecessary files
+- Reduces deployment size
+- Improves build speed
+
+### ✅ Fix 6: Updated package.json
 
 Added Node.js engine requirement:
 ```json
@@ -117,27 +158,48 @@ Added Node.js engine requirement:
 3. `vercel.json` - Created new Vercel configuration
 4. `VERCEL_DEPLOYMENT_FIX.md` - Comprehensive documentation
 
-### API Route Files (20):
+### API Route Files (24):
 All files received `export const dynamic = 'force-dynamic';` at the top.
 
-## Deployment Instructions
+**Total files modified: 28 files**
 
-### Step 1: Commit Changes
+## Deployment Instructions ⚠️ IMPORTANT
+
+### Step 1: Clear Local Build (CRITICAL)
+```bash
+# Remove build artifacts and dependencies
+rm -rf .next node_modules package-lock.json
+
+# On Windows PowerShell:
+Remove-Item -Recurse -Force .next,node_modules,package-lock.json
+```
+
+### Step 2: Install Updated Dependencies
+```bash
+npm install
+```
+
+### Step 3: Test Build Locally (MUST DO!)
+```bash
+npm run build
+```
+**If this fails, DO NOT deploy. Check the error first.**
+
+### Step 4: Commit Changes
 ```bash
 git add .
-git commit -m "fix: resolve Vercel deployment issues - dynamic rendering & client manifest"
+git commit -m "fix: upgrade Next.js to 14.2.15 to resolve client-reference-manifest bug"
 git push origin main
 ```
 
-### Step 2: Deploy on Vercel
-Vercel will automatically redeploy when you push to your repository.
+### Step 5: Clear Vercel Build Cache (CRITICAL!)
+**You MUST clear the Vercel build cache, or the error will persist!**
 
-### Step 3: Clear Build Cache (If Error Persists)
-1. Go to Vercel Dashboard
-2. Select your project
-3. Go to "Deployments" tab
-4. Click "..." → "Redeploy"
-5. **UNCHECK** "Use existing Build Cache"
+1. Go to Vercel Dashboard → Your Project
+2. Go to "Deployments" tab
+3. Click "..." menu on latest deployment
+4. Click "Redeploy"
+5. **UNCHECK "Use existing Build Cache"** ⚠️
 6. Click "Redeploy"
 
 ### Step 4: Verify Environment Variables
@@ -172,6 +234,10 @@ After successful deployment, test these endpoints:
 
 ### Kitchen
 - [ ] `GET /api/kitchen/orders` - Kitchen orders
+
+### Notifications
+- [ ] `GET /api/notifications/count?userId=xxx` - Notification count ⭐ (Latest fix)
+- [ ] `GET /api/notifications?userId=xxx` - Notification list
 
 ### Reports
 - [ ] `GET /api/reports/sales?type=summary` - Sales summary

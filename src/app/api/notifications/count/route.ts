@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { NotificationService } from '@/core/services/notifications/NotificationService';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/notifications/count
  * Get unread notification count for current user

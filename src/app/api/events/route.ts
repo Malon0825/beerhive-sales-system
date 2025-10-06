@@ -3,6 +3,9 @@ import { EventRepository } from '@/data/repositories/EventRepository';
 import { EventService } from '@/core/services/events/EventService';
 import { AppError } from '@/lib/errors/AppError';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/events
  * Get all customer events

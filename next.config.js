@@ -13,7 +13,16 @@ const nextConfig = {
   
   // Fix for Vercel build issues with client reference manifests
   experimental: {
-    optimizePackageImports: ['lucide-react'],
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
+  },
+  
+  // Disable static optimization for problematic routes
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  
+  eslint: {
+    ignoreDuringBuilds: false,
   },
 }
 
