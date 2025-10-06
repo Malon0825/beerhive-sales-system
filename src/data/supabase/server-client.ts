@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/models/database.types';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+// Server-only Supabase URL and Service Key
+// Do NOT use NEXT_PUBLIC_* on the server to avoid leaking values into server bundles
+const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 if (!supabaseUrl || !supabaseServiceKey) {

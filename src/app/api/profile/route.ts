@@ -86,8 +86,9 @@ export async function PATCH(request: NextRequest) {
     const token = authHeader.substring(7);
 
     // Create a Supabase client with the user's token to verify the session
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    // Use server-only env names to avoid inlining NEXT_PUBLIC_* values in server bundles
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
     const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
@@ -138,8 +139,9 @@ export async function PATCH(request: NextRequest) {
       }
 
       // Verify current password by attempting to sign in with regular client
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+      // Use server-only env names to avoid leaking NEXT_PUBLIC_* into server builds
+      const supabaseUrl = process.env.SUPABASE_URL!;
+      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
       const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
       const { data: signInData, error: signInError } = await supabaseClient.auth.signInWithPassword({

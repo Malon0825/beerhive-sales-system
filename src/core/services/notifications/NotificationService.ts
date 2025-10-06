@@ -1,4 +1,3 @@
-import { NotificationRepository } from '@/data/repositories/NotificationRepository';
 import type { 
   Notification, 
   CreateNotificationDTO 
@@ -14,6 +13,23 @@ import {
  */
 export class NotificationService {
   /**
+   * Dynamically load the appropriate repository depending on runtime context.
+   * - Server: uses `NotificationRepositoryServer` (supabaseAdmin)
+   * - Client: uses `NotificationRepository` (browser supabase)
+   * This avoids pulling the client repository into server bundles and leaking
+   * NEXT_PUBLIC env values into server output.
+   */
+  private static async loadRepo(): Promise<any> {
+    const isServer = typeof window === 'undefined';
+    if (isServer) {
+      const mod = await import("@/data/repositories/NotificationRepository.server");
+      return mod.NotificationRepositoryServer;
+    }
+    const mod = await import("@/data/repositories/NotificationRepository");
+    return mod.NotificationRepository;
+  }
+
+  /**
    * Create a notification for a new order
    */
   static async notifyOrderCreated(
@@ -21,7 +37,8 @@ export class NotificationService {
     orderNumber: string,
     totalAmount: number
   ): Promise<Notification> {
-    return NotificationRepository.create({
+    const Repo = await this.loadRepo();
+    return Repo.create({
       type: NotificationType.ORDER_CREATED,
       title: 'New Order',
       message: `Order #${orderNumber} created - Total: ₱${totalAmount.toFixed(2)}`,
@@ -44,7 +61,8 @@ export class NotificationService {
     orderNumber: string,
     totalAmount: number
   ): Promise<Notification> {
-    return NotificationRepository.create({
+    const Repo = await this.loadRepo();
+    return Repo.create({
       type: NotificationType.ORDER_COMPLETED,
       title: 'Order Completed',
       message: `Order #${orderNumber} completed - ₱${totalAmount.toFixed(2)}`,
@@ -67,7 +85,8 @@ export class NotificationService {
     orderNumber: string,
     kitchenOrderId: string
   ): Promise<Notification> {
-    return NotificationRepository.create({
+    const Repo = await this.loadRepo();
+    return Repo.create({
       type: NotificationType.FOOD_READY,
       title: 'Food Ready',
       message: `Order #${orderNumber} is ready for delivery`,
@@ -90,7 +109,8 @@ export class NotificationService {
     orderNumber: string,
     kitchenOrderId: string
   ): Promise<Notification> {
-    return NotificationRepository.create({
+    const Repo = await this.loadRepo();
+    return Repo.create({
       type: NotificationType.BEVERAGE_READY,
       title: 'Beverage Ready',
       message: `Order #${orderNumber} drinks are ready for delivery`,
@@ -118,7 +138,8 @@ export class NotificationService {
       ? NotificationType.FOOD_DELIVERED 
       : NotificationType.BEVERAGE_DELIVERED;
 
-    return NotificationRepository.create({
+    const Repo = await this.loadRepo();
+    return Repo.create({
       type,
       title: `${itemType === 'food' ? 'Food' : 'Beverage'} Delivered`,
       message: `Order #${orderNumber} ${itemType} delivered by ${deliveredBy}`,
@@ -145,13 +166,14 @@ export class NotificationService {
   ): Promise<Notification> {
     const isOutOfStock = currentStock <= 0;
     
-    return NotificationRepository.create({
+    const Repo = await this.loadRepo();
+    return Repo.create({
       type: isOutOfStock ? NotificationType.OUT_OF_STOCK : NotificationType.LOW_STOCK,
       title: isOutOfStock ? 'OUT OF STOCK' : 'Low Stock Alert',
       message: isOutOfStock
         ? `${productName} is out of stock!`
         : `${productName} is running low (${currentStock.toFixed(2)} remaining)`,
-      priority: isOutOfStock ? NotificationPriority.URGENT : NotificationPriority.HIGH,
+      priority: NotificationPriority.URGENT,
       reference_id: productId,
       reference_table: 'products',
       role: 'manager',
@@ -172,7 +194,8 @@ export class NotificationService {
     currentStock: number,
     reorderPoint: number
   ): Promise<Notification> {
-    return NotificationRepository.create({
+    const Repo = await this.loadRepo();
+    return Repo.create({
       type: NotificationType.REORDER_POINT,
       title: 'Reorder Point Reached',
       message: `${productName} has reached reorder point (${currentStock.toFixed(2)} / ${reorderPoint.toFixed(2)})`,
@@ -198,7 +221,8 @@ export class NotificationService {
     targetRole?: string,
     targetUserId?: string
   ): Promise<Notification> {
-    return NotificationRepository.create({
+    const Repo = await this.loadRepo();
+    return Repo.create({
       type: NotificationType.SYSTEM_ALERT,
       title,
       message,
@@ -216,35 +240,40 @@ export class NotificationService {
     limit: number = 50,
     unreadOnly: boolean = false
   ): Promise<Notification[]> {
-    return NotificationRepository.getForUser(userId, limit, unreadOnly);
+    const Repo = await this.loadRepo();
+    return Repo.getForUser(userId, limit, unreadOnly);
   }
 
   /**
    * Get unread notification count
    */
   static async getUnreadCount(userId: string): Promise<number> {
-    return NotificationRepository.getUnreadCount(userId);
+    const Repo = await this.loadRepo();
+    return Repo.getUnreadCount(userId);
   }
 
   /**
    * Mark notification as read
    */
   static async markAsRead(notificationId: string): Promise<boolean> {
-    return NotificationRepository.markAsRead(notificationId);
+    const Repo = await this.loadRepo();
+    return Repo.markAsRead(notificationId);
   }
 
   /**
    * Mark all notifications as read for a user
    */
   static async markAllAsRead(userId: string): Promise<void> {
-    await NotificationRepository.markAllAsRead(userId);
+    const Repo = await this.loadRepo();
+    await Repo.markAllAsRead(userId);
   }
 
   /**
    * Delete a notification
    */
   static async deleteNotification(notificationId: string): Promise<boolean> {
-    return NotificationRepository.delete(notificationId);
+    const Repo = await this.loadRepo();
+    return Repo.delete(notificationId);
   }
 
   /**
