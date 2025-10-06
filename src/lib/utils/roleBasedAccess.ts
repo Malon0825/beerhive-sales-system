@@ -165,8 +165,9 @@ export function canAccessRoute(
  * getDefaultRouteForRole(['bartender', 'kitchen']) // '/bartender'
  * getDefaultRouteForRole(['kitchen', 'bartender']) // '/kitchen'
  * 
- * // Admin/Manager always take precedence
- * getDefaultRouteForRole(['bartender', 'admin']) // '/' (admin overrides)
+ * // Admin/Manager always take precedence (both go to reports)
+ * getDefaultRouteForRole(['bartender', 'admin']) // '/reports' (admin overrides)
+ * getDefaultRouteForRole(['manager']) // '/reports'
  */
 export function getDefaultRouteForRole(roles: UserRole | UserRole[]): string {
   // Normalize to array for consistent processing
@@ -174,10 +175,10 @@ export function getDefaultRouteForRole(roles: UserRole | UserRole[]): string {
   
   console.log('🎯 [roleBasedAccess] Getting default route for roles:', rolesArray);
   
-  // Priority 1: Admin always goes to dashboard
+  // Priority 1: Admin always goes to reports
   if (rolesArray.includes(UserRole.ADMIN)) {
-    console.log('✅ [roleBasedAccess] Admin detected → routing to /');
-    return '/';
+    console.log('✅ [roleBasedAccess] Admin detected → routing to /reports');
+    return '/reports';
   }
   
   // Priority 2: Manager goes to reports

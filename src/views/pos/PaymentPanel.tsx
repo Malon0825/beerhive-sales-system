@@ -33,12 +33,17 @@ interface PaymentPanelProps {
 /**
  * PaymentPanel Component
  * Handles payment processing for POS orders
+ * 
  * Features:
- * - Multiple payment methods (Cash, Card, GCash, PayMaya, Bank Transfer)
  * - Cash payment with change calculation
+ * - Quick amount selection buttons
  * - Order validation before processing
  * - Loading and error states
  * - Success confirmation
+ * 
+ * Payment Methods:
+ * - Currently enabled: CASH only
+ * - Disabled: Card, GCash, PayMaya, Bank Transfer (can be enabled by uncommenting in code)
  */
 export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentPanelProps) {
   const cart = useCart();
@@ -67,6 +72,8 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
 
   /**
    * Payment method configurations
+   * NOTE: Currently only CASH payment is enabled
+   * Other payment methods (Card, GCash, PayMaya, Bank Transfer) are disabled
    */
   const paymentMethods = [
     {
@@ -76,38 +83,40 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
       color: 'bg-green-500',
       description: 'Cash payment',
     },
-    {
-      method: PaymentMethod.CARD,
-      label: 'Card',
-      icon: CreditCard,
-      color: 'bg-blue-500',
-      description: 'Credit/Debit Card',
-    },
-    {
-      method: PaymentMethod.GCASH,
-      label: 'GCash',
-      icon: Smartphone,
-      color: 'bg-sky-500',
-      description: 'GCash e-wallet',
-    },
-    {
-      method: PaymentMethod.PAYMAYA,
-      label: 'PayMaya',
-      icon: Smartphone,
-      color: 'bg-emerald-500',
-      description: 'PayMaya e-wallet',
-    },
-    {
-      method: PaymentMethod.BANK_TRANSFER,
-      label: 'Bank Transfer',
-      icon: Building2,
-      color: 'bg-purple-500',
-      description: 'Bank Transfer',
-    },
+    // Disabled payment methods - uncomment to enable
+    // {
+    //   method: PaymentMethod.CARD,
+    //   label: 'Card',
+    //   icon: CreditCard,
+    //   color: 'bg-blue-500',
+    //   description: 'Credit/Debit Card',
+    // },
+    // {
+    //   method: PaymentMethod.GCASH,
+    //   label: 'GCash',
+    //   icon: Smartphone,
+    //   color: 'bg-sky-500',
+    //   description: 'GCash e-wallet',
+    // },
+    // {
+    //   method: PaymentMethod.PAYMAYA,
+    //   label: 'PayMaya',
+    //   icon: Smartphone,
+    //   color: 'bg-emerald-500',
+    //   description: 'PayMaya e-wallet',
+    // },
+    // {
+    //   method: PaymentMethod.BANK_TRANSFER,
+    //   label: 'Bank Transfer',
+    //   icon: Building2,
+    //   color: 'bg-purple-500',
+    //   description: 'Bank Transfer',
+    // },
   ];
 
   /**
    * Validate order before processing payment
+   * Currently validates cash-only payments
    */
   const validateOrder = (): string | null => {
     if (cart.items.length === 0) {
@@ -118,6 +127,7 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
       return 'Please select a payment method';
     }
 
+    // Validate cash payment (currently the only enabled method)
     if (selectedMethod === PaymentMethod.CASH) {
       const tendered = parseFloat(amountTendered);
       if (isNaN(tendered) || tendered < total) {
@@ -125,15 +135,17 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
       }
     }
 
-    if (
-      selectedMethod === PaymentMethod.GCASH ||
-      selectedMethod === PaymentMethod.PAYMAYA ||
-      selectedMethod === PaymentMethod.BANK_TRANSFER
-    ) {
-      if (!referenceNumber.trim()) {
-        return 'Reference number is required for this payment method';
-      }
-    }
+    // Note: Digital payment validation removed since only CASH is enabled
+    // Uncomment below if you re-enable digital payment methods:
+    // if (
+    //   selectedMethod === PaymentMethod.GCASH ||
+    //   selectedMethod === PaymentMethod.PAYMAYA ||
+    //   selectedMethod === PaymentMethod.BANK_TRANSFER
+    // ) {
+    //   if (!referenceNumber.trim()) {
+    //     return 'Reference number is required for this payment method';
+    //   }
+    // }
 
     return null;
   };

@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/lib/hooks/useAuth';
 import { useRealtime } from '@/lib/hooks/useRealtime';
 import { Card } from '@/views/shared/ui/card';
 import { Badge } from '@/views/shared/ui/badge';
+import { Button } from '@/views/shared/ui/button';
 import { LoadingSpinner } from '@/views/shared/feedback/LoadingSpinner';
 import { format } from 'date-fns';
-import { RefreshCw, Clock, Users, DollarSign } from 'lucide-react';
+import { RefreshCw, Clock, Users, DollarSign, Trash2 } from 'lucide-react';
+import { supabase } from '@/data/supabase/client';
 
 interface OrderItem {
   id: string;
@@ -47,25 +50,45 @@ interface CurrentOrder {
 /**
  * StaffOrderMonitor Component
  * 
- * Real-time dashboard for staff to monitor all current orders
- * Shows all pending and on-hold orders across all tables
- * Updates automatically when orders are created, updated, or completed
+ * Real-time dashboard for monitoring current orders
+ * 
+ * Display:
+ * - Shows ONLY orders belonging to the logged-in user
+ * - Filters by cashier_id matching current user
+ * - Other users' orders are not visible
+ * 
+ * Features:
+ * - Real-time order updates (user-specific)
+ * - Clear all orders (user-specific)
+ * - Manual refresh
+ * - User-isolated view for security and focus
  * 
  * Access: Cashier, Manager, Admin only
  */
 export function StaffOrderMonitor() {
+  const { user } = useAuth();
   const [orders, setOrders] = useState<CurrentOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   /**
-   * Fetch all current orders from staging table
+   * Fetch current orders for the logged-in user only
+   * Filters orders by cashier_id matching the current user
    */
   const fetchOrders = async () => {
     try {
-      const response = await fetch('/api/current-orders?all=true');
+      if (!user?.id) {
+        setError('User not authenticated');
+        setLoading(false);
+        return;
+      }
+
+      // Fetch only orders belonging to this user
+      const response = await fetch(`/api/current-orders?cashierId=${user.id}`);
       const result = await response.json();
 
       if (result.success) {
@@ -82,15 +105,71 @@ export function StaffOrderMonitor() {
     }
   };
 
-  // Initial fetch
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+  /**
+   * Clear all orders belonging to the logged-in user
+   * Only clears orders where cashier_id matches the current user
+   */
+  const handleClearOrders = async () => {
+    if (!user) {
+      alert('You must be logged in to clear orders');
+      return;
+    }
 
-  // Real-time subscription to current_orders (staging table)
+    setClearing(true);
+    setShowClearConfirm(false);
+
+    try {
+      // Get auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Call API to clear orders
+      const response = await fetch('/api/current-orders', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to clear orders');
+      }
+
+      // Show success message
+      const deletedCount = result.data?.deletedCount || 0;
+      if (deletedCount > 0) {
+        alert(`Successfully cleared ${deletedCount} order(s)`);
+      } else {
+        alert('No orders to clear');
+      }
+
+      // Refresh orders list
+      await fetchOrders();
+    } catch (err: any) {
+      console.error('Clear orders error:', err);
+      alert(err.message || 'Failed to clear orders');
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  // Initial fetch - refetch when user becomes available
+  useEffect(() => {
+    if (user?.id) {
+      fetchOrders();
+    }
+  }, [user?.id]);
+
+  // Real-time subscription to current_orders (filtered by user)
+  // Only receives updates for orders belonging to this user
   useRealtime({
     table: 'current_orders',
     event: '*',
+    filter: user?.id ? `cashier_id=eq.${user.id}` : undefined,
     onChange: (payload) => {
       console.log('Current order update received:', payload);
       fetchOrders();
@@ -98,12 +177,16 @@ export function StaffOrderMonitor() {
   });
 
   // Real-time subscription to current_order_items
+  // Will receive updates for items in this user's orders
   useRealtime({
     table: 'current_order_items',
     event: '*',
     onChange: (payload) => {
       console.log('Current order items update received:', payload);
-      fetchOrders();
+      // Only refetch if we have a user to filter by
+      if (user?.id) {
+        fetchOrders();
+      }
     },
   });
 
@@ -201,20 +284,78 @@ export function StaffOrderMonitor() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">
-            Current Orders Monitor
+            My Current Orders
           </h1>
           <p className="text-gray-600 mt-1">
-            Real-time view of all draft orders being built in POS
+            Real-time view of your draft orders in progress
           </p>
         </div>
-        <button
-          onClick={fetchOrders}
-          className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={() => setShowClearConfirm(true)}
+            disabled={clearing || orders.length === 0}
+            variant="destructive"
+            className="flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Clear My Orders
+          </Button>
+          <Button
+            onClick={fetchOrders}
+            disabled={clearing}
+            className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <Card className="p-6 max-w-md mx-4">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">
+              Clear Your Orders?
+            </h3>
+            <p className="text-gray-600 mb-6">
+              This will delete all current orders that belong to you (
+              <span className="font-semibold">{user?.full_name || user?.username}</span>
+              ). This action cannot be undone.
+            </p>
+            <p className="text-sm text-amber-600 mb-6">
+              ⚠️ Only your orders will be cleared. Other users' orders will not be affected.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button
+                onClick={() => setShowClearConfirm(false)}
+                variant="outline"
+                disabled={clearing}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleClearOrders}
+                variant="destructive"
+                disabled={clearing}
+                className="flex items-center gap-2"
+              >
+                {clearing ? (
+                  <>
+                    <span className="animate-spin">⏳</span>
+                    Clearing...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Yes, Clear Orders
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -224,7 +365,7 @@ export function StaffOrderMonitor() {
               <Users className="w-6 h-6 text-white" />
             </div>
             <div>
-              <p className="text-sm text-blue-700 font-medium">Active Orders</p>
+              <p className="text-sm text-blue-700 font-medium">My Orders</p>
               <p className="text-3xl font-bold text-blue-900">{orders.length}</p>
             </div>
           </div>
@@ -267,7 +408,10 @@ export function StaffOrderMonitor() {
             <h3 className="text-xl font-semibold text-gray-700 mb-2">
               No Current Orders
             </h3>
-            <p>All orders have been completed or there are no active orders.</p>
+            <p>You don't have any draft orders in progress.</p>
+            <p className="text-sm text-gray-400 mt-2">
+              Orders from other users are not visible in this view.
+            </p>
           </div>
         </Card>
       ) : (
