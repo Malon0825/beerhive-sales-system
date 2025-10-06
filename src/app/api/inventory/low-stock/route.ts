@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { LowStockAlert } from '@/core/services/inventory/LowStockAlert';
 import { AppError } from '@/lib/errors/AppError';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/inventory/low-stock
  * Get low stock alerts and recommendations

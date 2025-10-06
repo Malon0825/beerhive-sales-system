@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { OrderRepository } from '@/data/repositories/OrderRepository';
 import { OrderStatus } from '@/models/enums/OrderStatus';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/orders/current
  * Fetch all current (pending and on-hold) orders with full details

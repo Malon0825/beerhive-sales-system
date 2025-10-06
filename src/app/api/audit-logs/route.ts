@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AuditLogRepository } from '@/data/repositories/AuditLogRepository';
 import { supabaseAdmin } from '@/data/supabase/server-client';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     // Check authentication

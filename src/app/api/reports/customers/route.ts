@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CustomerReportService } from '@/core/services/reports/CustomerReport';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;

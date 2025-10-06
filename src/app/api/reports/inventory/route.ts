@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { InventoryReportService } from '@/core/services/reports/InventoryReport';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;

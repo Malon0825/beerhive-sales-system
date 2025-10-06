@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { NotificationService } from '@/core/services/notifications/NotificationService';
 import { createClient } from '@supabase/supabase-js';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/notifications
  * Fetch notifications for current user

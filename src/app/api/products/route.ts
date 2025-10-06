@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ProductRepository } from '@/data/repositories/ProductRepository';
 import { AppError } from '@/lib/errors/AppError';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/products
  * Get all products or filter by query params

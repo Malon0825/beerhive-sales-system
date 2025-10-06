@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OrderRepository } from '@/data/repositories/OrderRepository';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/orders/board
  * Fetches all orders with full details for the order board display

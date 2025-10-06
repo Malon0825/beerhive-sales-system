@@ -3,6 +3,9 @@ import { CreateOrder } from '@/core/use-cases/orders/CreateOrder';
 import { OrderRepository } from '@/data/repositories/OrderRepository';
 import { AppError } from '@/lib/errors/AppError';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/orders
  * Get all orders or filter by query params

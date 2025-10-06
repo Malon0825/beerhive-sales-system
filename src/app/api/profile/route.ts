@@ -5,6 +5,9 @@ import { AppError } from '@/lib/errors/AppError';
 import { supabaseAdmin } from '@/data/supabase/server-client';
 import { createClient } from '@supabase/supabase-js';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/profile
  * Get current user's profile

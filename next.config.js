@@ -8,10 +8,12 @@ const nextConfig = {
       },
     ],
   },
+  // Note: serverActions allowedOrigins removed to support Vercel deployment
+  // Vercel automatically configures allowed origins for production
+  
+  // Fix for Vercel build issues with client reference manifests
   experimental: {
-    serverActions: {
-      allowedOrigins: ['localhost:3000'],
-    },
+    optimizePackageImports: ['lucide-react'],
   },
 }
 

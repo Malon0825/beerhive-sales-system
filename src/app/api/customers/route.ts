@@ -4,6 +4,9 @@ import { CustomerService } from '@/core/services/customers/CustomerService';
 import { AppError } from '@/lib/errors/AppError';
 import { supabaseAdmin } from '@/data/supabase/server-client';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/customers
  * Get all customers (paginated)

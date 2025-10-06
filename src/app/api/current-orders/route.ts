@@ -3,6 +3,9 @@ import { CurrentOrderRepository } from '@/data/repositories/CurrentOrderReposito
 import { cookies } from 'next/headers';
 import { supabase } from '@/data/supabase/client';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/current-orders
  * Fetch all current (draft) orders for authenticated user

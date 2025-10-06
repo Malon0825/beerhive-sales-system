@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { CustomerService } from '@/core/services/customers/CustomerService';
 import { AppError } from '@/lib/errors/AppError';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/customers/search?q=[query]
  * Search customers by name, phone, or customer number

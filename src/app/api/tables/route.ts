@@ -5,6 +5,9 @@ import { TableStatus } from '@/models/enums/TableStatus';
 import { AppError } from '@/lib/errors/AppError';
 import { supabaseAdmin } from '@/data/supabase/server-client';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/tables
  * Get all tables or filter by query params

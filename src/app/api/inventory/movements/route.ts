@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { InventoryRepository } from '@/data/repositories/InventoryRepository';
 import { AppError } from '@/lib/errors/AppError';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/inventory/movements
  * Get inventory movements with filters
