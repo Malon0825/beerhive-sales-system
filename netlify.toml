@@ -9,6 +9,8 @@
   command = "rm -rf .next/cache .netlify/.next/cache && npm run build"
   
   # Directory where the build output is stored
+  # When using @netlify/plugin-nextjs, the plugin handles the publish directory
+  # Set to .next for Next.js builds (plugin will manage the actual deployment)
   publish = ".next"
   
   # Node.js version requirement (must match package.json engines)
@@ -29,6 +31,11 @@
 
 # Plugin configuration for Next.js on Netlify
 # The @netlify/plugin-nextjs plugin provides Next.js optimizations
+# This plugin automatically:
+# - Handles Next.js API routes at /api/*
+# - Manages Server-Side Rendering (SSR) and Static Site Generation (SSG)
+# - Optimizes build output for Netlify's CDN
+# - Manages rewrites, redirects, and middleware
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
@@ -131,13 +138,14 @@
   status = 301
   force = true
 
-# Functions configuration (if using Netlify Functions)
-[functions]
-  # Directory for serverless functions (optional)
-  directory = "netlify/functions"
-  
-  # Node.js runtime for functions
-  node_bundler = "esbuild"
+# Functions configuration (NOT USED - using Next.js API routes instead)
+# This project uses Next.js API routes (/src/app/api/**) which are handled
+# automatically by the @netlify/plugin-nextjs plugin.
+# Netlify Functions are NOT used in this project.
+# 
+# [functions]
+#   directory = "netlify/functions"
+#   node_bundler = "esbuild"
 
 # Development server configuration
 [dev]
