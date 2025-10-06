@@ -26,7 +26,7 @@ export async function GET(
         const pdfDoc = ReceiptTemplate({ data: receiptData });
         const pdfBuffer = await renderToBuffer(pdfDoc);
 
-        return new NextResponse(pdfBuffer, {
+        return new NextResponse(pdfBuffer as any, {
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `inline; filename="receipt-${receiptData.orderNumber}.pdf"`,

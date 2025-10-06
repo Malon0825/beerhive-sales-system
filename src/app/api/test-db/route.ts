@@ -37,7 +37,7 @@ export async function GET() {
     const tableChecks = await Promise.all(
       tablesToCheck.map(async (table) => {
         const { count, error } = await supabaseAdmin
-          .from(table)
+          .from(table as any)
           .select('*', { count: 'exact', head: true });
         
         return {

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { HappyHour } from '@/models/entities/HappyHour';
 import HappyHourList from './HappyHourList';
 import HappyHourForm from './HappyHourForm';
-import { Button } from '../shared/ui/Button';
+import { Button } from '../shared/ui/button';
 import { Plus } from 'lucide-react';
 
 export default function HappyHourManager() {

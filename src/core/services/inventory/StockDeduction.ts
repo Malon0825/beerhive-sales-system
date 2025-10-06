@@ -140,11 +140,11 @@ export class StockDeduction {
           continue;
         }
 
-        if (product.current_stock < item.quantity) {
+        if ((product.current_stock ?? 0) < item.quantity) {
           insufficientItems.push({
             productId: item.product_id,
             requested: item.quantity,
-            available: product.current_stock,
+            available: product.current_stock ?? 0,
           });
         }
       }

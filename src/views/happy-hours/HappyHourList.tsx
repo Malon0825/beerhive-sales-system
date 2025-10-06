@@ -2,8 +2,8 @@
 
 import { HappyHour } from '@/models/entities/HappyHour';
 import { HappyHourUtils } from '@/core/services/pricing/HappyHourUtils';
-import { Badge } from '../shared/ui/Badge';
-import { Button } from '../shared/ui/Button';
+import { Badge } from '../shared/ui/badge';
+import { Button } from '../shared/ui/button';
 import { Edit, Trash2, Clock, Calendar, Percent, DollarSign } from 'lucide-react';
 
 interface HappyHourListProps {

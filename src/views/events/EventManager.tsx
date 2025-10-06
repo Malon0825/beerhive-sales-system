@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { CustomerEvent } from '@/models/entities/CustomerEvent';
 import EventList from './EventList';
 import EventForm from './EventForm';
-import { Button } from '../shared/ui/Button';
+import { Button } from '../shared/ui/button';
 import { Plus, Calendar, Filter } from 'lucide-react';
 
 export default function EventManager() {

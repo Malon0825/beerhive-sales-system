@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { CustomerEvent } from '@/models/entities/CustomerEvent';
 import { RedemptionService } from '@/core/services/events/RedemptionService';
-import { Badge } from '../shared/ui/Badge';
+import { Badge } from '../shared/ui/badge';
 import { Gift, Calendar, AlertCircle } from 'lucide-react';
 import { EventType } from '@/models/enums/EventType';
 

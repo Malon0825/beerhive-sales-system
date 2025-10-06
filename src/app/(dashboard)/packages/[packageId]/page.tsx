@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Package, PackageItem } from '@/models/entities/Package';
-import { Button } from '@/views/shared/ui/Button';
-import { Badge } from '@/views/shared/ui/Badge';
+import { Button } from '@/views/shared/ui/button';
+import { Badge } from '@/views/shared/ui/badge';
 import { ArrowLeft, Edit, Trash2, Package as PackageIcon, Calendar, DollarSign, Users } from 'lucide-react';
 
 /**
@@ -148,7 +148,7 @@ export default function PackageDetailPage({ params }: { params: { packageId: str
               Edit
             </Button>
             <Button
-              variant="danger"
+              variant="destructive"
               onClick={handleDelete}
               className="flex items-center gap-2"
             >

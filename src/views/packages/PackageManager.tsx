@@ -5,9 +5,9 @@ import { Package } from '@/models/entities/Package';
 import { Product } from '@/models/entities/Product';
 import PackageList from './PackageList';
 import PackageForm from './PackageForm';
-import { Button } from '../shared/ui/Button';
+import { Button } from '../shared/ui/button';
 import { Plus, Filter } from 'lucide-react';
-import { Badge } from '../shared/ui/Badge';
+import { Badge } from '../shared/ui/badge';
 
 /**
  * PackageManager Component

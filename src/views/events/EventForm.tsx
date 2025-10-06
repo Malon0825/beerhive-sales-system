@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { CustomerEvent } from '@/models/entities/CustomerEvent';
 import { EventType } from '@/models/enums/EventType';
-import { Button } from '../shared/ui/Button';
-import { Input } from '../shared/ui/Input';
-import { Label } from '../shared/ui/Label';
+import { Button } from '../shared/ui/button';
+import { Input } from '../shared/ui/input';
+import { Label } from '../shared/ui/label';
 
 interface EventFormProps {
   event: CustomerEvent | null;

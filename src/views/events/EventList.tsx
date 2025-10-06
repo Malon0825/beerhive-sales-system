@@ -2,8 +2,8 @@
 
 import { CustomerEvent } from '@/models/entities/CustomerEvent';
 import { RedemptionUtils } from '@/core/services/events/RedemptionUtils';
-import { Badge } from '../shared/ui/Badge';
-import { Button } from '../shared/ui/Button';
+import { Badge } from '../shared/ui/badge';
+import { Button } from '../shared/ui/button';
 import { Edit, Trash2, Calendar, Gift, AlertCircle } from 'lucide-react';
 import { EventType } from '@/models/enums/EventType';
 

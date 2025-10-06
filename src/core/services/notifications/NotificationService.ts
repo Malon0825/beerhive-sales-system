@@ -1,5 +1,5 @@
 import { NotificationRepository } from '@/data/repositories/NotificationRepository';
-import { 
+import type { 
   Notification, 
   CreateNotificationDTO 
 } from '@/models/entities/Notification';

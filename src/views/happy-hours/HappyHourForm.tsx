@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { HappyHour } from '@/models/entities/HappyHour';
-import { Button } from '../shared/ui/Button';
-import { Input } from '../shared/ui/Input';
-import { Label } from '../shared/ui/Label';
+import { Button } from '../shared/ui/button';
+import { Input } from '../shared/ui/input';
+import { Label } from '../shared/ui/label';
 
 interface HappyHourFormProps {
   happyHour: HappyHour | null;

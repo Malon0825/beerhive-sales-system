@@ -33,7 +33,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!user.is_active) {
+    // Type assertion to ensure is_active is recognized
+    const userData = user as any;
+    if (!userData.is_active) {
       return NextResponse.json(
         { success: false, error: 'Your account has been deactivated. Please contact an administrator.' },
         { status: 403 }
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     // Verify password with Supabase Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
-      email: user.email,
+      email: userData.email,
       password: password,
     });
 
@@ -57,13 +59,13 @@ export async function POST(request: NextRequest) {
     await supabaseAdmin
       .from('users')
       .update({ last_login: new Date().toISOString() })
-      .eq('id', user.id);
+      .eq('id', userData.id);
 
     // Ensure roles array exists (backward compatibility)
     // If database has roles array, use it; otherwise convert single role to array
-    const userRoles = user.roles && Array.isArray(user.roles) && user.roles.length > 0
-      ? user.roles
-      : [user.role];
+    const userRoles = userData.roles && Array.isArray(userData.roles) && userData.roles.length > 0
+      ? userData.roles
+      : [userData.role];
 
     // Ensure role (singular) matches first role in array
     const primaryRole = userRoles[0];
@@ -73,13 +75,13 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          full_name: user.full_name,
+          id: userData.id,
+          username: userData.username,
+          email: userData.email,
+          full_name: userData.full_name,
           role: primaryRole, // Primary role (backward compatibility)
           roles: userRoles,  // All roles (new)
-          is_active: user.is_active,
+          is_active: userData.is_active,
         },
         session: authData.session,
       },

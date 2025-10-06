@@ -1,0 +1,38 @@
+﻿
+> beerhive-pos@0.1.0 build
+> next build
+
+   Γû▓ Next.js 14.1.0
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+ Γ£ô Compiled successfully
+   Linting and checking validity of types ...
+node.exe : Failed to compile.
+At C:\Program Files\nodejs\npm.ps1:29 char:3
++   & $NODE_EXE $NPM_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Failed to com 
+   pile.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+./src/data/repositories/CurrentOrderRepository.ts:74:38
+Type error: Type instantiation is excessively deep and 
+possibly infinite.
+
+[0m [90m 72 |[39m   [36mstatic[39m [36masync[39m 
+getByCashier(cashierId[33m:[39m string)[33m:[39m [33mP
+romise[39m[33m<[39m[33mCurrentOrder[39m[][33m>[39m 
+{[0m
+[0m [90m 73 |[39m     [36mtry[39m {[0m
+[0m[31m[1m>[22m[39m[90m 74 |[39m       
+[36mconst[39m { data[33m,[39m error } [33m=[39m 
+([36mawait[39m supabaseAdmin[0m
+[0m [90m    |[39m                                      
+[31m[1m^[22m[39m[0m
+[0m [90m 75 |[39m         
+[33m.[39m[36mfrom[39m([32m'current_orders'[39m)[0m
+[0m [90m 76 |[39m         
+[33m.[39mselect([32m`[39m[0m
+[0m [90m 77 |[39m [32m          *,[39m[0m

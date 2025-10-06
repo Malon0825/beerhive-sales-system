@@ -25,7 +25,7 @@ export async function POST(
     if (body.managerPin && !managerUserId) {
       // Look up ANY user with matching PIN who has manager or admin role
       // Does not matter who is currently logged in - any authorized manager can void
-      const { data: user, error } = await supabaseAdmin
+      const { data: userRaw, error } = await supabaseAdmin
         .from('users')
         .select('id, role, manager_pin, full_name, username')
         .eq('manager_pin', body.managerPin)
@@ -33,7 +33,7 @@ export async function POST(
         .eq('is_active', true)
         .single();
 
-      if (error || !user) {
+      if (error || !userRaw) {
         return NextResponse.json(
           { 
             success: false, 
@@ -42,6 +42,9 @@ export async function POST(
           { status: 403 }
         );
       }
+
+      // Type assertion to ensure fields are recognized
+      const user = userRaw as any;
 
       // Use the manager/admin who provided the PIN as the authorizer
       managerUserId = user.id;

@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { Package, CreatePackageInput } from '@/models/entities/Package';
 import { Product } from '@/models/entities/Product';
-import { Button } from '../shared/ui/Button';
-import { Input } from '../shared/ui/Input';
-import { Label } from '../shared/ui/Label';
+import { Button } from '../shared/ui/button';
+import { Input } from '../shared/ui/input';
+import { Label } from '../shared/ui/label';
 import { X, Plus, Trash2 } from 'lucide-react';
 
 interface PackageFormProps {

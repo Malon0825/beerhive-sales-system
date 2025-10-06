@@ -1,8 +1,8 @@
 'use client';
 
 import { Package, PackageItem } from '@/models/entities/Package';
-import { Badge } from '../shared/ui/Badge';
-import { Button } from '../shared/ui/Button';
+import { Badge } from '../shared/ui/badge';
+import { Button } from '../shared/ui/button';
 import { Edit, Trash2, Package as PackageIcon, Users, Calendar, DollarSign } from 'lucide-react';
 
 interface PackageListProps {
@@ -177,7 +177,7 @@ function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProp
             Edit
           </Button>
           <Button
-            variant="danger"
+            variant="destructive"
             size="sm"
             onClick={(e) => {
               e.stopPropagation();

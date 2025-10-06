@@ -16,24 +16,24 @@ export class LowStockAlert {
 
       const alerts = lowStockProducts.map((product) => {
         const status = InventoryService.getStockStatus(
-          product.current_stock,
-          product.reorder_point
+          product.current_stock ?? 0,
+          product.reorder_point ?? 0
         );
 
         const reorderQty = InventoryService.calculateReorderQuantity(
-          product.current_stock,
-          product.reorder_point,
-          product.reorder_quantity
+          product.current_stock ?? 0,
+          product.reorder_point ?? 0,
+          product.reorder_quantity ?? 0
         );
 
         return {
           product,
           status,
-          stockLevel: product.current_stock,
-          reorderPoint: product.reorder_point,
+          stockLevel: product.current_stock ?? 0,
+          reorderPoint: product.reorder_point ?? 0,
           reorderQuantity: reorderQty,
-          urgency: this.calculateUrgency(product.current_stock, product.reorder_point),
-          daysOfStock: this.estimateDaysOfStock(product.current_stock),
+          urgency: this.calculateUrgency(product.current_stock ?? 0, product.reorder_point ?? 0),
+          daysOfStock: this.estimateDaysOfStock(product.current_stock ?? 0),
         };
       });
 

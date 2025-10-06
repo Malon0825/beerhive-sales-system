@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { HappyHour } from '@/models/entities/HappyHour';
 import { HappyHourUtils } from '@/core/services/pricing/HappyHourUtils';
 import { Clock, Percent, Info } from 'lucide-react';
-import { Badge } from '../shared/ui/Badge';
+import { Badge } from '../shared/ui/badge';
 
 export default function HappyHourIndicator() {
   const [activeHappyHours, setActiveHappyHours] = useState<HappyHour[]>([]);

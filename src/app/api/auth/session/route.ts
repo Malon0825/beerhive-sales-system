@@ -33,19 +33,22 @@ export async function GET(request: NextRequest) {
 
     // Get user details from users table (using admin client to bypass RLS)
     // Fetch both role (singular) and roles (array) for backward compatibility
-    const { data: userData, error } = await supabaseAdmin
+    const { data: userDataRaw, error } = await supabaseAdmin
       .from('users')
       .select('id, username, email, full_name, role, roles, is_active')
       .eq('id', user.id)
       .single();
 
-    if (error || !userData) {
+    if (error || !userDataRaw) {
       return NextResponse.json({
         success: false,
         data: null,
         message: 'User not found',
       }, { status: 404 });
     }
+
+    // Type assertion to ensure fields are recognized
+    const userData = userDataRaw as any;
 
     // Ensure roles array exists (backward compatibility)
     // If database has roles array, use it; otherwise convert single role to array

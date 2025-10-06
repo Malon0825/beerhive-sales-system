@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Package } from '@/models/entities/Package';
 import { Product } from '@/models/entities/Product';
 import PackageForm from '@/views/packages/PackageForm';
-import { Button } from '@/views/shared/ui/Button';
+import { Button } from '@/views/shared/ui/button';
 import { ArrowLeft } from 'lucide-react';
 
 /**
