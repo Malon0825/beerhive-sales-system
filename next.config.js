@@ -38,6 +38,15 @@ const nextConfig = {
         '@react-pdf/renderer': false,
       };
     }
+    
+    // Disable filesystem caching for production builds to prevent
+    // false positive secret scanning warnings in Netlify
+    // The NEXT_PUBLIC_* env vars in cache trigger Netlify's scanner
+    // even though they are intentionally public
+    if (process.env.NODE_ENV === 'production' && process.env.NETLIFY === 'true') {
+      config.cache = false;
+    }
+    
     return config;
   },
 }

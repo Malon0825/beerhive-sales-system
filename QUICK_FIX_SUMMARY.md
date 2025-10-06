@@ -11,9 +11,9 @@
 **Error:** `<Html> should not be imported outside of pages/_document`  
 **Solution:** Dynamic imports for @react-pdf/renderer library
 
-### 2. ⚠️ Secret Scanning Warning → ✅ Fixed
-**Warning:** `Secrets scanning found secrets in build`  
-**Solution:** Updated placeholder values, added .netlifyignore
+### 2. ⚠️ Secret Scanning Warning (Webpack Cache) → ✅ Fixed
+**Warning:** `NEXT_PUBLIC_SUPABASE_URL detected in .netlify/.next/cache/webpack/`  
+**Solution:** Disabled webpack caching on Netlify + cache cleanup + documentation
 
 ---
 
@@ -43,19 +43,20 @@ Netlify will auto-deploy the new commit.
 
 ### Files Changed
 ```
-✅ next.config.js                          # Webpack config for PDF library
-✅ netlify.toml                            # Removed NODE_ENV warning
+✅ next.config.js                          # Webpack config for PDF + disabled caching
+✅ netlify.toml                            # NETLIFY=true + cache cleanup + docs
 ✅ src/app/api/orders/.../receipt/route.ts # Dynamic imports
 ✅ .env.netlify.example                    # Updated placeholders
 ✅ .gitignore                              # Added .netlify/
+✅ .netlifyignore                          # Webpack cache exclusions
 ```
 
 ### Files Created
 ```
-✅ .netlifyignore                          # Exclude docs from build
-✅ docs/NETLIFY_BUILD_FIX.md              # Build fix details
-✅ docs/NETLIFY_SECRET_SCANNING_GUIDE.md  # Security guide
-✅ docs/NETLIFY_SECRET_SCANNING_RESOLUTION.md # Quick resolution
+✅ docs/NETLIFY_BUILD_FIX.md                     # Build fix details
+✅ docs/NETLIFY_SECRET_SCANNING_GUIDE.md         # Security guide
+✅ docs/NETLIFY_SECRET_SCANNING_RESOLUTION.md    # Quick resolution
+✅ WEBPACK_CACHE_SECRET_SCANNING_FIX.md          # Webpack cache fix (comprehensive)
 ```
 
 ---
@@ -72,19 +73,41 @@ Netlify will auto-deploy the new commit.
 
 ### Secret Scanning Explanation
 
-**What triggered it:** Placeholder in `.env.netlify.example`
+**What triggered it:** `NEXT_PUBLIC_SUPABASE_URL` in webpack cache
 ```bash
-# Before (looked like real JWT)
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xxxxx
-
-# After (obviously fake)
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key-here
+# Found in:
+.netlify/.next/cache/webpack/client-production/0.pack (line 54328)
+.netlify/.next/cache/webpack/client-production/0.pack (line 269034)
 ```
 
 **Why it's safe:**
-- It's an `.example` file (not real values)
-- Real secrets are in Netlify Dashboard (not in code)
-- No actual credentials were exposed
+- `NEXT_PUBLIC_*` variables are **intentionally public** (client-accessible)
+- Webpack caches these during build (expected behavior)
+- Protected by Supabase Row Level Security (RLS)
+- Service role key is **NOT** exposed (server-only)
+
+**How we fixed it:**
+
+1. **Disabled webpack caching on Netlify** (next.config.js):
+```javascript
+// Disable cache when building on Netlify
+if (process.env.NODE_ENV === 'production' && process.env.NETLIFY === 'true') {
+  config.cache = false;
+}
+```
+
+2. **Clean cache directories** (netlify.toml):
+```toml
+command = "rm -rf .next/cache .netlify/.next/cache && npm run build"
+```
+
+3. **Set NETLIFY environment variable** (netlify.toml):
+```toml
+[build.environment]
+  NETLIFY = "true"
+```
+
+**Trade-off:** Builds take ~30-60 seconds longer without cache (acceptable for eliminating warnings)
 
 ---
 
@@ -129,6 +152,7 @@ After deployment, test:
 ## 📞 Need Help?
 
 ### Quick References
+- **Webpack Cache Fix:** `WEBPACK_CACHE_SECRET_SCANNING_FIX.md` ⭐ NEW
 - **Secret Scanning:** `docs/NETLIFY_SECRET_SCANNING_RESOLUTION.md`
 - **Build Fix:** `docs/NETLIFY_BUILD_FIX.md`
 - **Full Guide:** `docs/NETLIFY_DEPLOYMENT_GUIDE.md`

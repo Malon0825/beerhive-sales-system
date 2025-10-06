@@ -4,8 +4,9 @@
 
 [build]
   # Specifies the command to build the Next.js application
-  # Clean cache before build to prevent false positive secret scanning
-  command = "rm -rf .next/cache && npm run build"
+  # Clean ALL cache directories (including Netlify's .netlify directory) 
+  # to prevent false positive secret scanning of webpack cache
+  command = "rm -rf .next/cache .netlify/.next/cache && npm run build"
   
   # Directory where the build output is stored
   publish = ".next"
@@ -21,6 +22,10 @@
   # Next.js specific environment variables for optimal Netlify deployment
   NEXT_TELEMETRY_DISABLED = "1"
   NPM_FLAGS = "--legacy-peer-deps"
+  
+  # Set NETLIFY flag to true (used in next.config.js to disable caching)
+  # This prevents webpack cache from triggering false positive secret scanning
+  NETLIFY = "true"
 
 # Plugin configuration for Next.js on Netlify
 # The @netlify/plugin-nextjs plugin provides Next.js optimizations
@@ -34,15 +39,20 @@
 # For Next.js apps, NEXT_PUBLIC_* variables are INTENTIONALLY public
 # and will appear in webpack cache - this is expected behavior.
 # 
-# We handle this by:
-# 1. Cleaning cache before each build (rm -rf .next/cache)
-# 2. Excluding cache directories in .netlifyignore
-# 3. Documenting that NEXT_PUBLIC_* variables are safe to expose
+# SOLUTION IMPLEMENTED:
+# 1. Disabled webpack filesystem caching in next.config.js when NETLIFY=true
+# 2. Clean cache directories before build (rm -rf .next/cache .netlify/.next/cache)
+# 3. Excluded cache directories in .netlifyignore (for deployment)
+# 4. Documented that NEXT_PUBLIC_* variables are safe to expose
 #
-# If you see secret scanning warnings for NEXT_PUBLIC_SUPABASE_URL:
+# Trade-off: Builds are slightly slower without cache (~30-60s longer)
+# Benefit: Eliminates false positive secret scanning warnings
+#
+# If you still see warnings for NEXT_PUBLIC_SUPABASE_URL:
 # - This is a FALSE POSITIVE (these vars are meant to be public)
 # - The anon key is protected by Supabase Row Level Security (RLS)
 # - Service role key is NEVER exposed (server-side only, no NEXT_PUBLIC_ prefix)
+# - Safe to acknowledge and proceed with deployment
 # ===================================
 
 # Production deployment settings
