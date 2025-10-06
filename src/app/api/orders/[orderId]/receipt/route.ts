@@ -1,12 +1,17 @@
 /**
  * Receipt API Route
  * GET /api/orders/[orderId]/receipt - Generate receipt for an order
+ * 
+ * This route dynamically imports @react-pdf/renderer to prevent build-time conflicts
+ * with Next.js static page generation.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ReceiptGenerator } from '@/core/utils/generators/receiptGenerator';
-import { renderToBuffer } from '@react-pdf/renderer';
-import { ReceiptTemplate } from '@/views/receipts/ReceiptTemplate';
+
+// Disable static optimization for this route
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(
   request: NextRequest,
@@ -22,6 +27,10 @@ export async function GET(
 
     switch (format) {
       case 'pdf': {
+        // Dynamically import PDF rendering libraries to avoid build-time issues
+        const { renderToBuffer } = await import('@react-pdf/renderer');
+        const { ReceiptTemplate } = await import('@/views/receipts/ReceiptTemplate');
+        
         // Generate PDF
         const pdfDoc = ReceiptTemplate({ data: receiptData });
         const pdfBuffer = await renderToBuffer(pdfDoc);

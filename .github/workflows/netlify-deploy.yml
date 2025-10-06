@@ -1,0 +1,137 @@
+# GitHub Actions Workflow for Netlify Deployment
+# This workflow automates testing and deployment to Netlify
+# It runs on every push and pull request to ensure code quality
+
+name: Deploy to Netlify
+
+# Trigger workflow on push to main/develop branches or pull requests
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+# Define workflow jobs
+jobs:
+  # Job 1: Build and Test
+  build-and-test:
+    name: Build and Test Application
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Setup Node.js environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.17.0'
+          cache: 'npm'
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # Step 4: Run type checking
+      - name: Type check
+        run: npm run type-check
+
+      # Step 5: Run linting
+      - name: Lint code
+        run: npm run lint
+        continue-on-error: true
+
+      # Step 6: Build application
+      - name: Build application
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_APP_NAME: "BeerHive POS"
+          NEXT_PUBLIC_APP_URL: "https://beerhive-pos.netlify.app"
+
+      # Step 7: Upload build artifacts (optional)
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: .next/
+          retention-days: 7
+
+  # Job 2: Deploy to Netlify (only on push to main)
+  deploy:
+    name: Deploy to Netlify
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      # Step 1: Check out repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Setup Node.js environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.17.0'
+          cache: 'npm'
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # Step 4: Build application
+      - name: Build application
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_APP_NAME: "BeerHive POS"
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+      # Step 5: Deploy to Netlify
+      - name: Deploy to Netlify
+        uses: netlify/actions/cli@master
+        with:
+          args: deploy --prod --dir=.next
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+      # Step 6: Comment deployment URL on PR (optional)
+      - name: Comment deployment URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ Deployed to Netlify preview: https://deploy-preview-${{ github.event.pull_request.number }}--beerhive-pos.netlify.app'
+            })
+
+  # Job 3: Notify deployment status (optional)
+  notify:
+    name: Notify Deployment Status
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Check deployment result
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+            exit 1
+          fi

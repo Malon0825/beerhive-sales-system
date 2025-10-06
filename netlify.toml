@@ -29,7 +29,7 @@
   # These are placeholders - set actual values in Netlify dashboard
   [context.production.environment]
     NEXT_PUBLIC_APP_URL = "https://your-production-domain.netlify.app"
-    NODE_ENV = "production"
+    # NODE_ENV is automatically set by Next.js build process
 
 # Development/Preview deployment settings
 [context.deploy-preview]
@@ -38,7 +38,7 @@
   
   [context.deploy-preview.environment]
     NEXT_PUBLIC_APP_URL = "https://deploy-preview-$DEPLOY_ID--your-site-name.netlify.app"
-    NODE_ENV = "development"
+    # NODE_ENV is automatically set by Next.js build process
 
 # Branch-specific deployment settings
 [context.branch-deploy]

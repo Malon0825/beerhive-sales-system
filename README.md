@@ -89,6 +89,59 @@ npm start
 npm run type-check
 ```
 
+## Deployment
+
+The BeerHive POS System can be deployed to multiple platforms. We support both **Netlify** and **Vercel** for production deployments.
+
+### Netlify (Recommended for Small Teams)
+
+**Quick Deploy:**
+1. Connect your repository to Netlify
+2. Set environment variables (see `.env.netlify.example`)
+3. Deploy automatically on push
+
+**Documentation:**
+- 📘 **Full Guide:** `docs/NETLIFY_DEPLOYMENT_GUIDE.md`
+- ⚡ **Quick Start:** `docs/NETLIFY_QUICK_START.md`
+
+**Benefits:**
+- Cost-effective team pricing ($19/month)
+- Built-in form handling and split testing
+- 300 build minutes/month (Free tier)
+
+### Vercel (Best Next.js Performance)
+
+**Quick Deploy:**
+1. Import project to Vercel
+2. Configure environment variables
+3. Deploy
+
+**Documentation:**
+- 📘 **Setup Guide:** `docs/VERCEL_DEPLOYMENT_STEPS.md`
+
+**Benefits:**
+- Zero-configuration for Next.js
+- 6000 build minutes/month (Free tier)
+- Native Next.js optimizations
+
+### Platform Comparison
+
+Need help choosing? See `docs/DEPLOYMENT_COMPARISON.md` for detailed platform comparison.
+
+### Environment Variables
+
+Required environment variables for deployment:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+NEXT_PUBLIC_APP_NAME=BeerHive POS
+NEXT_PUBLIC_APP_URL=your_deployment_url
+```
+
+See `.env.local.example` or `.env.netlify.example` for complete list.
+
 ## License
 
 Private - All rights reserved
