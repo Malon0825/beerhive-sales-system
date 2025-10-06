@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { EventRepository } from '@/data/repositories/EventRepository';
 import { AppError } from '@/lib/errors/AppError';
 
+// Ensure dynamic rendering for API route on Vercel
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/events/:eventId
  * Get event by ID
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { eventId: string } }
+  context: { params: Promise<{ eventId: string }> }
 ) {
   try {
-    const event = await EventRepository.getById(params.eventId);
+    const { eventId } = await context.params;
+    const event = await EventRepository.getById(eventId);
 
     if (!event) {
       return NextResponse.json(
@@ -47,12 +51,13 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { eventId: string } }
+  context: { params: Promise<{ eventId: string }> }
 ) {
   try {
     const body = await request.json();
 
-    const event = await EventRepository.update(params.eventId, body);
+    const { eventId } = await context.params;
+    const event = await EventRepository.update(eventId, body);
 
     return NextResponse.json({
       success: true,
@@ -82,10 +87,11 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { eventId: string } }
+  context: { params: Promise<{ eventId: string }> }
 ) {
   try {
-    await EventRepository.delete(params.eventId);
+    const { eventId } = await context.params;
+    await EventRepository.delete(eventId);
 
     return NextResponse.json({
       success: true,

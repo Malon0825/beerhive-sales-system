@@ -1,7 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Notification } from '@/models/entities/Notification';
+// type-only import to avoid bundling type at runtime in client build
+import type { Notification } from '@/models/entities/Notification';
 import { NotificationService } from '@/core/services/notifications/NotificationService';
 import { useAuth } from '../hooks/useAuth';
 import { useRealtime } from '../hooks/useRealtime';

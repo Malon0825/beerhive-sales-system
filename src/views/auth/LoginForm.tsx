@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import Image from 'next/image';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '../shared/ui/button';
 import { Input } from '../shared/ui/input';
@@ -52,13 +51,10 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
         <div className="mb-8 text-center">
           <div className="mb-4 flex justify-center">
             <div className="relative h-24 w-24">
-              <Image
+              <img
                 src="/beerhive-logo.png"
                 alt="BeerHive Logo"
-                width={96}
-                height={96}
-                className="object-contain"
-                priority
+                className="h-24 w-24 object-contain"
               />
             </div>
           </div>

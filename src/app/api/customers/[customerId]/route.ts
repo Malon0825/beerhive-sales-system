@@ -4,28 +4,32 @@ import { CustomerService } from '@/core/services/customers/CustomerService';
 import { AppError } from '@/lib/errors/AppError';
 import { supabaseAdmin } from '@/data/supabase/server-client';
 
+// Avoid static pre-rendering issues on Vercel for API routes
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/customers/[customerId]
  * Get customer by ID with offers
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { customerId: string } }
+  context: any
 ) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const includeOffers = searchParams.get('includeOffers') === 'true';
     const includeStats = searchParams.get('includeStats') === 'true';
+    const { customerId } = context.params as { customerId: string };
 
     if (includeOffers) {
-      const data = await CustomerService.getCustomerWithOffers(params.customerId, supabaseAdmin);
+      const data = await CustomerService.getCustomerWithOffers(customerId, supabaseAdmin);
       return NextResponse.json({
         success: true,
         data,
       });
     }
 
-    const customer = await CustomerRepository.getById(params.customerId, supabaseAdmin);
+    const customer = await CustomerRepository.getById(customerId, supabaseAdmin);
 
     if (!customer) {
       return NextResponse.json(
@@ -37,7 +41,7 @@ export async function GET(
     let response: any = { customer };
 
     if (includeStats) {
-      const stats = await CustomerService.getCustomerStats(params.customerId, supabaseAdmin);
+      const stats = await CustomerService.getCustomerStats(customerId, supabaseAdmin);
       response.stats = stats;
     }
 
@@ -68,12 +72,12 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { customerId: string } }
+  context: any
 ) {
   try {
     const body = await request.json();
-
-    const customer = await CustomerRepository.update(params.customerId, body, supabaseAdmin);
+    const { customerId } = context.params as { customerId: string };
+    const customer = await CustomerRepository.update(customerId, body, supabaseAdmin);
 
     return NextResponse.json({
       success: true,

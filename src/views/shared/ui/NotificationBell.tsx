@@ -23,7 +23,7 @@ import {
 import { Badge } from './badge';
 import { ScrollArea } from './scroll-area';
 import { useNotifications } from '@/lib/contexts/NotificationContext';
-import { Notification } from '@/models/entities/Notification';
+import type { Notification } from '@/models/entities/Notification';
 import { NotificationType, NotificationPriority } from '@/models/enums/NotificationType';
 import { cn } from '@/lib/utils/cn';
 

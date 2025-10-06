@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import { use } from 'react';
 import CustomerDetail from '@/views/customers/CustomerDetail';
 
 /**
@@ -11,12 +12,11 @@ export const metadata: Metadata = {
   description: 'View customer details and purchase history',
 };
 
-interface CustomerPageProps {
-  params: {
-    customerId: string;
-  };
+interface PageProps {
+  params: Promise<{ customerId: string }>
 }
 
-export default function CustomerPage({ params }: CustomerPageProps) {
-  return <CustomerDetail customerId={params.customerId} />;
+export default function CustomerPage({ params }: PageProps) {
+  const { customerId } = use(params);
+  return <CustomerDetail customerId={customerId} />;
 }

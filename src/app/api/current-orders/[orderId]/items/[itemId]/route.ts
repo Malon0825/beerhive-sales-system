@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CurrentOrderRepository } from '@/data/repositories/CurrentOrderRepository';
 
+// Force dynamic to avoid static pre-render checks on Vercel
+export const dynamic = 'force-dynamic';
+
 /**
  * PATCH /api/current-orders/[orderId]/items/[itemId]
  * Update an item in current order
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { orderId: string; itemId: string } }
+  context: { params: Promise<{ orderId: string; itemId: string }> }
 ) {
   try {
-    const { orderId, itemId } = params;
+    const { orderId, itemId } = await context.params;
     const body = await request.json();
     const { cashierId, updates } = body;
 
@@ -54,10 +57,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { orderId: string; itemId: string } }
+  context: { params: Promise<{ orderId: string; itemId: string }> }
 ) {
   try {
-    const { orderId, itemId } = params;
+    const { orderId, itemId } = await context.params;
     const searchParams = request.nextUrl.searchParams;
     const cashierId = searchParams.get('cashierId');
 

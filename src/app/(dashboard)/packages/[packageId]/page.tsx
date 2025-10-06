@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Package, PackageItem } from '@/models/entities/Package';
 import { Button } from '@/views/shared/ui/button';
 import { Badge } from '@/views/shared/ui/badge';
@@ -11,19 +11,24 @@ import { ArrowLeft, Edit, Trash2, Package as PackageIcon, Calendar, DollarSign, 
  * Package Detail Page
  * Displays detailed information about a specific package
  */
-export default function PackageDetailPage({ params }: { params: { packageId: string } }) {
+/**
+ * Package Detail Page (Client Component)
+ * Uses `useParams()` to access dynamic route params in Next 15.
+ */
+export default function PackageDetailPage() {
+  const { packageId } = useParams() as { packageId: string };
   const router = useRouter();
   const [packageData, setPackageData] = useState<(Package & { items?: any[] }) | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadPackage();
-  }, [params.packageId]);
+  }, [packageId]);
 
   const loadPackage = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/packages/${params.packageId}`);
+      const response = await fetch(`/api/packages/${packageId}`);
       const result = await response.json();
 
       if (result.success) {
@@ -47,7 +52,7 @@ export default function PackageDetailPage({ params }: { params: { packageId: str
     }
 
     try {
-      const response = await fetch(`/api/packages/${params.packageId}`, {
+      const response = await fetch(`/api/packages/${packageId}`, {
         method: 'DELETE',
       });
 
@@ -141,7 +146,7 @@ export default function PackageDetailPage({ params }: { params: { packageId: str
           <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => router.push(`/packages/${params.packageId}/edit`)}
+              onClick={() => router.push(`/packages/${packageId}/edit`)}
               className="flex items-center gap-2"
             >
               <Edit className="w-4 h-4" />
@@ -149,7 +154,6 @@ export default function PackageDetailPage({ params }: { params: { packageId: str
             </Button>
             <Button
               variant="destructive"
-              onClick={handleDelete}
               className="flex items-center gap-2"
             >
               <Trash2 className="w-4 h-4" />

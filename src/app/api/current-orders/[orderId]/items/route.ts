@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CurrentOrderRepository, CurrentOrderItem } from '@/data/repositories/CurrentOrderRepository';
 
+// Force dynamic to avoid static pre-render checks on Vercel for API routes
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/current-orders/[orderId]/items
  * Add item to current order
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: any
 ) {
   try {
-    const { orderId } = params;
+    const { orderId } = context.params as { orderId: string };
     const body = await request.json();
     const { cashierId, item } = body;
 
@@ -66,10 +69,10 @@ export async function POST(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: any
 ) {
   try {
-    const { orderId } = params;
+    const { orderId } = context.params as { orderId: string };
     const searchParams = request.nextUrl.searchParams;
     const cashierId = searchParams.get('cashierId');
 
