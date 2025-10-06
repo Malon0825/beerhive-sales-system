@@ -4,13 +4,17 @@
 
 [build]
   # Specifies the command to build the Next.js application
-  command = "npm run build"
+  # Clean cache before build to prevent false positive secret scanning
+  command = "rm -rf .next/cache && npm run build"
   
   # Directory where the build output is stored
   publish = ".next"
   
   # Node.js version requirement (must match package.json engines)
   NODE_VERSION = "18.17.0"
+  
+  # Ignore command allows Netlify to skip builds when only docs/non-code files change
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':!docs/' ':!*.md' ':!summary/'"
 
 # Build environment variables
 [build.environment]
@@ -22,6 +26,24 @@
 # The @netlify/plugin-nextjs plugin provides Next.js optimizations
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# ===================================
+# SECRET SCANNING CONFIGURATION
+# ===================================
+# Netlify automatically scans builds for potential secrets.
+# For Next.js apps, NEXT_PUBLIC_* variables are INTENTIONALLY public
+# and will appear in webpack cache - this is expected behavior.
+# 
+# We handle this by:
+# 1. Cleaning cache before each build (rm -rf .next/cache)
+# 2. Excluding cache directories in .netlifyignore
+# 3. Documenting that NEXT_PUBLIC_* variables are safe to expose
+#
+# If you see secret scanning warnings for NEXT_PUBLIC_SUPABASE_URL:
+# - This is a FALSE POSITIVE (these vars are meant to be public)
+# - The anon key is protected by Supabase Row Level Security (RLS)
+# - Service role key is NEVER exposed (server-side only, no NEXT_PUBLIC_ prefix)
+# ===================================
 
 # Production deployment settings
 [context.production]
