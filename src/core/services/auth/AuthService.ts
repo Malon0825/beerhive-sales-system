@@ -2,6 +2,15 @@ import { supabase } from '@/data/supabase/client';
 import { UserRole } from '@/models/enums/UserRole';
 import { AppError } from '@/lib/errors/AppError';
 
+/**
+ * Retry configuration for transient failures
+ */
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelayMs: 1000,
+  maxDelayMs: 5000,
+};
+
 export interface LoginCredentials {
   username: string;
   password: string;
@@ -37,41 +46,107 @@ export interface AuthUser {
  */
 export class AuthService {
   /**
+   * Retry helper for transient network failures
+   */
+  private static async retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    retries: number = RETRY_CONFIG.maxRetries
+  ): Promise<T> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error as Error;
+        
+        // Don't retry on 4xx errors (client errors like wrong password)
+        if (error instanceof AppError && error.statusCode >= 400 && error.statusCode < 500) {
+          throw error;
+        }
+        
+        // Don't retry on the last attempt
+        if (attempt === retries) {
+          break;
+        }
+        
+        // Calculate exponential backoff delay
+        const delay = Math.min(
+          RETRY_CONFIG.initialDelayMs * Math.pow(2, attempt),
+          RETRY_CONFIG.maxDelayMs
+        );
+        
+        console.warn(`[AuthService] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`, error);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError || new Error('Operation failed after retries');
+  }
+
+  /**
    * Login user with username and password
+   * Includes retry logic for transient network failures
    */
   static async login(credentials: LoginCredentials): Promise<AuthUser> {
-    try {
-      // Call server-side API to handle authentication
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(credentials),
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new AppError(result.error, response.status);
-      }
-
-      // Set session on client
-      if (result.data.session) {
-        await supabase.auth.setSession({
-          access_token: result.data.session.access_token,
-          refresh_token: result.data.session.refresh_token,
+    return this.retryWithBackoff(async () => {
+      try {
+        // Call server-side API to handle authentication
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(credentials),
+          // Add timeout to prevent hanging requests
+          signal: AbortSignal.timeout(15000), // 15 second timeout
         });
-      }
 
-      return result.data.user;
-    } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new AppError(result.error, response.status);
+        }
+
+        // Set session on client with retry
+        if (result.data.session) {
+          try {
+            const { error } = await supabase.auth.setSession({
+              access_token: result.data.session.access_token,
+              refresh_token: result.data.session.refresh_token,
+            });
+            
+            if (error) {
+              console.error('[AuthService] Failed to set session on client:', error);
+              // Don't throw - session is already set on server via cookies
+              // This is a client-side optimization that may fail in some browsers
+            }
+          } catch (sessionError) {
+            console.warn('[AuthService] Session sync warning:', sessionError);
+            // Continue - auth still works via cookies
+          }
+        }
+
+        return result.data.user;
+      } catch (error) {
+        if (error instanceof AppError) {
+          throw error;
+        }
+        
+        // Handle network errors
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          throw new AppError('Network error. Please check your connection and try again.', 503);
+        }
+        
+        // Handle timeout errors
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          throw new AppError('Login request timed out. Please try again.', 504);
+        }
+        
+        console.error('Login error:', error);
+        throw new AppError('An error occurred during login. Please try again.', 500);
       }
-      console.error('Login error:', error);
-      throw new AppError('An error occurred during login. Please try again.', 500);
-    }
+    });
   }
 
   /**
@@ -91,33 +166,43 @@ export class AuthService {
 
   /**
    * Get current authenticated user
+   * Includes retry logic for transient failures
    */
   static async getCurrentUser(): Promise<AuthUser | null> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        return null;
-      }
+      return await this.retryWithBackoff(async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          return null;
+        }
 
-      // Call API to get user details (bypasses RLS on server)
-      const response = await fetch('/api/auth/session', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
+        // Call API to get user details (bypasses RLS on server)
+        const response = await fetch('/api/auth/session', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          signal: AbortSignal.timeout(10000), // 10 second timeout
+        });
 
-      if (!response.ok) {
-        return null;
-      }
+        if (!response.ok) {
+          // Don't retry on 401/403 - user is not authenticated
+          if (response.status === 401 || response.status === 403) {
+            return null;
+          }
+          
+          // Throw to trigger retry on 5xx errors
+          throw new Error(`Session validation failed: ${response.status}`);
+        }
 
-      const result = await response.json();
+        const result = await response.json();
 
-      if (!result.success || !result.data) {
-        return null;
-      }
+        if (!result.success || !result.data) {
+          return null;
+        }
 
-      return result.data;
+        return result.data;
+      }, 2); // Only retry twice for session checks (faster feedback)
     } catch (error) {
       console.error('Get current user error:', error);
       return null;

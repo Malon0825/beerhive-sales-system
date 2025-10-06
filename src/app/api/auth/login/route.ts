@@ -91,22 +91,26 @@ export async function POST(request: NextRequest) {
     // Set cookies for middleware authentication and authorization
     // These cookies will be used by middleware to check route access
     if (authData.session) {
-      response.cookies.set('auth-token', authData.session.access_token, {
+      // Cookie configuration for production reliability
+      const isProduction = process.env.NODE_ENV === 'production';
+      const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: isProduction,
+        sameSite: 'lax' as const,
         maxAge: 60 * 60 * 24 * 7, // 7 days
         path: '/',
-      });
+        // Don't set domain to allow cookies on current domain and subdomains
+      };
+
+      response.cookies.set('auth-token', authData.session.access_token, cookieOptions);
 
       // Store roles as JSON array string for middleware
-      response.cookies.set('user-roles', JSON.stringify(userRoles), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7, // 7 days
-        path: '/',
-      });
+      response.cookies.set('user-roles', JSON.stringify(userRoles), cookieOptions);
+      
+      // Store user ID for quick reference (helps with debugging)
+      response.cookies.set('user-id', userData.id, cookieOptions);
+      
+      console.log('[AUTH] Cookies set successfully for user:', userData.id);
     }
 
     return response;
