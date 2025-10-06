@@ -312,33 +312,86 @@ export class OrderRepository {
   }
 
   /**
-   * Generate unique order number
+   * Generate unique order number with retry logic to prevent duplicates
+   * Format: ORD + YYMMDD + sequence (4 digits) + milliseconds (3 digits)
+   * Example: ORD250106-0001-234
    */
   private static async generateOrderNumber(): Promise<string> {
-    try {
-      const prefix = 'ORD';
-      const date = new Date();
-      const year = date.getFullYear().toString().slice(-2);
-      const month = (date.getMonth() + 1).toString().padStart(2, '0');
-      const day = date.getDate().toString().padStart(2, '0');
+    const maxRetries = 10;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const now = new Date();
+        const prefix = 'ORD';
+        const year = now.getFullYear().toString().slice(-2);
+        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+        const day = now.getDate().toString().padStart(2, '0');
+        const datePart = `${year}${month}${day}`;
 
-      // Get count of orders created today
-      const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
-      const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).toISOString();
+        // Get count of orders created today
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
 
-      // Use admin client to bypass RLS issues
-      const { count } = await supabaseAdmin
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', startOfDay)
-        .lt('created_at', endOfDay);
+        // Use admin client to bypass RLS issues
+        const { count } = await supabaseAdmin
+          .from('orders')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', startOfDay)
+          .lt('created_at', endOfDay);
 
-      const sequence = ((count || 0) + 1).toString().padStart(4, '0');
-      return `${prefix}${year}${month}${day}${sequence}`;
-    } catch (error) {
-      console.error('Error generating order number:', error);
-      // Fallback to timestamp-based number
-      return `ORD${Date.now()}`;
+        // Add milliseconds for additional uniqueness
+        const milliseconds = now.getMilliseconds().toString().padStart(3, '0');
+        const sequence = ((count || 0) + 1 + attempt).toString().padStart(4, '0');
+        
+        // Format: ORD250106-0001-234
+        const orderNumber = `${prefix}${datePart}-${sequence}-${milliseconds}`;
+
+        // Verify uniqueness before returning
+        const { data: existing } = await supabaseAdmin
+          .from('orders')
+          .select('order_number')
+          .eq('order_number', orderNumber)
+          .single();
+
+        if (!existing) {
+          console.log(`✅ [OrderRepository] Generated unique order number: ${orderNumber}`);
+          return orderNumber;
+        }
+
+        // If duplicate found, retry with increased sequence
+        console.warn(`⚠️ [OrderRepository] Order number ${orderNumber} already exists, retrying...`);
+        
+        // Add small delay to reduce race condition probability
+        await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1)));
+        
+      } catch (error: any) {
+        // If the error is "no rows found" (PGRST116), it means the number is unique
+        if (error?.code === 'PGRST116') {
+          // This means the order number doesn't exist yet - it's unique!
+          const now = new Date();
+          const year = now.getFullYear().toString().slice(-2);
+          const month = (now.getMonth() + 1).toString().padStart(2, '0');
+          const day = now.getDate().toString().padStart(2, '0');
+          const milliseconds = now.getMilliseconds().toString().padStart(3, '0');
+          
+          const { count } = await supabaseAdmin
+            .from('orders')
+            .select('*', { count: 'exact', head: true })
+            .gte('created_at', new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString())
+            .lt('created_at', new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString());
+          
+          const sequence = ((count || 0) + 1 + attempt).toString().padStart(4, '0');
+          return `${prefix}${year}${month}${day}-${sequence}-${milliseconds}`;
+        }
+        
+        console.error(`❌ [OrderRepository] Error generating order number (attempt ${attempt + 1}):`, error);
+      }
     }
+
+    // Fallback: Use timestamp for guaranteed uniqueness
+    const timestamp = Date.now();
+    const fallbackNumber = `ORD${timestamp}`;
+    console.error(`❌ [OrderRepository] Failed to generate order number after ${maxRetries} attempts, using fallback: ${fallbackNumber}`);
+    return fallbackNumber;
   }
 }
