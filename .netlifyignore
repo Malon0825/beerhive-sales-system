@@ -48,3 +48,12 @@ migrations/
 # Local environment files
 .env*.local
 .env.development
+
+# Webpack and Next.js build cache
+# These directories contain cached build artifacts that may include
+# public environment variables (NEXT_PUBLIC_*), which triggers false positives
+# in Netlify's secret scanning
+.netlify/
+.next/cache/
+.next/cache/webpack/
+node_modules/.cache/
