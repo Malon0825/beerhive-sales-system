@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { TableRepository } from '@/data/repositories/TableRepository';
 import { TableStatus } from '@/models/enums/TableStatus';
 import { AppError } from '@/lib/errors/AppError';
+import { requireManagerOrAbove } from '@/lib/utils/api-auth';
 
 /**
  * PATCH /api/tables/status
  * Bulk update table statuses
+ * Auth: manager or admin only (waiters should only change a single table via markCleaned)
  */
 export async function PATCH(request: NextRequest) {
   try {
+    // Authorization: restrict bulk updates to manager/admin
+    await requireManagerOrAbove(request);
+    
     const body = await request.json();
     
     if (!body.tableIds || !Array.isArray(body.tableIds)) {

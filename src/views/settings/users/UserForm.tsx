@@ -102,9 +102,16 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
 
   /**
    * Submit form to create or update user
+   * Prevents double submission using loading state and early validation
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Prevent double submission - exit immediately if already processing
+    if (loading) {
+      console.warn('[UserForm] Blocked duplicate submission attempt');
+      return;
+    }
 
     if (!validateForm()) {
       return;
@@ -153,10 +160,25 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
         });
         onSuccess();
       } else {
+        // Handle specific error cases
+        let errorMessage = result.error || 'Failed to save user';
+        
+        // 409 Conflict - duplicate username/email
+        if (response.status === 409) {
+          errorMessage = result.error || 'Username or email already exists. Please check the form and try again.';
+          
+          // Update form errors for better UX
+          if (errorMessage.toLowerCase().includes('username')) {
+            setErrors({ username: 'This username is already taken' });
+          } else if (errorMessage.toLowerCase().includes('email')) {
+            setErrors({ email: 'This email is already registered' });
+          }
+        }
+        
         toast({
           variant: 'destructive',
           title: 'Error',
-          description: result.error || 'Failed to save user',
+          description: errorMessage,
         });
       }
     } catch (error) {

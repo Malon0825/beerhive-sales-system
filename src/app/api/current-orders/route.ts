@@ -10,8 +10,10 @@ export const dynamic = 'force-dynamic';
  * GET /api/current-orders
  * Fetch all current (draft) orders for authenticated user
  * 
+ * Supports all staff roles: cashier, manager, admin
+ * 
  * Query params:
- * - cashierId: Filter by specific cashier (optional)
+ * - cashierId: Filter by specific user (cashier/manager/admin)
  * - all: If true, return all current orders (for staff monitoring)
  */
 export async function GET(request: NextRequest) {
@@ -33,13 +35,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Cashier ID is required (or use ?all=true for all orders)',
+          error: 'User ID is required (use cashierId parameter or ?all=true for all orders)',
         },
         { status: 400 }
       );
     }
 
-    // Fetch current orders for specific cashier
+    // Fetch current orders for specific user (cashier/manager/admin)
     const orders = await CurrentOrderRepository.getByCashier(cashierId);
 
     return NextResponse.json({
@@ -60,7 +62,12 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/current-orders
- * Create a new current (draft) order for the cashier
+ * Create a new current (draft) order
+ * 
+ * Accepts orders from:
+ * - Cashiers (role: 'cashier')
+ * - Managers (role: 'manager')
+ * - Admins (role: 'admin')
  */
 export async function POST(request: NextRequest) {
   try {
@@ -71,9 +78,50 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Cashier ID is required',
+          error: 'User ID is required (cashierId parameter)',
         },
         { status: 400 }
+      );
+    }
+
+    // Validate that the user exists and has appropriate role
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id, role, is_active, username')
+      .eq('id', cashierId)
+      .single();
+
+    if (userError || !user) {
+      console.error('User validation error:', userError);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid user ID. User not found in database.',
+        },
+        { status: 404 }
+      );
+    }
+
+    // Check if user has permission to create orders
+    const allowedRoles = ['cashier', 'admin', 'manager'];
+    if (!allowedRoles.includes(user.role)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `User role '${user.role}' is not authorized to create orders. Required roles: ${allowedRoles.join(', ')}`,
+        },
+        { status: 403 }
+      );
+    }
+
+    // Check if user is active
+    if (!user.is_active) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'User account is inactive. Please contact administrator.',
+        },
+        { status: 403 }
       );
     }
 
@@ -89,7 +137,7 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         data: order,
-        message: 'Current order created successfully',
+        message: `Current order created successfully by ${user.username} (${user.role})`,
       },
       { status: 201 }
     );

@@ -1,39 +1,59 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/data/supabase/client';
 import { KitchenOrderStatus } from '@/models/enums/KitchenOrderStatus';
 import { OrderCard } from '../kitchen/OrderCard';
+import { useToast } from '@/lib/hooks/useToast';
 
 /**
  * BartenderDisplay Component
- * Main bartender display interface for managing beverage orders
+ * Main bartender display interface for managing beverage orders with realtime updates
+ * 
+ * Features:
+ * - Realtime order updates via Supabase subscriptions
+ * - Status filtering (all, pending, preparing, ready)
+ * - Manual refresh capability
+ * - Automatic status change handling
  */
 export function BartenderDisplay() {
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | KitchenOrderStatus>('all');
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  // Fetch bartender orders
-  const fetchOrders = async () => {
+  /**
+   * Fetch bartender orders from API
+   */
+  const fetchOrders = useCallback(async (showRefreshIndicator = false) => {
     try {
+      if (showRefreshIndicator) setIsRefreshing(true);
+      
       const response = await fetch('/api/kitchen/orders?destination=bartender');
       const data = await response.json();
       
       if (data.success) {
         setOrders(data.data);
+        setError(null);
       } else {
         setError(data.error || 'Failed to fetch orders');
+        toast({ title: 'Error', description: 'Failed to load orders', variant: 'destructive' });
       }
     } catch (err) {
       console.error('Error fetching bartender orders:', err);
       setError('Failed to load orders');
+      toast({ title: 'Error', description: 'Network error while loading orders', variant: 'destructive' });
     } finally {
       setIsLoading(false);
+      if (showRefreshIndicator) setIsRefreshing(false);
     }
-  };
+  }, [toast]);
 
-  // Handle status change
+  /**
+   * Handle status change for a bartender order
+   */
   const handleStatusChange = async (orderId: string, status: KitchenOrderStatus) => {
     try {
       const response = await fetch(`/api/kitchen/orders/${orderId}/status`, {
@@ -47,26 +67,58 @@ export function BartenderDisplay() {
       const data = await response.json();
       
       if (data.success) {
-        // Refresh orders
-        await fetchOrders();
+        toast({ title: 'Success', description: `Order status updated to ${status}` });
+        // Orders will be updated via realtime subscription
       } else {
-        alert(`Failed to update status: ${data.error}`);
+        toast({ title: 'Error', description: `Failed to update status: ${data.error}`, variant: 'destructive' });
       }
     } catch (err) {
       console.error('Error updating status:', err);
-      alert('Failed to update order status');
+      toast({ title: 'Error', description: 'Failed to update order status', variant: 'destructive' });
     }
   };
 
-  // Initial load
+  /**
+   * Setup realtime subscription for bartender orders
+   */
   useEffect(() => {
+    // Initial fetch
     fetchOrders();
-    
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchOrders, 30000);
-    
-    return () => clearInterval(interval);
-  }, []);
+
+    // Create realtime subscription
+    const channel = supabase
+      .channel('bartender-orders-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'kitchen_orders',
+        },
+        async (payload) => {
+          console.log('Bartender: Kitchen order update:', payload);
+          
+          // Refetch orders on any change
+          await fetchOrders();
+          
+          // Show notification for new orders
+          if (payload.eventType === 'INSERT') {
+            toast({ 
+              title: 'New Order!', 
+              description: 'New beverage order received' 
+            });
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('Bartender orders subscription status:', status);
+      });
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchOrders, toast]);
 
   // Filter orders
   const filteredOrders = filter === 'all' 

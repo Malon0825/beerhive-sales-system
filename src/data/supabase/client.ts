@@ -37,10 +37,14 @@ function getSupabase(): SupabaseClient<Database> {
   }
 
   // Create and cache the client instance
+  // Configured for 24-hour sessions with automatic token refresh
   supabaseInstance = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
-      persistSession: true,
-      autoRefreshToken: true,
+      persistSession: true,        // Keep session in localStorage
+      autoRefreshToken: true,       // Auto-refresh tokens before expiry
+      detectSessionInUrl: false,    // Disable URL-based session detection for security
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storageKey: 'beerhive-auth-token', // Custom storage key for session
     },
   });
 

@@ -5,7 +5,6 @@ import { ProductRepository } from '@/data/repositories/ProductRepository';
 import { OrderService } from '@/core/services/orders/OrderService';
 import { OrderCalculation } from '@/core/services/orders/OrderCalculation';
 import { PricingService } from '@/core/services/pricing/PricingService';
-import { KitchenRouting } from '@/core/services/kitchen/KitchenRouting';
 import { CreateOrderDTO } from '@/models/dtos/CreateOrderDTO';
 import { AppError } from '@/lib/errors/AppError';
 
@@ -129,31 +128,20 @@ export class CreateOrder {
         await CustomerRepository.updateVisitInfo(customer.id, calculations.totalAmount);
       }
 
-      // Step 10: Route order items to kitchen/bartender
-      console.log(`🔍 [CreateOrder] Fetching full order details for routing...`);
+      // Step 10: Return created order with details
+      // Note: Kitchen routing happens when order is COMPLETED (payment received), not on creation
+      console.log(`🔍 [CreateOrder] Fetching full order details...`);
       const fullOrder = await OrderRepository.getById(order.id);
       
-      console.log(`🔍 [CreateOrder] Full order fetched:`, {
+      console.log(`✅ [CreateOrder] Order created successfully:`, {
         order_id: fullOrder?.id,
-        has_order_items: !!fullOrder?.order_items,
+        order_number: fullOrder?.order_number,
+        status: fullOrder?.status,
         order_items_count: fullOrder?.order_items?.length || 0
       });
+      
+      console.log(`ℹ️  [CreateOrder] Kitchen routing will occur when order is marked as COMPLETED`);
 
-      if (fullOrder && fullOrder.order_items && fullOrder.order_items.length > 0) {
-        console.log(`🍳 [CreateOrder] Starting kitchen routing for ${fullOrder.order_items.length} items...`);
-        try {
-          await KitchenRouting.routeOrder(order.id, fullOrder.order_items);
-          console.log(`✅ [CreateOrder] Kitchen routing completed successfully`);
-        } catch (routingError) {
-          // Log error but don't fail the order creation
-          console.error('❌ [CreateOrder] Kitchen routing error (non-fatal):', routingError);
-          console.error('Stack trace:', routingError);
-        }
-      } else {
-        console.warn('⚠️  [CreateOrder] No order items to route or fullOrder not found');
-      }
-
-      // Step 11: Return created order with details
       return fullOrder;
     } catch (error) {
       console.error('Create order error:', error);

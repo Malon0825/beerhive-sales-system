@@ -116,17 +116,93 @@ export class UserRepository {
 
   /**
    * Create new user
+   * ENHANCED: Pre-validates uniqueness to prevent orphaned auth records
+   * 
+   * Transaction Flow:
+   * 1. Check if username/email already exists (prevent duplicates)
+   * 2. Create user in Supabase Auth
+   * 3. Insert into users table
+   * 4. If step 3 fails, rollback step 2 (delete auth user)
+   * 
+   * @param requestId - Optional trace ID for correlating logs across layers
+   * @throws AppError with specific message if username/email exists
    */
-  static async create(input: CreateUserInput): Promise<any> {
+  static async create(input: CreateUserInput, requestId?: string): Promise<any> {
+    let authUserId: string | null = null;
+    const traceId = requestId || 'NO_TRACE_ID';
+    
     try {
-      // First, create user in Supabase Auth
+      // STEP 1: Pre-validate uniqueness BEFORE creating auth user
+      // This prevents orphaned auth records when username/email already exists
+      // NOTE: There's still a small race condition window, but this catches most cases
+      console.log('\n========================================');
+      console.log(`[UserRepository] ${traceId} 🚀 Starting user creation process`);
+      console.log(`[UserRepository] ${traceId} Input data:`, {
+        username: input.username,
+        email: input.email,
+        full_name: input.full_name,
+        roles: input.roles || [input.role]
+      });
+      console.log(`[UserRepository] ${traceId} Step 1: Pre-validating uniqueness...`);
+      
+      const { data: existingUsers, error: checkError } = await supabaseAdmin
+        .from('users')
+        .select('username, email, id, is_active')
+        .or(`username.eq.${input.username},email.eq.${input.email}`);
+      
+      if (checkError) {
+        console.error('[UserRepository] ❌ Uniqueness check failed:', checkError);
+        throw new AppError('Failed to validate user data', 500);
+      }
+      
+      console.log(`[UserRepository] ${traceId} 🔍 Pre-validation result:`, {
+        existingCount: existingUsers?.length || 0,
+        existing: existingUsers || []
+      });
+      
+      if (existingUsers && existingUsers.length > 0) {
+        const duplicate = existingUsers[0];
+        console.error(`[UserRepository] ${traceId} ❌ DUPLICATE FOUND:`, {
+          id: duplicate.id,
+          username: duplicate.username,
+          email: duplicate.email,
+          is_active: duplicate.is_active
+        });
+        
+        if (duplicate.username === input.username) {
+          console.warn(`[UserRepository] ${traceId} 🚫 Duplicate username detected:`, input.username);
+          throw new AppError(`Username "${input.username}" is already taken`, 409);
+        }
+        if (duplicate.email === input.email) {
+          console.warn(`[UserRepository] ${traceId} 🚫 Duplicate email detected:`, input.email);
+          throw new AppError(`Email "${input.email}" is already registered`, 409);
+        }
+      }
+      
+      console.log(`[UserRepository] ${traceId} ✅ Uniqueness validation passed - no duplicates found`);
+      
+      // STEP 2: Create user in Supabase Auth
+      console.log(`[UserRepository] ${traceId} Step 2: Creating user in Supabase Auth...`);
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: input.email,
         password: input.password,
         email_confirm: true,
       });
 
-      if (authError) throw new AppError(authError.message, 500);
+      if (authError) {
+        console.error('[UserRepository] ❌ Auth user creation failed:', {
+          message: authError.message,
+          status: authError.status,
+          code: authError.code
+        });
+        throw new AppError(authError.message, 500);
+      }
+      
+      authUserId = authData.user.id;
+      console.log(`[UserRepository] ${traceId} ✅ Auth user created successfully:`, {
+        authUserId: authUserId,
+        email: authData.user.email
+      });
 
       // Determine roles array
       // Prefer roles array if provided, otherwise convert single role to array
@@ -136,10 +212,21 @@ export class UserRepository {
       
       const primaryRole = rolesArray[0];
 
-      // Then create user record in users table
+      // STEP 3: Upsert user record in users table
+      // Note: Some environments may have a DB trigger that auto-inserts a users row on auth user creation.
+      // Using UPSERT on primary key (id) avoids PK conflicts and lets us supply full application fields.
+      console.log(`[UserRepository] ${traceId} Step 3: Upserting user into users table (onConflict: id)...`);
+      console.log(`[UserRepository] ${traceId} Upsert data:`, {
+        id: authData.user.id,
+        username: input.username,
+        email: input.email,
+        role: primaryRole,
+        roles: rolesArray
+      });
+      
       const { data, error } = await supabaseAdmin
         .from('users')
-        .insert({
+        .upsert({
           id: authData.user.id,
           username: input.username,
           email: input.email,
@@ -150,19 +237,134 @@ export class UserRepository {
           is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        })
+        }, { onConflict: 'id' })
         .select()
         .single();
 
       if (error) {
-        // Rollback auth user creation if users table insert fails
-        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        // STEP 4: CRITICAL - Rollback auth user if users table insert fails
+        console.error(`[UserRepository] ${traceId} ❌ Users table insert failed:`, {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        });
+        console.log(`[UserRepository] ${traceId} ⚠️  Step 4: Rolling back auth user:`, authUserId);
+        
+        try {
+          const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(authUserId!);
+          if (deleteError) {
+            console.error(`[UserRepository] ${traceId} ❌ CRITICAL: Rollback failed!`, {
+              deleteError: deleteError,
+              orphanedAuthUserId: authUserId
+            });
+            // Orphaned auth user created - needs manual cleanup
+            throw new AppError(
+              `User creation failed and rollback failed. Orphaned auth user: ${authUserId}. ` +
+              `Contact administrator to clean up. Original error: ${error.message}`,
+              500
+            );
+          }
+          console.log(`[UserRepository] ${traceId} ✅ Rollback successful - auth user deleted:`, authUserId);
+        } catch (rollbackError) {
+          console.error(`[UserRepository] ${traceId} ❌ Exception during rollback:`, rollbackError);
+          throw rollbackError;
+        }
+        
+        // Provide user-friendly error message based on error code
+        console.log(`[UserRepository] ${traceId} 🔍 Analyzing error code:`, error.code);
+
+        // Handle enum role mismatch (e.g., waiter not present in DB enum)
+        const messageLower = (error.message || '').toLowerCase();
+        if (messageLower.includes('invalid input value for enum user_role')) {
+          const allowedRoles = Object.values(UserRole);
+          console.error(`[UserRepository] ${traceId} 🚫 Invalid role enum value provided`, {
+            attemptedRole: input.role || (input.roles && input.roles[0]),
+            allowedRoles,
+          });
+          throw new AppError(
+            `Invalid role provided. Allowed roles: ${allowedRoles.join(', ')}. ` +
+            `If you just added a new role, ensure the database enum is migrated.`,
+            400
+          );
+        }
+        if (error.code === '23505') { // PostgreSQL unique violation
+          // This means race condition occurred - another request created the user
+          const constraintName = (error.details || error.message || '').toString();
+          const lcConstraint = constraintName.toLowerCase();
+          console.error(`[UserRepository] ${traceId} 🚫 PostgreSQL UNIQUE constraint violation:`, {
+            code: error.code,
+            constraint: constraintName,
+            username: input.username,
+            email: input.email
+          });
+          
+          // First, try to detect from constraint/message text
+          if (lcConstraint.includes('username') || lcConstraint.includes('users_username')) {
+            throw new AppError(`Username "${input.username}" is already taken (created by another request)`, 409);
+          } else if (lcConstraint.includes('email') || lcConstraint.includes('users_email')) {
+            throw new AppError(`Email "${input.email}" is already registered (created by another request)`, 409);
+          }
+
+          // Fallback: Re-check which field exists to return precise error
+          console.log(`[UserRepository] ${traceId} 🔁 Fallback check: determining conflicting field...`);
+          try {
+            const [usernameExists, emailExists] = await Promise.all([
+              UserRepository.getByUsername(input.username).then(u => !!u).catch(() => false),
+              UserRepository.getByEmail(input.email).then(u => !!u).catch(() => false),
+            ]);
+
+            console.log(`[UserRepository] ${traceId} Fallback result:`, {
+              usernameExists,
+              emailExists,
+            });
+
+            if (usernameExists && emailExists) {
+              throw new AppError(`Both username "${input.username}" and email "${input.email}" already exist`, 409);
+            }
+            if (usernameExists) {
+              throw new AppError(`Username "${input.username}" is already taken (created by another request)`, 409);
+            }
+            if (emailExists) {
+              throw new AppError(`Email "${input.email}" is already registered (created by another request)`, 409);
+            }
+          } catch (fallbackErr) {
+            // If fallback threw an AppError, bubble it up
+            if (fallbackErr instanceof AppError) {
+              throw fallbackErr;
+            }
+            console.warn(`[UserRepository] ${traceId} ⚠️  Fallback detection failed, returning generic 409`, fallbackErr);
+          }
+
+          throw new AppError('Username or email already exists', 409);
+        }
+        console.error(`[UserRepository] ${traceId} ❌ Unexpected database error:`, error);
         throw new AppError(error.message, 500);
       }
-
+      
+      console.log(`[UserRepository] ${traceId} ✅ User created successfully:`, {
+        id: data.id,
+        username: data.username,
+        email: data.email
+      });
+      console.log('========================================\n');
       return data;
+      
     } catch (error) {
-      console.error('Error creating user:', error);
+      console.error(`[UserRepository] ${traceId} Error creating user:`, error);
+      
+      // If we have an auth user ID and error is not AppError (unexpected error),
+      // attempt cleanup
+      if (authUserId && !(error instanceof AppError)) {
+        console.log(`[UserRepository] ${traceId} Unexpected error - attempting cleanup of auth user:`, authUserId);
+        try {
+          await supabaseAdmin.auth.admin.deleteUser(authUserId);
+          console.log(`[UserRepository] ${traceId} Cleanup successful`);
+        } catch (cleanupError) {
+          console.error(`[UserRepository] ${traceId} Cleanup failed:`, cleanupError);
+        }
+      }
+      
       throw error instanceof AppError ? error : new AppError('Failed to create user', 500);
     }
   }
@@ -315,5 +517,102 @@ export class UserRepository {
       console.error('Error fetching users by role:', error);
       throw error instanceof AppError ? error : new AppError('Failed to fetch users', 500);
     }
+  }
+
+  /**
+   * Get default POS user for order transactions
+   * Returns the first active user with POS privileges (admin, manager, or cashier)
+   * Used as a fallback when no authenticated user is available
+   * 
+   * Priority order: admin > manager > cashier
+   * 
+   * @throws AppError if no POS user exists
+   * @returns The default POS user object
+   */
+  static async getDefaultPOSUser(): Promise<any> {
+    try {
+      console.log('[UserRepository] Fetching default POS user...');
+      
+      // Try to get users with POS privileges in priority order
+      const { data, error } = await supabaseAdmin
+        .from('users')
+        .select('id, username, email, full_name, role')
+        .in('role', [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER])
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (error) {
+        console.error('[UserRepository] ❌ Error fetching POS user:', error);
+        throw new AppError(error.message, 500);
+      }
+
+      if (!data || data.length === 0) {
+        // No POS user found - this is a critical error
+        console.error('[UserRepository] ❌ No active POS user (admin/manager/cashier) found in database');
+        throw new AppError(
+          'No POS user found in system. Please create an admin, manager, or cashier user first.',
+          500
+        );
+      }
+
+      const user = data[0];
+      console.log('[UserRepository] ✅ Default POS user found:', {
+        id: user.id,
+        username: user.username,
+        role: user.role
+      });
+
+      return user;
+    } catch (error) {
+      console.error('[UserRepository] Error fetching default POS user:', error);
+      throw error instanceof AppError ? error : new AppError('Failed to fetch default POS user', 500);
+    }
+  }
+
+  /**
+   * Get default cashier user (deprecated - use getDefaultPOSUser instead)
+   * @deprecated Use getDefaultPOSUser() for multi-role support
+   */
+  static async getDefaultCashier(): Promise<any> {
+    console.warn('[UserRepository] getDefaultCashier() is deprecated. Use getDefaultPOSUser() instead.');
+    return this.getDefaultPOSUser();
+  }
+
+  /**
+   * Validates if a user ID exists and is active
+   * 
+   * @param userId - The user ID to validate
+   * @param allowedRoles - Optional array of roles to validate against (e.g., ['admin', 'manager', 'cashier'])
+   * @returns True if user exists, is active, and has allowed role (if specified), false otherwise
+   */
+  static async validateUserId(userId: string, allowedRoles?: UserRole[]): Promise<boolean> {
+    try {
+      const user = await this.getById(userId);
+      
+      if (!user || !user.is_active) {
+        return false;
+      }
+
+      // If roles are specified, check if user has one of the allowed roles
+      if (allowedRoles && allowedRoles.length > 0) {
+        return allowedRoles.includes(user.role);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('[UserRepository] Error validating user ID:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Validates if a user has POS privileges (admin, manager, or cashier)
+   * 
+   * @param userId - The user ID to validate
+   * @returns True if user exists, is active, and has POS role
+   */
+  static async validatePOSUser(userId: string): Promise<boolean> {
+    return this.validateUserId(userId, [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER]);
   }
 }

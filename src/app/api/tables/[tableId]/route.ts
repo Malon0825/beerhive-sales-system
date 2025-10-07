@@ -4,6 +4,8 @@ import { TableService } from '@/core/services/tables/TableService';
 import { TableStatus } from '@/models/enums/TableStatus';
 import { AppError } from '@/lib/errors/AppError';
 import { supabaseAdmin } from '@/data/supabase/server-client';
+import { requireRole, requireManagerOrAbove } from '@/lib/utils/api-auth';
+import { UserRole } from '@/models/enums/UserRole';
 
 /**
  * GET /api/tables/[tableId]
@@ -14,6 +16,9 @@ export async function GET(
   { params }: { params: { tableId: string } }
 ) {
   try {
+    // Authorization: allow staff including waiter to view a table
+    await requireRole(request, [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.WAITER]);
+
     const table = await TableRepository.getById(params.tableId);
 
     if (!table) {
@@ -61,6 +66,8 @@ export async function PATCH(
     if (body.action) {
       switch (body.action) {
         case 'occupy':
+          // Authorization: occupy allowed for cashier, manager, admin, waiter (expanded)
+          await requireRole(request, [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.WAITER]);
           // If no order ID provided, just mark as occupied (for walk-ins)
           if (body.orderId) {
             table = await TableService.occupyTable(params.tableId, body.orderId, supabaseAdmin);
@@ -71,26 +78,38 @@ export async function PATCH(
           break;
 
         case 'release':
+          // Authorization: release allowed for cashier, manager, admin, waiter (expanded)
+          await requireRole(request, [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.WAITER]);
           table = await TableService.releaseTable(params.tableId, supabaseAdmin);
           break;
 
         case 'markCleaned':
+          // Authorization: waiter can mark cleaned (plus manager/admin)
+          await requireRole(request, [UserRole.ADMIN, UserRole.MANAGER, UserRole.WAITER]);
           table = await TableService.markCleaned(params.tableId, supabaseAdmin);
           break;
 
         case 'reserve':
+          // Authorization: reservations are manager/admin only
+          await requireManagerOrAbove(request);
           table = await TableService.reserveTable(params.tableId, body.notes, supabaseAdmin);
           break;
 
         case 'cancelReservation':
+          // Authorization: manager/admin only
+          await requireManagerOrAbove(request);
           table = await TableService.cancelReservation(params.tableId, supabaseAdmin);
           break;
 
         case 'deactivate':
+          // Authorization: manager/admin only
+          await requireManagerOrAbove(request);
           table = await TableRepository.deactivate(params.tableId, supabaseAdmin);
           break;
 
         case 'reactivate':
+          // Authorization: manager/admin only
+          await requireManagerOrAbove(request);
           table = await TableRepository.reactivate(params.tableId, supabaseAdmin);
           break;
 
@@ -102,6 +121,8 @@ export async function PATCH(
       }
     } else {
       // Regular update
+      // Authorization: regular updates restricted to manager/admin
+      await requireManagerOrAbove(request);
       table = await TableRepository.update(params.tableId, body);
     }
 
