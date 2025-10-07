@@ -74,7 +74,7 @@ export const ROUTE_ACCESS_RULES: RouteAccess[] = [
   // Tables - Admin, Manager, Cashier (cashiers need to assign tables)
   {
     path: '/tables',
-    allowedRoles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER],
+    allowedRoles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.WAITER],
   },
   
   // Packages - Admin, Manager only

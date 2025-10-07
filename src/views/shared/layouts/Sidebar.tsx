@@ -28,7 +28,12 @@ import { UserRole } from '@/models/enums/UserRole';
  * Props for the Sidebar component
  */
 interface SidebarProps {
+  /** Current user's role for menu filtering */
   userRole?: UserRole;
+  /** Visual variant. Desktop renders a static aside, mobile renders a plain container suitable for a drawer. */
+  variant?: 'desktop' | 'mobile';
+  /** Optional callback invoked when a navigation item is clicked (useful to close mobile drawer). */
+  onNavigate?: () => void;
 }
 
 /**
@@ -80,7 +85,8 @@ const menuItems: MenuItem[] = [
     label: 'Tables',
     icon: <LayoutGrid className="h-5 w-5" />,
     href: '/tables',
-    roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER],
+    // Grant waiter access to tables management per role policy update
+    roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.WAITER],
   },
   {
     label: 'Current Orders',
@@ -137,16 +143,17 @@ const menuItems: MenuItem[] = [
     roles: [UserRole.ADMIN, UserRole.MANAGER],
   },
 ];
-
 /**
  * Sidebar Component
  * Displays navigation menu with role-based access control
- * Shows logo, menu items filtered by user role, and copyright notice
+ *Shows logo, menu items filtered by user role, and copyright notice
  * 
+ * - Desktop variant renders a static aside visible on `lg+`
+ * - Mobile variant renders a plain container; parent can wrap it in a drawer/overlay
+ *
  * @param {SidebarProps} props - Component props
- * @param {UserRole} props.userRole - Current user's role for menu filtering
  */
-export function Sidebar({ userRole = UserRole.CASHIER }: SidebarProps) {
+export function Sidebar({ userRole = UserRole.CASHIER, variant = 'desktop', onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const [imageError, setImageError] = useState(false);
 
@@ -154,17 +161,20 @@ export function Sidebar({ userRole = UserRole.CASHIER }: SidebarProps) {
   const filteredMenuItems = menuItems.filter((item) =>
     item.roles.includes(userRole)
   );
-
-  /**
-   * Handle image load errors by setting fallback state
-   */
   const handleImageError = () => {
     console.error('Failed to load BeerHive logo from /beerhive-logo.png');
     setImageError(true);
   };
 
+  // Choose container element and classes based on variant
+  const containerClass =
+    variant === 'desktop'
+      ? 'hidden w-64 flex-col border-r bg-background lg:flex'
+      : 'w-64 max-w-[85vw] flex h-full flex-col border-r bg-background';
+  const Container: React.ElementType = variant === 'desktop' ? 'aside' : 'div';
+
   return (
-    <aside className="hidden w-64 flex-col border-r bg-background lg:flex">
+    <Container className={cn(containerClass, 'sidebar')} aria-label="Sidebar">
       {/* Logo and brand section */}
       <div className="flex h-16 items-center border-b px-6">
         <Link href="/" className="flex items-center gap-2 font-semibold">
@@ -190,7 +200,7 @@ export function Sidebar({ userRole = UserRole.CASHIER }: SidebarProps) {
       </div>
 
       {/* Navigation menu with role-based filtering */}
-      <nav className="flex-1 overflow-y-auto py-4">
+      <nav className="flex-1 overflow-y-auto py-4" aria-label="Main">
         <ul className="space-y-1 px-3">
           {filteredMenuItems.map((item) => {
             // Determine if current route is active
@@ -202,11 +212,18 @@ export function Sidebar({ userRole = UserRole.CASHIER }: SidebarProps) {
                 <Link
                   href={item.href}
                   className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2',
                     isActive
                       ? 'bg-amber-100 text-amber-900'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                   )}
+                  aria-current={isActive ? 'page' : undefined}
+                  onClick={() => {
+                    // Close the mobile drawer after navigation
+                    if (variant === 'mobile') {
+                      onNavigate?.();
+                    }
+                  }}
                 >
                   {item.icon}
                   <span>{item.label}</span>
@@ -216,13 +233,11 @@ export function Sidebar({ userRole = UserRole.CASHIER }: SidebarProps) {
           })}
         </ul>
       </nav>
-
-      {/* Copyright footer */}
       <div className="border-t p-4">
         <p className="text-xs text-muted-foreground text-center">
           © 2025 BeerHive POS
         </p>
       </div>
-    </aside>
+    </Container>
   );
 }

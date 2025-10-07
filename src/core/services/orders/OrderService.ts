@@ -1,6 +1,7 @@
 import { OrderRepository } from '@/data/repositories/OrderRepository';
 import { Order } from '@/models/entities/Order';
 import { OrderStatus } from '@/models/enums/OrderStatus';
+import { KitchenRouting } from '@/core/services/kitchen/KitchenRouting';
 import { AppError } from '@/lib/errors/AppError';
 
 /**
@@ -10,9 +11,19 @@ import { AppError } from '@/lib/errors/AppError';
 export class OrderService {
   /**
    * Complete order (mark as completed)
+   * After completion, routes order items to kitchen/bartender based on product category
+   * 
+   * Flow:
+   * 1. Validate order exists and is in pending state
+   * 2. Mark order as completed
+   * 3. Route order items to kitchen/bartender for preparation
+   * 4. Kitchen/bartender will receive real-time notifications
    */
   static async completeOrder(orderId: string): Promise<Order> {
     try {
+      console.log(`🎯 [OrderService.completeOrder] Starting completion for order ${orderId}`);
+      
+      // Step 1: Get order with items
       const order = await OrderRepository.getById(orderId);
       
       if (!order) {
@@ -23,9 +34,33 @@ export class OrderService {
         throw new AppError(`Cannot complete order with status: ${order.status}`, 400);
       }
 
-      return await OrderRepository.updateStatus(orderId, OrderStatus.COMPLETED);
+      console.log(`✅ [OrderService.completeOrder] Order validated, ${order.order_items?.length || 0} items found`);
+
+      // Step 2: Mark order as completed
+      const completedOrder = await OrderRepository.updateStatus(orderId, OrderStatus.COMPLETED);
+      console.log(`✅ [OrderService.completeOrder] Order marked as COMPLETED`);
+
+      // Step 3: Route order items to kitchen/bartender
+      if (order.order_items && order.order_items.length > 0) {
+        console.log(`🍳 [OrderService.completeOrder] Routing ${order.order_items.length} items to kitchen/bartender...`);
+        
+        try {
+          await KitchenRouting.routeOrder(orderId, order.order_items);
+          console.log(`✅ [OrderService.completeOrder] Kitchen routing completed successfully`);
+        } catch (routingError) {
+          // Log error but don't fail the order completion
+          // The order is already completed, kitchen routing is supplementary
+          console.error('⚠️  [OrderService.completeOrder] Kitchen routing failed (non-fatal):', routingError);
+          console.warn('⚠️  [OrderService.completeOrder] Order is completed but kitchen may not receive items');
+        }
+      } else {
+        console.warn('⚠️  [OrderService.completeOrder] No order items to route');
+      }
+
+      console.log(`🎉 [OrderService.completeOrder] Order ${orderId} completed successfully`);
+      return completedOrder;
     } catch (error) {
-      console.error('Complete order error:', error);
+      console.error('❌ [OrderService.completeOrder] Error:', error);
       throw error instanceof AppError ? error : new AppError('Failed to complete order', 500);
     }
   }

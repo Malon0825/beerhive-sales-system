@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
@@ -50,12 +50,30 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
     setIsMobileSidebarOpen(!isMobileSidebarOpen);
   };
 
+  /**
+   * Close mobile drawer with Escape key and lock body scroll when open
+   */
+  useEffect(() => {
+    if (!isMobileSidebarOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMobileSidebarOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    // Prevent background scroll on mobile when drawer is open
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isMobileSidebarOpen]);
+
   return (
     <ToastProvider>
       <NotificationProvider>
         <div className="flex h-screen overflow-hidden bg-gray-50">
           {/* Sidebar for desktop */}
-          <Sidebar userRole={user?.role} />
+          <Sidebar userRole={user?.role} variant="desktop" />
 
           {/* Mobile sidebar overlay */}
           {isMobileSidebarOpen && (
@@ -64,8 +82,18 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
                 className="fixed inset-0 z-40 bg-black/50 lg:hidden"
                 onClick={() => setIsMobileSidebarOpen(false)}
               />
-              <aside className="fixed inset-y-0 left-0 z-50 w-64 border-r bg-background lg:hidden">
-                <Sidebar userRole={user?.role} />
+              <aside
+                className="fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] border-r bg-background shadow-lg transition-transform duration-300 ease-out lg:hidden"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Navigation menu"
+                tabIndex={-1}
+              >
+                <Sidebar
+                  userRole={user?.role}
+                  variant="mobile"
+                  onNavigate={() => setIsMobileSidebarOpen(false)}
+                />
               </aside>
             </>
           )}
@@ -90,3 +118,4 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
     </ToastProvider>
   );
 }
+

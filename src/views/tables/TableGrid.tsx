@@ -14,6 +14,7 @@ import AddTableDialog from './AddTableDialog';
 import DeactivateTableDialog from './DeactivateTableDialog';
 import { supabase } from '@/data/supabase/client';
 import { Plus, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '@/lib/hooks/useAuth';
 
 export default function TableGrid() {
   const [tables, setTables] = useState<Table[]>([]);
@@ -27,6 +28,20 @@ export default function TableGrid() {
   const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
   const [showInactiveTables, setShowInactiveTables] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Role-based capability flags derived from authenticated user
+  // - Manager/Admin: full control (reserve/cancel/deactivate/reactivate/create)
+  // - Cashier: occupy/release
+  // - Waiter: occupy/release/markCleaned
+  const { isManagerOrAbove, isWaiter, isCashier } = useAuth();
+  const canReserve = isManagerOrAbove();
+  const canCancelReservation = isManagerOrAbove();
+  const canOccupy = isManagerOrAbove() || isCashier() || isWaiter();
+  const canRelease = isManagerOrAbove() || isCashier() || isWaiter();
+  const canMarkCleaned = isManagerOrAbove() || isWaiter();
+  const canDeactivate = isManagerOrAbove();
+  const canReactivate = isManagerOrAbove();
+  const canCreateTable = isManagerOrAbove();
 
   // Show toast notification
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -404,14 +419,16 @@ export default function TableGrid() {
             >
               {showInactiveTables ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               {showInactiveTables ? 'Hide' : 'Show'} Inactive ({stats.inactive})
-            </button>
-            <button
-              onClick={() => setShowAddTableDialog(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2 whitespace-nowrap"
-            >
-              <Plus className="h-4 w-4" />
-              Add Table
-            </button>
+          </button>
+            {canCreateTable && (
+              <button
+                onClick={() => setShowAddTableDialog(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2 whitespace-nowrap"
+              >
+                <Plus className="h-4 w-4" />
+                Add Table
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -448,6 +465,13 @@ export default function TableGrid() {
                   onQuickAction={handleQuickStatusChange}
                   onDeactivate={handleDeactivateClick}
                   onClick={handleTableClick}
+                  // Pass role-based action visibility
+                  canReserve={canReserve}
+                  canOccupy={canOccupy}
+                  canRelease={canRelease}
+                  canMarkCleaned={canMarkCleaned}
+                  canCancelReservation={canCancelReservation}
+                  canDeactivate={canDeactivate}
                 />
               ))}
             </div>
@@ -474,15 +498,17 @@ export default function TableGrid() {
                         onClick={handleTableClick}
                       />
                     </div>
-                    <button
-                      onClick={() => handleReactivate(table.id)}
-                      className="mt-2 w-full px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm font-medium flex items-center justify-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Reactivate Table
-                    </button>
+                    {canReactivate && (
+                      <button
+                        onClick={() => handleReactivate(table.id)}
+                        className="mt-2 w-full px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm font-medium flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Reactivate Table
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

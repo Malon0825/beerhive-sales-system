@@ -4,6 +4,8 @@ import { TableService } from '@/core/services/tables/TableService';
 import { TableStatus } from '@/models/enums/TableStatus';
 import { AppError } from '@/lib/errors/AppError';
 import { supabaseAdmin } from '@/data/supabase/server-client';
+import { requireRole, requireManagerOrAbove } from '@/lib/utils/api-auth';
+import { UserRole } from '@/models/enums/UserRole';
 
 // Force dynamic rendering for this route
 export const dynamic = 'force-dynamic';
@@ -11,10 +13,14 @@ export const dynamic = 'force-dynamic';
 /**
  * GET /api/tables
  * Get all tables or filter by query params
+ * Auth: admin, manager, cashier, waiter (waiter needs read access to mark cleaned later)
  * Uses server-side Supabase client for API route context
  */
 export async function GET(request: NextRequest) {
   try {
+    // Authorization: allow staff including waiter to view tables
+    await requireRole(request, [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.WAITER]);
+
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status') as TableStatus | null;
     const area = searchParams.get('area');
@@ -70,13 +76,14 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/tables
- * Create new table (admin/manager only)
+ * Create new table
+ * Auth: manager or above only
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
-    // TODO: Add authentication check for admin/manager role
+    // Authorization: only manager/admin can create tables
+    await requireManagerOrAbove(request);
 
     const table = await TableRepository.create(body);
 

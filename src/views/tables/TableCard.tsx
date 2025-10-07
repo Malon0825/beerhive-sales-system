@@ -9,13 +9,37 @@ import React from 'react';
 import { Table, TableStatus } from '@/models';
 import TableStatusBadge from './TableStatusBadge';
 
+/**
+ * Props for `TableCard` controlling table display and which actions are available.
+ * New optional boolean flags allow parent components to hide/show specific action buttons
+ * based on the current user's role without altering business logic.
+ */
 interface TableCardProps {
+  /** Table entity to render. */
   table: Table;
+  /** Handler to open reservation flow. Rendered only when `canReserve` is true. */
   onReserve?: (table: Table) => void;
+  /** Handler to open occupy flow. Rendered only when `canOccupy` is true. */
   onOccupy?: (table: Table) => void;
+  /** Handler for quick actions like release, markCleaned, cancelReservation. */
   onQuickAction?: (tableId: string, action: 'release' | 'markCleaned' | 'cancelReservation') => Promise<void>;
+  /** Handler to deactivate a table. Rendered only when `canDeactivate` is true. */
   onDeactivate?: (table: Table) => void;
+  /** Card click handler for future details navigation. */
   onClick?: (table: Table) => void;
+
+  /** Whether to show the Reserve button. Defaults to true. */
+  canReserve?: boolean;
+  /** Whether to show the Occupy button. Defaults to true. */
+  canOccupy?: boolean;
+  /** Whether to show the To Cleaning (release) button. Defaults to true. */
+  canRelease?: boolean;
+  /** Whether to show the Set Available (markCleaned) button. Defaults to true. */
+  canMarkCleaned?: boolean;
+  /** Whether to show the Cancel Reservation button. Defaults to true. */
+  canCancelReservation?: boolean;
+  /** Whether to show the Deactivate button. Defaults to true. */
+  canDeactivate?: boolean;
 }
 
 /**
@@ -29,7 +53,13 @@ export default function TableCard({
   onOccupy, 
   onQuickAction,
   onDeactivate, 
-  onClick 
+  onClick,
+  canReserve = true,
+  canOccupy = true,
+  canRelease = true,
+  canMarkCleaned = true,
+  canCancelReservation = true,
+  canDeactivate = true,
 }: TableCardProps) {
   /**
    * Handle reserve button click
@@ -153,28 +183,32 @@ export default function TableCard({
         </div>
       )}
 
-      {/* Quick Actions */}
+      {/* Quick Actions (role-aware rendering) */}
       <div className="flex gap-2 mt-4 pt-3 border-t border-gray-200">
         {table.status === TableStatus.AVAILABLE && (
           <>
-            <button
-              onClick={handleOccupyClick}
-              className="flex-1 text-xs px-2 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors font-medium"
-              title="Mark table as occupied"
-            >
-              Occupy
-            </button>
-            <button
-              onClick={handleReserveClick}
-              className="flex-1 text-xs px-2 py-1.5 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition-colors font-medium"
-              title="Reserve this table"
-            >
-              Reserve
-            </button>
+            {canOccupy && (
+              <button
+                onClick={handleOccupyClick}
+                className="flex-1 text-xs px-2 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors font-medium"
+                title="Mark table as occupied"
+              >
+                Occupy
+              </button>
+            )}
+            {canReserve && (
+              <button
+                onClick={handleReserveClick}
+                className="flex-1 text-xs px-2 py-1.5 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition-colors font-medium"
+                title="Reserve this table"
+              >
+                Reserve
+              </button>
+            )}
           </>
         )}
         
-        {table.status === TableStatus.OCCUPIED && (
+        {table.status === TableStatus.OCCUPIED && canRelease && (
           <>
             <button
               onClick={(e) => handleQuickActionClick(e, 'release')}
@@ -188,24 +222,28 @@ export default function TableCard({
         
         {table.status === TableStatus.RESERVED && (
           <>
-            <button
-              onClick={handleOccupyClick}
-              className="flex-1 text-xs px-2 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors font-medium"
-              title="Customer arrived - occupy table"
-            >
-              Occupy
-            </button>
-            <button
-              onClick={(e) => handleQuickActionClick(e, 'cancelReservation')}
-              className="flex-1 text-xs px-2 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors font-medium"
-              title="Cancel reservation"
-            >
-              Cancel
-            </button>
+            {canOccupy && (
+              <button
+                onClick={handleOccupyClick}
+                className="flex-1 text-xs px-2 py-1.5 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors font-medium"
+                title="Customer arrived - occupy table"
+              >
+                Occupy
+              </button>
+            )}
+            {canCancelReservation && (
+              <button
+                onClick={(e) => handleQuickActionClick(e, 'cancelReservation')}
+                className="flex-1 text-xs px-2 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors font-medium"
+                title="Cancel reservation"
+              >
+                Cancel
+              </button>
+            )}
           </>
         )}
         
-        {table.status === TableStatus.CLEANING && (
+        {table.status === TableStatus.CLEANING && canMarkCleaned && (
           <button
             onClick={(e) => handleQuickActionClick(e, 'markCleaned')}
             className="flex-1 text-xs px-2 py-1.5 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors font-medium"
@@ -216,8 +254,8 @@ export default function TableCard({
         )}
       </div>
 
-      {/* Deactivate Button - Only show if table is not occupied */}
-      {table.status !== TableStatus.OCCUPIED && !table.current_order_id && onDeactivate && (
+      {/* Deactivate Button - role-aware; show only when permitted and meaningful */}
+      {canDeactivate && table.status !== TableStatus.OCCUPIED && !table.current_order_id && onDeactivate && (
         <div className="mt-2 pt-2 border-t border-gray-200">
           <button
             onClick={handleDeactivateClick}

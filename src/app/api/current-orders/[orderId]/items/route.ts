@@ -7,6 +7,8 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/current-orders/[orderId]/items
  * Add item to current order
+ * 
+ * Accepts from: cashier, manager, admin roles
  */
 export async function POST(
   request: NextRequest,
@@ -21,7 +23,7 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error: 'Cashier ID is required',
+          error: 'User ID is required (cashierId parameter)',
         },
         { status: 400 }
       );
@@ -66,6 +68,8 @@ export async function POST(
 /**
  * DELETE /api/current-orders/[orderId]/items
  * Clear all items from current order
+ * 
+ * Accepts from: cashier, manager, admin roles
  */
 export async function DELETE(
   request: NextRequest,
@@ -80,7 +84,7 @@ export async function DELETE(
       return NextResponse.json(
         {
           success: false,
-          error: 'Cashier ID is required',
+          error: 'User ID is required (cashierId parameter)',
         },
         { status: 400 }
       );
