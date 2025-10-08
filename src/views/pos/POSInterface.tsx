@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Product } from '@/models/entities/Product';
 import { Package } from '@/models/entities/Package';
 import { Customer } from '@/models/entities/Customer';
@@ -12,6 +12,7 @@ import { Button } from '../shared/ui/button';
 import { Badge } from '../shared/ui/badge';
 import { Search, Grid, List, User, Armchair, CheckCircle, Package as PackageIcon } from 'lucide-react';
 import { Input } from '../shared/ui/input';
+import CategoryFilter from './components/CategoryFilter';
 import { CustomerSearch } from './CustomerSearch';
 import { TableSelector } from './TableSelector';
 import { PaymentPanel } from './PaymentPanel';
@@ -34,6 +35,7 @@ export function POSInterface() {
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<'all' | 'packages' | 'featured'>('all');
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [showTableSelector, setShowTableSelector] = useState(false);
   const [showPaymentPanel, setShowPaymentPanel] = useState(false);
@@ -42,6 +44,8 @@ export function POSInterface() {
   const [receiptData, setReceiptData] = useState<any>(null);
   const cart = useCart();
   const [cartRestored, setCartRestored] = useState(false);
+  const [categories, setCategories] = useState<Array<{id: string; name: string; color_code?: string}>>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   
   // Show loading message if cart items were restored
   useEffect(() => {
@@ -84,6 +88,7 @@ export function POSInterface() {
     hasFetchedRef.current = true;
     fetchProducts();
     fetchPackages();
+    fetchCategories();
   }, []);
 
   /**
@@ -115,6 +120,32 @@ export function POSInterface() {
       setLoading(false);
       fetchingProductsRef.current = false;
       console.log('🏁 [POSInterface] Products fetch completed');
+    }
+  };
+
+  /**
+   * Fetch categories from API
+   * Used to dynamically generate product tabs
+   */
+  const fetchCategories = async () => {
+    try {
+      setCategoriesLoading(true);
+      console.log('🔄 [POSInterface] Fetching categories...');
+      
+      const response = await fetch('/api/categories');
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ [POSInterface] Categories fetched:', result.data.length);
+        setCategories(result.data || []);
+      } else {
+        console.error('❌ [POSInterface] Failed to fetch categories:', result);
+      }
+    } catch (error) {
+      console.error('❌ [POSInterface] Error fetching categories:', error);
+    } finally {
+      setCategoriesLoading(false);
+      console.log('🏁 [POSInterface] Categories fetch completed');
     }
   };
 
@@ -282,42 +313,52 @@ export function POSInterface() {
     return true;
   };
 
-  // Filter products based on search and stock availability
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         product.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = !selectedCategory || product.category_id === selectedCategory;
-    const isAvailable = isProductAvailable(product);
-    return matchesSearch && matchesCategory && isAvailable;
-  });
+  /**
+   * Filter products based on active view, search, and category
+   */
+  const filteredProducts = useMemo(() => {
+    let filtered = products;
 
-  // Filter featured products (apply stock filtering for drinks)
-  const featuredProducts = products.filter(product => 
-    product.is_featured && product.is_active &&
-    (product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-     product.sku.toLowerCase().includes(searchQuery.toLowerCase())) &&
-    isProductAvailable(product)
-  );
+    // Apply view filter
+    if (activeView === 'featured') {
+      filtered = filtered.filter(p => p.is_featured && p.is_active);
+    }
 
-  // Filter beer products (by category name) - hide if out of stock
-  const beerProducts = products.filter(product => {
-    const categoryName = (product as any).category?.name?.toLowerCase() || '';
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         product.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    const isDrink = categoryName.includes('beer') || categoryName.includes('beverage') || categoryName.includes('drink');
-    const hasStock = product.current_stock > 0; // Only show drinks with stock
-    return isDrink && matchesSearch && product.is_active && hasStock;
-  });
+    // Apply search filter
+    if (searchQuery) {
+      filtered = filtered.filter(product =>
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.sku.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
 
-  // Filter food products (by category name)
-  const foodProducts = products.filter(product => {
-    const categoryName = (product as any).category?.name?.toLowerCase() || '';
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         product.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    return (categoryName.includes('food') || categoryName.includes('appetizer') || 
-            categoryName.includes('snack') || categoryName.includes('pulutan'))
-           && matchesSearch && product.is_active;
-  });
+    // Apply category filter
+    if (selectedCategory) {
+      filtered = filtered.filter(p => p.category_id === selectedCategory);
+    }
+
+    // Apply stock availability filter
+    filtered = filtered.filter(p => isProductAvailable(p));
+
+    return filtered;
+  }, [products, activeView, searchQuery, selectedCategory]);
+
+  /**
+   * Calculate product count per category for CategoryFilter
+   */
+  const productCountPerCategory = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: products.filter(p => isProductAvailable(p)).length,
+    };
+
+    products.forEach((product) => {
+      if (product.category_id && isProductAvailable(product)) {
+        counts[product.category_id] = (counts[product.category_id] || 0) + 1;
+      }
+    });
+
+    return counts;
+  }, [products]);
 
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4 relative">
@@ -337,21 +378,54 @@ export function POSInterface() {
         </Card>
 
         <Card className="flex-1 overflow-auto p-4">
-          <Tabs defaultValue="all">
-            <TabsList className="mb-4">
-              <TabsTrigger value="all">All Products</TabsTrigger>
-              <TabsTrigger value="packages">
-                <PackageIcon className="w-4 h-4 mr-1" />
-                Packages
-              </TabsTrigger>
-              <TabsTrigger value="featured">Featured</TabsTrigger>
-              <TabsTrigger value="beer">Beer</TabsTrigger>
-              <TabsTrigger value="food">Food</TabsTrigger>
-            </TabsList>
+          {/* View Toggle Buttons */}
+          <div className="flex gap-2 mb-4">
+            <Button
+              variant={activeView === 'all' ? 'default' : 'outline'}
+              onClick={() => setActiveView('all')}
+              size="sm"
+            >
+              All Products
+            </Button>
+            <Button
+              variant={activeView === 'packages' ? 'default' : 'outline'}
+              onClick={() => setActiveView('packages')}
+              size="sm"
+            >
+              <PackageIcon className="w-4 h-4 mr-1" />
+              Packages
+            </Button>
+            <Button
+              variant={activeView === 'featured' ? 'default' : 'outline'}
+              onClick={() => setActiveView('featured')}
+              size="sm"
+            >
+              Featured
+            </Button>
+          </div>
 
-            <TabsContent value="all">
+          {/* Category Filter - Only show for product views */}
+          {activeView !== 'packages' && (
+            <div className="mb-4">
+              <CategoryFilter
+                selectedCategoryId={selectedCategory}
+                onCategoryChange={setSelectedCategory}
+                showProductCount={true}
+                productCountPerCategory={productCountPerCategory}
+              />
+            </div>
+          )}
+
+          {/* Products View */}
+          {activeView !== 'packages' && (
+            <>
               {loading ? (
                 <div className="text-center py-8 text-gray-500">Loading products...</div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Grid className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No products found</p>
+                </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {filteredProducts.map(product => (
@@ -360,7 +434,7 @@ export function POSInterface() {
                       className="p-4 cursor-pointer hover:shadow-lg transition-shadow"
                       onClick={() => cart.addItem(product)}
                     >
-                      <div className="aspect-square bg-gray-100 rounded-md mb-2 flex items-center justify-center">
+                      <div className="aspect-square bg-gray-100 rounded-md mb-2 flex items-center justify-center relative">
                         {product.image_url ? (
                           <img 
                             src={product.image_url} 
@@ -370,6 +444,11 @@ export function POSInterface() {
                         ) : (
                           <Grid className="h-12 w-12 text-gray-400" />
                         )}
+                        {activeView === 'featured' && (
+                          <Badge className="absolute top-1 right-1 bg-amber-500 text-white text-xs">
+                            Featured
+                          </Badge>
+                        )}
                       </div>
                       <h3 className="font-semibold text-sm mb-1 truncate">{product.name}</h3>
                       <p className="text-lg font-bold text-amber-600">
@@ -378,22 +457,16 @@ export function POSInterface() {
                       {product.current_stock <= product.reorder_point && product.current_stock > 0 && (
                         <p className="text-xs text-red-600 mt-1">Low Stock</p>
                       )}
-                      {product.current_stock === 0 && (
-                        <p className="text-xs text-gray-500 mt-1">Out of Stock</p>
-                      )}
                     </Card>
                   ))}
                 </div>
               )}
+            </>
+          )}
 
-              {!loading && filteredProducts.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  No products found
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="packages">
+          {/* Packages View */}
+          {activeView === 'packages' && (
+            <>
               {packagesLoading ? (
                 <div className="text-center py-8 text-gray-500">Loading packages...</div>
               ) : packages.length === 0 ? (
@@ -480,136 +553,8 @@ export function POSInterface() {
                   })}
                 </div>
               )}
-            </TabsContent>
-
-            <TabsContent value="featured">
-              {loading ? (
-                <div className="text-center py-8 text-gray-500">Loading featured products...</div>
-              ) : featuredProducts.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Grid className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>No featured products</p>
-                  <p className="text-xs mt-2">Mark products as featured in product settings</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {featuredProducts.map(product => (
-                    <Card
-                      key={product.id}
-                      className="p-4 cursor-pointer hover:shadow-lg transition-shadow"
-                      onClick={() => cart.addItem(product)}
-                    >
-                      <div className="aspect-square bg-gray-100 rounded-md mb-2 flex items-center justify-center relative">
-                        {product.image_url ? (
-                          <img 
-                            src={product.image_url} 
-                            alt={product.name}
-                            className="w-full h-full object-cover rounded-md"
-                          />
-                        ) : (
-                          <Grid className="h-12 w-12 text-gray-400" />
-                        )}
-                        <Badge className="absolute top-1 right-1 bg-amber-500 text-white text-xs">
-                          Featured
-                        </Badge>
-                      </div>
-                      <h3 className="font-semibold text-sm mb-1 truncate">{product.name}</h3>
-                      <p className="text-lg font-bold text-amber-600">
-                        ₱{product.base_price.toFixed(2)}
-                      </p>
-                      {product.current_stock <= product.reorder_point && product.current_stock > 0 && (
-                        <p className="text-xs text-red-600 mt-1">Low Stock</p>
-                      )}
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="beer">
-              {loading ? (
-                <div className="text-center py-8 text-gray-500">Loading beer products...</div>
-              ) : beerProducts.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Grid className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>No beer products found</p>
-                  <p className="text-xs mt-2">Add products with "Beer" or "Beverage" category</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {beerProducts.map(product => (
-                    <Card
-                      key={product.id}
-                      className="p-4 cursor-pointer hover:shadow-lg transition-shadow"
-                      onClick={() => cart.addItem(product)}
-                    >
-                      <div className="aspect-square bg-gray-100 rounded-md mb-2 flex items-center justify-center">
-                        {product.image_url ? (
-                          <img 
-                            src={product.image_url} 
-                            alt={product.name}
-                            className="w-full h-full object-cover rounded-md"
-                          />
-                        ) : (
-                          <Grid className="h-12 w-12 text-gray-400" />
-                        )}
-                      </div>
-                      <h3 className="font-semibold text-sm mb-1 truncate">{product.name}</h3>
-                      <p className="text-lg font-bold text-amber-600">
-                        ₱{product.base_price.toFixed(2)}
-                      </p>
-                      {/* Beer tab - drinks with no stock are already filtered out */}
-                      {product.current_stock <= product.reorder_point && product.current_stock > 0 && (
-                        <p className="text-xs text-red-600 mt-1">Low Stock</p>
-                      )}
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="food">
-              {loading ? (
-                <div className="text-center py-8 text-gray-500">Loading food products...</div>
-              ) : foodProducts.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Grid className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>No food products found</p>
-                  <p className="text-xs mt-2">Add products with "Food" or "Appetizer" category</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {foodProducts.map(product => (
-                    <Card
-                      key={product.id}
-                      className="p-4 cursor-pointer hover:shadow-lg transition-shadow"
-                      onClick={() => cart.addItem(product)}
-                    >
-                      <div className="aspect-square bg-gray-100 rounded-md mb-2 flex items-center justify-center">
-                        {product.image_url ? (
-                          <img 
-                            src={product.image_url} 
-                            alt={product.name}
-                            className="w-full h-full object-cover rounded-md"
-                          />
-                        ) : (
-                          <Grid className="h-12 w-12 text-gray-400" />
-                        )}
-                      </div>
-                      <h3 className="font-semibold text-sm mb-1 truncate">{product.name}</h3>
-                      <p className="text-lg font-bold text-amber-600">
-                        ₱{product.base_price.toFixed(2)}
-                      </p>
-                      {/* Food tab - no stock filtering for food */}
-                      {product.current_stock <= product.reorder_point && product.current_stock > 0 && (
-                        <p className="text-xs text-red-600 mt-1">Low Stock</p>
-                      )}
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
+            </>
+          )}
         </Card>
       </div>
 

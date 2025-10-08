@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/views/shared/ui/card';
 import { Input } from '@/views/shared/ui/input';
 import { Badge } from '@/views/shared/ui/badge';
 import { Button } from '@/views/shared/ui/button';
 import { Search, Package, Plus, Loader2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatters';
+import CategoryFilter from './components/CategoryFilter';
 
 /**
  * SessionProductSelector Component
@@ -94,31 +95,36 @@ export default function SessionProductSelector({
   /**
    * Filter products by search query and category
    */
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch =
-      searchQuery === '' ||
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesSearch =
+        searchQuery === '' ||
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.sku.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesCategory =
-      !selectedCategory || product.category_id === selectedCategory;
+      const matchesCategory =
+        !selectedCategory || product.category_id === selectedCategory;
 
-    return matchesSearch && matchesCategory;
-  });
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchQuery, selectedCategory]);
 
   /**
-   * Get unique categories
+   * Calculate product count per category for display
    */
-  const categories = Array.from(
-    new Set(products.map((p) => p.category_id).filter(Boolean))
-  ).map((catId) => {
-    const product = products.find((p) => p.category_id === catId);
-    return {
-      id: catId,
-      name: product?.category?.name || 'Unknown',
-      color: product?.category?.color_code,
+  const productCountPerCategory = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: products.length,
     };
-  });
+
+    products.forEach((product) => {
+      if (product.category_id) {
+        counts[product.category_id] = (counts[product.category_id] || 0) + 1;
+      }
+    });
+
+    return counts;
+  }, [products]);
 
   /**
    * Handle product selection
@@ -165,27 +171,12 @@ export default function SessionProductSelector({
         </div>
 
         {/* Category Filter */}
-        {categories.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            <Button
-              size="sm"
-              variant={selectedCategory === null ? "default" : "outline"}
-              onClick={() => setSelectedCategory(null)}
-            >
-              All
-            </Button>
-            {categories.map((category: any) => (
-              <Button
-                key={category.id}
-                size="sm"
-                variant={selectedCategory === category.id ? "default" : "outline"}
-                onClick={() => setSelectedCategory(category.id)}
-              >
-                {category.name}
-              </Button>
-            ))}
-          </div>
-        )}
+        <CategoryFilter
+          selectedCategoryId={selectedCategory}
+          onCategoryChange={setSelectedCategory}
+          showProductCount={true}
+          productCountPerCategory={productCountPerCategory}
+        />
 
         {/* Product List */}
         <div className="space-y-2 max-h-96 overflow-y-auto">

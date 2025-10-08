@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card } from '@/views/shared/ui/card';
 import { Badge } from '@/views/shared/ui/badge';
 import { Input } from '@/views/shared/ui/input';
 import { LoadingSpinner } from '@/views/shared/feedback/LoadingSpinner';
 import { Search, Package } from 'lucide-react';
+import CategoryFilter from './components/CategoryFilter';
 
 interface Product {
   id: string;
@@ -174,31 +175,36 @@ export function ProductGrid({
   /**
    * Filter products by search query and category
    */
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch =
-      searchQuery === '' ||
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesSearch =
+        searchQuery === '' ||
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.sku.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesCategory =
-      !selectedCategory || product.category_id === selectedCategory;
+      const matchesCategory =
+        !selectedCategory || product.category_id === selectedCategory;
 
-    return matchesSearch && matchesCategory;
-  });
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchQuery, selectedCategory]);
 
   /**
-   * Get unique categories from products
+   * Calculate product count per category for display
    */
-  const categories = Array.from(
-    new Set(products.map((p) => p.category_id).filter(Boolean))
-  ).map((catId) => {
-    const product = products.find((p) => p.category_id === catId);
-    return {
-      id: catId,
-      name: product?.category?.name || 'Unknown',
-      color: product?.category?.color_code,
+  const productCountPerCategory = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: products.length,
     };
-  });
+
+    products.forEach((product) => {
+      if (product.category_id) {
+        counts[product.category_id] = (counts[product.category_id] || 0) + 1;
+      }
+    });
+
+    return counts;
+  }, [products]);
 
   /**
    * Format currency
@@ -253,39 +259,12 @@ export function ProductGrid({
       </div>
 
       {/* Category Filter */}
-      {categories.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          <button
-            onClick={() => setSelectedCategory(null)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-              selectedCategory === null
-                ? 'bg-amber-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            All Products
-          </button>
-          {categories.map((category: any) => (
-            <button
-              key={category.id}
-              onClick={() => setSelectedCategory(category.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                selectedCategory === category.id
-                  ? 'bg-amber-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-              style={{
-                backgroundColor:
-                  selectedCategory === category.id
-                    ? category.color || '#d97706'
-                    : undefined,
-              }}
-            >
-              {category.name}
-            </button>
-          ))}
-        </div>
-      )}
+      <CategoryFilter
+        selectedCategoryId={selectedCategory}
+        onCategoryChange={setSelectedCategory}
+        showProductCount={true}
+        productCountPerCategory={productCountPerCategory}
+      />
 
       {/* Product Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">

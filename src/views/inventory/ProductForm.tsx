@@ -11,9 +11,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../shared/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../shared/ui/dialog';
 import { CreateProductDTO } from '@/models/dtos/CreateProductDTO';
 import { Product } from '@/models/entities/Product';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus } from 'lucide-react';
+import { toast } from '@/lib/hooks/useToast';
 
 /**
  * Category interface matching database structure
@@ -50,6 +59,16 @@ export default function ProductForm({ product, onSubmit, onCancel, isLoading = f
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  // Category creation state
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState({
+    name: '',
+    description: '',
+    color_code: '#3B82F6',
+    default_destination: 'kitchen' as 'kitchen' | 'bartender',
+  });
 
   // Form state - using empty strings for number fields to allow clearing
   const [formData, setFormData] = useState<any>({
@@ -98,6 +117,9 @@ export default function ProductForm({ product, onSubmit, onCancel, isLoading = f
     }
   }, [product]);
 
+  /**
+   * Load categories from API
+   */
   const loadCategories = async () => {
     try {
       setLoadingCategories(true);
@@ -113,6 +135,75 @@ export default function ProductForm({ product, onSubmit, onCancel, isLoading = f
       console.error('Error loading categories:', error);
     } finally {
       setLoadingCategories(false);
+    }
+  };
+
+  /**
+   * Handle creating a new category
+   */
+  const handleCreateCategory = async () => {
+    if (!newCategory.name.trim()) {
+      toast({
+        title: 'Validation Error',
+        description: 'Category name is required',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setCreatingCategory(true);
+      
+      const response = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCategory.name,
+          description: newCategory.description || null,
+          color_code: newCategory.color_code,
+          default_destination: newCategory.default_destination,
+          display_order: categories.length + 1, // Add to end
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to create category');
+      }
+
+      // Show success message
+      toast({
+        title: 'Category created!',
+        description: `"${newCategory.name}" has been added to categories.`,
+        variant: 'success',
+      });
+
+      // Reload categories
+      await loadCategories();
+
+      // Auto-select the new category
+      if (result.data?.id) {
+        handleInputChange('category_id', result.data.id);
+      }
+
+      // Reset form and close dialog
+      setNewCategory({
+        name: '',
+        description: '',
+        color_code: '#3B82F6',
+        default_destination: 'kitchen',
+      });
+      setShowCategoryDialog(false);
+    } catch (error) {
+      console.error('Error creating category:', error);
+      toast({
+        title: 'Failed to create category',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingCategory(false);
     }
   };
 
@@ -271,9 +362,22 @@ export default function ProductForm({ product, onSubmit, onCancel, isLoading = f
           />
         </div>
 
-        {/* Category */}
+        {/* Category with Create New Button */}
         <div className="space-y-2">
-          <Label htmlFor="category">Category</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="category">Category</Label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowCategoryDialog(true)}
+              disabled={isLoading}
+              className="h-7 text-xs"
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Create New
+            </Button>
+          </div>
           <Select
             value={formData.category_id}
             onValueChange={(value) => handleInputChange('category_id', value)}
@@ -285,7 +389,15 @@ export default function ProductForm({ product, onSubmit, onCancel, isLoading = f
             <SelectContent>
               {categories.map((category) => (
                 <SelectItem key={category.id} value={category.id}>
-                  {category.name}
+                  <span className="flex items-center gap-2">
+                    {category.color_code && (
+                      <span 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: category.color_code }}
+                      />
+                    )}
+                    {category.name}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -517,6 +629,110 @@ export default function ProductForm({ product, onSubmit, onCancel, isLoading = f
           {isLoading ? (isEditMode ? 'Updating...' : 'Creating...') : (isEditMode ? 'Update Product' : 'Create Product')}
         </Button>
       </div>
+
+      {/* Create Category Dialog */}
+      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Create New Category</DialogTitle>
+            <DialogDescription>
+              Add a new product category. This will be available immediately in the category dropdown.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Category Name */}
+            <div className="space-y-2">
+              <Label htmlFor="new-category-name">
+                Category Name <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="new-category-name"
+                value={newCategory.name}
+                onChange={(e) => setNewCategory(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="e.g., Desserts, Appetizers, Sides"
+                disabled={creatingCategory}
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="new-category-description">Description (Optional)</Label>
+              <Input
+                id="new-category-description"
+                value={newCategory.description}
+                onChange={(e) => setNewCategory(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Brief description of the category"
+                disabled={creatingCategory}
+              />
+            </div>
+
+            {/* Color and Destination */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Color */}
+              <div className="space-y-2">
+                <Label htmlFor="new-category-color">Color Code</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="new-category-color"
+                    type="color"
+                    value={newCategory.color_code}
+                    onChange={(e) => setNewCategory(prev => ({ ...prev, color_code: e.target.value }))}
+                    disabled={creatingCategory}
+                    className="w-14 h-10 p-1"
+                  />
+                  <Input
+                    value={newCategory.color_code}
+                    onChange={(e) => setNewCategory(prev => ({ ...prev, color_code: e.target.value }))}
+                    placeholder="#3B82F6"
+                    disabled={creatingCategory}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+
+              {/* Default Destination */}
+              <div className="space-y-2">
+                <Label htmlFor="new-category-destination">Route Orders To</Label>
+                <Select
+                  value={newCategory.default_destination}
+                  onValueChange={(value: 'kitchen' | 'bartender') => 
+                    setNewCategory(prev => ({ ...prev, default_destination: value }))
+                  }
+                  disabled={creatingCategory}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="kitchen">🍳 Kitchen</SelectItem>
+                    <SelectItem value="bartender">🍺 Bartender</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowCategoryDialog(false)}
+              disabled={creatingCategory}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCreateCategory}
+              disabled={creatingCategory || !newCategory.name.trim()}
+            >
+              {creatingCategory && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {creatingCategory ? 'Creating...' : 'Create Category'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }
