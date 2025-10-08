@@ -38,9 +38,11 @@ interface PaymentPanelProps {
   onOpenChange: (open: boolean) => void;
   /**
    * Called when payment completes successfully.
+   * For POS mode: receives orderId and options
+   * For close-tab mode: receives sessionId and result data containing order information
    * options.previewReceipt: if true, show receipt dialog for user to print; if false, auto-print immediately.
    */
-  onPaymentComplete: (orderId: string, options?: { previewReceipt?: boolean }) => void;
+  onPaymentComplete: (idOrResult: string | any, options?: { previewReceipt?: boolean; resultData?: any }) => void;
   
   // Close-tab mode specific props
   mode?: PaymentMode;
@@ -260,11 +262,16 @@ export function PaymentPanel({
       // Success - Close modal and trigger completion handler
       console.log('✅ [PaymentPanel] Payment processed successfully');
       
-      // Call completion handler with orderId/sessionId
+      // Call completion handler with appropriate data
       // For POS mode: pass orderId from newly created order
-      // For close-tab mode: pass sessionId that was provided in props
-      const completionId = mode === 'pos' ? result.data.id : sessionId!;
-      onPaymentComplete(completionId, { previewReceipt });
+      // For close-tab mode: pass sessionId and full result data containing orders
+      if (mode === 'pos') {
+        const orderId = result.data.id;
+        onPaymentComplete(orderId, { previewReceipt });
+      } else {
+        // Close-tab mode: pass sessionId and result data for receipt printing
+        onPaymentComplete(sessionId!, { previewReceipt, resultData: result.data });
+      }
       
       // Reset form and close modal
       resetForm();
