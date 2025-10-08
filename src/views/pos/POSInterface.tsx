@@ -6,29 +6,43 @@ import { Package } from '@/models/entities/Package';
 import { Customer } from '@/models/entities/Customer';
 import { RestaurantTable } from '@/models/entities/Table';
 import { useCart } from '@/lib/contexts/CartContext';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../shared/ui/tabs';
+import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
 import { Card } from '../shared/ui/card';
 import { Button } from '../shared/ui/button';
-import { Badge } from '../shared/ui/badge';
-import { Search, Grid, List, User, Armchair, CheckCircle, Package as PackageIcon } from 'lucide-react';
+import { Search, Package as PackageIcon, Grid as GridIcon, CheckCircle2 } from 'lucide-react';
 import { Input } from '../shared/ui/input';
 import CategoryFilter from './components/CategoryFilter';
+import { ProductCard } from './components/ProductCard';
+import { OrderSummaryPanel } from './components/OrderSummaryPanel';
 import { CustomerSearch } from './CustomerSearch';
 import { TableSelector } from './TableSelector';
 import { PaymentPanel } from './PaymentPanel';
 import { SalesReceipt } from './SalesReceipt';
-import { fetchOrderForReceipt } from '@/lib/utils/receiptPrinter';
 
 /**
  * POSInterface - Main POS Component
- * Displays product grid and order summary
+ * 
+ * Professional point-of-sale interface with realtime stock tracking.
+ * 
  * Features:
- * - Product browsing and selection
- * - Customer search and selection
- * - Table assignment
- * - Order summary with cart management
+ * - Product browsing with realtime stock display
+ * - Memory-based stock deduction (saved to DB only after payment)
+ * - Professional product cards showing full names
+ * - Category-based filtering
+ * - Package support
+ * - Customer and table selection
+ * - Order summary with detailed controls
+ * 
+ * Stock Management:
+ * - Stock deducted in memory when added to cart
+ * - Stock restored when removed from cart
+ * - Stock reset when cart is cleared
+ * - Stock saved to database only after successful payment
+ * 
+ * @component
  */
 export function POSInterface() {
+  // State management
   const [products, setProducts] = useState<Product[]>([]);
   const [packages, setPackages] = useState<(Package & { items?: any[] })[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,10 +56,13 @@ export function POSInterface() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
-  const cart = useCart();
-  const [cartRestored, setCartRestored] = useState(false);
   const [categories, setCategories] = useState<Array<{id: string; name: string; color_code?: string}>>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [cartRestored, setCartRestored] = useState(false);
+  
+  // Context hooks
+  const cart = useCart();
+  const stockTracker = useStockTracker();
   
   // Show loading message if cart items were restored
   useEffect(() => {
@@ -93,6 +110,7 @@ export function POSInterface() {
 
   /**
    * Fetch products from API with duplicate call prevention
+   * Initializes stock tracker with loaded products
    */
   const fetchProducts = async () => {
     if (fetchingProductsRef.current) {
@@ -111,6 +129,10 @@ export function POSInterface() {
       if (result.success) {
         console.log('✅ [POSInterface] Products fetched:', result.data.length);
         setProducts(result.data);
+        
+        // Initialize stock tracker with loaded products
+        stockTracker.initializeStock(result.data);
+        console.log('📊 [POSInterface] Stock tracker initialized');
       } else {
         console.error('❌ [POSInterface] Failed to fetch products:', result);
       }
@@ -190,6 +212,81 @@ export function POSInterface() {
       fetchingPackagesRef.current = false;
       console.log('🏁 [POSInterface] Packages fetch completed');
     }
+  };
+
+  /**
+   * Handle adding product to cart with stock tracking
+   * Reserves stock in memory, adds to cart
+   */
+  const handleAddProduct = (product: Product) => {
+    const currentStock = stockTracker.getCurrentStock(product.id);
+    
+    // Check if product has stock
+    if (!stockTracker.hasStock(product.id, 1)) {
+      alert(`${product.name} is out of stock`);
+      return;
+    }
+    
+    // Reserve stock in memory (not saved to DB)
+    stockTracker.reserveStock(product.id, 1);
+    
+    // Add to cart
+    cart.addItem(product, 1);
+    
+    console.log('📦 [POSInterface] Product added with stock reservation:', product.name);
+  };
+
+  /**
+   * Handle removing item from cart with stock restoration
+   */
+  const handleRemoveItem = (itemId: string) => {
+    // Find the item to get product ID
+    const item = cart.items.find(i => i.id === itemId);
+    if (item) {
+      // Release reserved stock
+      stockTracker.releaseStock(item.product.id, item.quantity);
+      console.log('📦 [POSInterface] Stock released for:', item.product.name);
+    }
+    
+    // Remove from cart
+    cart.removeItem(itemId);
+  };
+
+  /**
+   * Handle updating item quantity with stock adjustment
+   */
+  const handleUpdateQuantity = (itemId: string, newQuantity: number) => {
+    const item = cart.items.find(i => i.id === itemId);
+    if (!item) return;
+    
+    const quantityDiff = newQuantity - item.quantity;
+    
+    if (quantityDiff > 0) {
+      // Increasing quantity - reserve more stock
+      if (!stockTracker.hasStock(item.product.id, quantityDiff)) {
+        alert(`Insufficient stock for ${item.product.name}`);
+        return;
+      }
+      stockTracker.reserveStock(item.product.id, quantityDiff);
+    } else if (quantityDiff < 0) {
+      // Decreasing quantity - release stock
+      stockTracker.releaseStock(item.product.id, Math.abs(quantityDiff));
+    }
+    
+    // Update cart
+    cart.updateQuantity(itemId, newQuantity);
+  };
+
+  /**
+   * Handle clearing cart with full stock reset
+   */
+  const handleClearCart = () => {
+    // Reset all stock to original values
+    stockTracker.resetAllStock();
+    console.log('📦 [POSInterface] All stock reset to original values');
+    
+    // Clear cart
+    cart.clearCart();
   };
 
   /**
@@ -286,9 +383,7 @@ export function POSInterface() {
 
   /**
    * Check if a product is a drink/beverage (beer, alcoholic, non-alcoholic)
-   * These products should be hidden when out of stock
-   * @param product - Product to check
-   * @returns true if product is a drink/beverage
+   * Used to determine if out-of-stock products should be hidden
    */
   const isDrinkProduct = (product: Product): boolean => {
     const categoryName = (product as any).category?.name?.toLowerCase() || '';
@@ -299,22 +394,22 @@ export function POSInterface() {
   };
 
   /**
-   * Check if product should be visible based on stock
-   * Drinks with no stock are hidden, other products always shown
-   * @param product - Product to check
-   * @returns true if product should be displayed
+   * Check if product should be displayed based on realtime stock
+   * Uses stock tracker to get current display stock
    */
   const isProductAvailable = (product: Product): boolean => {
-    // If it's a drink, check stock level
+    const displayStock = stockTracker.getCurrentStock(product.id);
+    
+    // If it's a drink, check display stock level
     if (isDrinkProduct(product)) {
-      return product.current_stock > 0;
+      return displayStock > 0;
     }
     // Non-drink products (food, etc.) always available
     return true;
   };
 
   /**
-   * Filter products based on active view, search, and category
+   * Filter products based on active view, search, category, and stock availability
    */
   const filteredProducts = useMemo(() => {
     let filtered = products;
@@ -337,11 +432,11 @@ export function POSInterface() {
       filtered = filtered.filter(p => p.category_id === selectedCategory);
     }
 
-    // Apply stock availability filter
+    // Apply stock availability filter (using realtime stock)
     filtered = filtered.filter(p => isProductAvailable(p));
 
     return filtered;
-  }, [products, activeView, searchQuery, selectedCategory]);
+  }, [products, activeView, searchQuery, selectedCategory, stockTracker]);
 
   /**
    * Calculate product count per category for CategoryFilter
@@ -363,324 +458,212 @@ export function POSInterface() {
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4 relative">
       {/* Left Panel - Products */}
-      <div className="flex-1 flex flex-col">
-        <Card className="mb-4 p-4">
-          <div className="flex items-center gap-2">
-            <Search className="h-5 w-5 text-gray-400" />
+      <div className="flex-1 min-w-0 flex flex-col gap-3">
+        {/* Search Bar */}
+        <Card className="p-4 shadow-md">
+          <div className="flex items-center gap-3">
+            <Search className="h-5 w-5 text-gray-400 flex-shrink-0" />
             <Input
               type="text"
-              placeholder="Search products..."
+              placeholder="Search products by name or SKU..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1"
+              className="flex-1 text-base"
             />
           </div>
         </Card>
 
-        <Card className="flex-1 overflow-auto p-4">
-          {/* View Toggle Buttons */}
-          <div className="flex gap-2 mb-4">
-            <Button
-              variant={activeView === 'all' ? 'default' : 'outline'}
-              onClick={() => setActiveView('all')}
-              size="sm"
-            >
-              All Products
-            </Button>
-            <Button
-              variant={activeView === 'packages' ? 'default' : 'outline'}
-              onClick={() => setActiveView('packages')}
-              size="sm"
-            >
-              <PackageIcon className="w-4 h-4 mr-1" />
-              Packages
-            </Button>
-            <Button
-              variant={activeView === 'featured' ? 'default' : 'outline'}
-              onClick={() => setActiveView('featured')}
-              size="sm"
-            >
-              Featured
-            </Button>
-          </div>
+        {/* Main Content Area */}
+        <Card className="flex-1 overflow-hidden flex flex-col shadow-md">
+          <div className="p-4 border-b bg-gradient-to-r from-amber-50 to-orange-50 overflow-hidden">
+            {/* View Toggle Buttons */}
+            <div className="flex gap-2 mb-4">
+              <Button
+                variant={activeView === 'all' ? 'default' : 'outline'}
+                onClick={() => setActiveView('all')}
+                size="sm"
+                className={activeView === 'all' ? 'bg-amber-600 hover:bg-amber-700' : ''}
+              >
+                <GridIcon className="w-4 h-4 mr-2" />
+                All Products
+              </Button>
+              <Button
+                variant={activeView === 'packages' ? 'default' : 'outline'}
+                onClick={() => setActiveView('packages')}
+                size="sm"
+                className={activeView === 'packages' ? 'bg-amber-600 hover:bg-amber-700' : ''}
+              >
+                <PackageIcon className="w-4 h-4 mr-2" />
+                Packages
+              </Button>
+              <Button
+                variant={activeView === 'featured' ? 'default' : 'outline'}
+                onClick={() => setActiveView('featured')}
+                size="sm"
+                className={activeView === 'featured' ? 'bg-amber-600 hover:bg-amber-700' : ''}
+              >
+                ⭐ Featured
+              </Button>
+            </div>
 
-          {/* Category Filter - Only show for product views */}
-          {activeView !== 'packages' && (
-            <div className="mb-4">
+            {/* Category Filter - Only show for product views */}
+            {activeView !== 'packages' && (
               <CategoryFilter
                 selectedCategoryId={selectedCategory}
                 onCategoryChange={setSelectedCategory}
                 showProductCount={true}
                 productCountPerCategory={productCountPerCategory}
               />
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Products View */}
-          {activeView !== 'packages' && (
-            <>
-              {loading ? (
-                <div className="text-center py-8 text-gray-500">Loading products...</div>
-              ) : filteredProducts.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Grid className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>No products found</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {filteredProducts.map(product => (
-                    <Card
-                      key={product.id}
-                      className="p-4 cursor-pointer hover:shadow-lg transition-shadow"
-                      onClick={() => cart.addItem(product)}
-                    >
-                      <div className="aspect-square bg-gray-100 rounded-md mb-2 flex items-center justify-center relative">
-                        {product.image_url ? (
-                          <img 
-                            src={product.image_url} 
-                            alt={product.name}
-                            className="w-full h-full object-cover rounded-md"
-                          />
-                        ) : (
-                          <Grid className="h-12 w-12 text-gray-400" />
-                        )}
-                        {activeView === 'featured' && (
-                          <Badge className="absolute top-1 right-1 bg-amber-500 text-white text-xs">
-                            Featured
-                          </Badge>
-                        )}
-                      </div>
-                      <h3 className="font-semibold text-sm mb-1 truncate">{product.name}</h3>
-                      <p className="text-lg font-bold text-amber-600">
-                        ₱{product.base_price.toFixed(2)}
-                      </p>
-                      {product.current_stock <= product.reorder_point && product.current_stock > 0 && (
-                        <p className="text-xs text-red-600 mt-1">Low Stock</p>
-                      )}
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
+          {/* Products Grid */}
+          <div className="flex-1 overflow-auto p-4">
+            {activeView !== 'packages' && (
+              <>
+                {loading ? (
+                  <div className="text-center py-16 text-gray-500">
+                    <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-amber-600 mx-auto mb-4"></div>
+                    <p className="text-lg">Loading products...</p>
+                  </div>
+                ) : filteredProducts.length === 0 ? (
+                  <div className="text-center py-16 text-gray-400">
+                    <GridIcon className="h-20 w-20 mx-auto mb-4 opacity-30" />
+                    <p className="text-lg font-medium">No products found</p>
+                    <p className="text-sm mt-2">Try adjusting your search or filters</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {filteredProducts.map(product => (
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        displayStock={stockTracker.getCurrentStock(product.id)}
+                        isFeatured={activeView === 'featured'}
+                        onClick={handleAddProduct}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
 
-          {/* Packages View */}
-          {activeView === 'packages' && (
-            <>
-              {packagesLoading ? (
-                <div className="text-center py-8 text-gray-500">Loading packages...</div>
-              ) : packages.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <PackageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>No packages available</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {packages.map(pkg => {
-                    const isVIPOnly = pkg.package_type === 'vip_only';
-                    const customerIsVIP = cart.customer && cart.customer.tier !== 'regular';
-                    const canPurchase = !isVIPOnly || customerIsVIP;
+            {/* Packages View */}
+            {activeView === 'packages' && (
+              <>
+                {packagesLoading ? (
+                  <div className="text-center py-16 text-gray-500">
+                    <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-amber-600 mx-auto mb-4"></div>
+                    <p className="text-lg">Loading packages...</p>
+                  </div>
+                ) : packages.length === 0 ? (
+                  <div className="text-center py-16 text-gray-400">
+                    <PackageIcon className="h-20 w-20 mx-auto mb-4 opacity-30" />
+                    <p className="text-lg font-medium">No packages available</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {packages.map(pkg => {
+                      const isVIPOnly = pkg.package_type === 'vip_only';
+                      const customerIsVIP = cart.customer && cart.customer.tier !== 'regular';
+                      const canPurchase = !isVIPOnly || customerIsVIP;
 
-                    return (
-                      <Card
-                        key={pkg.id}
-                        className={`p-4 transition-all ${
-                          canPurchase 
-                            ? 'cursor-pointer hover:shadow-lg hover:border-amber-400' 
-                            : 'opacity-60 cursor-not-allowed'
-                        }`}
-                        onClick={() => canPurchase && cart.addPackage(pkg)}
-                      >
-                        {/* Package Header */}
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <h3 className="font-bold text-base mb-1">{pkg.name}</h3>
-                            {pkg.package_type === 'vip_only' && (
-                              <Badge variant="default" className="bg-purple-600 text-xs">VIP Only</Badge>
-                            )}
-                            {pkg.package_type === 'promotional' && (
-                              <Badge variant="default" className="bg-orange-600 text-xs">Promo</Badge>
-                            )}
+                      return (
+                        <Card
+                          key={pkg.id}
+                          className={`p-4 transition-all ${
+                            canPurchase 
+                              ? 'cursor-pointer hover:shadow-lg hover:border-amber-400' 
+                              : 'opacity-60 cursor-not-allowed'
+                          }`}
+                          onClick={() => canPurchase && cart.addPackage(pkg)}
+                        >
+                          {/* Package Header */}
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <h3 className="font-bold text-base mb-1">{pkg.name}</h3>
+                              <div className="flex gap-1 mt-1">
+                                {pkg.package_type === 'vip_only' && (
+                                  <span className="inline-block px-2 py-1 text-xs font-medium bg-purple-600 text-white rounded">VIP Only</span>
+                                )}
+                                {pkg.package_type === 'promotional' && (
+                                  <span className="inline-block px-2 py-1 text-xs font-medium bg-orange-600 text-white rounded">Promo</span>
+                                )}
+                              </div>
+                            </div>
+                            <PackageIcon className="w-6 h-6 text-amber-600" />
                           </div>
-                          <PackageIcon className="w-6 h-6 text-amber-600" />
-                        </div>
 
-                        {/* Package Description */}
-                        {pkg.description && (
-                          <p className="text-xs text-gray-600 mb-3 line-clamp-2">{pkg.description}</p>
-                        )}
-
-                        {/* Package Items */}
-                        <div className="mb-3 space-y-1">
-                          <p className="text-xs font-semibold text-gray-700 mb-1">Includes:</p>
-                          {pkg.items && pkg.items.slice(0, 3).map((item: any, idx: number) => (
-                            <p key={idx} className="text-xs text-gray-600">
-                              • {item.quantity}x {item.product?.name || 'Product'}
-                            </p>
-                          ))}
-                          {pkg.items && pkg.items.length > 3 && (
-                            <p className="text-xs text-gray-500 italic">
-                              +{pkg.items.length - 3} more items
-                            </p>
+                          {/* Package Description */}
+                          {pkg.description && (
+                            <p className="text-xs text-gray-600 mb-3 line-clamp-2">{pkg.description}</p>
                           )}
-                        </div>
 
-                        {/* Package Price */}
-                        <div className="border-t pt-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-medium text-gray-700">Price:</span>
-                            <span className="text-lg font-bold text-amber-600">
-                              ₱{(customerIsVIP && pkg.vip_price ? pkg.vip_price : pkg.base_price).toFixed(2)}
-                            </span>
+                          {/* Package Items */}
+                          <div className="mb-3 space-y-1">
+                            <p className="text-xs font-semibold text-gray-700 mb-1">Includes:</p>
+                            {pkg.items && pkg.items.slice(0, 3).map((item: any, idx: number) => (
+                              <p key={idx} className="text-xs text-gray-600">
+                                • {item.quantity}x {item.product?.name || 'Product'}
+                              </p>
+                            ))}
+                            {pkg.items && pkg.items.length > 3 && (
+                              <p className="text-xs text-gray-500 italic">
+                                +{pkg.items.length - 3} more items
+                              </p>
+                            )}
                           </div>
-                          {customerIsVIP && pkg.vip_price && (
-                            <p className="text-xs text-purple-600 text-right mt-1">
-                              VIP Price Applied!
-                            </p>
+
+                          {/* Package Price */}
+                          <div className="border-t pt-3">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium text-gray-700">Price:</span>
+                              <span className="text-lg font-bold text-amber-600">
+                                ₱{(customerIsVIP && pkg.vip_price ? pkg.vip_price : pkg.base_price).toFixed(2)}
+                              </span>
+                            </div>
+                            {customerIsVIP && pkg.vip_price && (
+                              <p className="text-xs text-purple-600 text-right mt-1">
+                                VIP Price Applied!
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Restriction Notice */}
+                          {!canPurchase && (
+                            <div className="mt-2 bg-purple-50 border border-purple-200 rounded p-2">
+                              <p className="text-xs text-purple-800 font-medium">
+                                🔒 VIP Membership Required
+                              </p>
+                            </div>
                           )}
-                        </div>
-
-                        {/* Restriction Notice */}
-                        {!canPurchase && (
-                          <div className="mt-2 bg-purple-50 border border-purple-200 rounded p-2">
-                            <p className="text-xs text-purple-800 font-medium">
-                              🔒 VIP Membership Required
-                            </p>
-                          </div>
-                        )}
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </Card>
       </div>
 
       {/* Right Panel - Order Summary */}
-      <div className="w-96">
-        <Card className="h-full flex flex-col p-4">
-          <h2 className="text-lg font-bold mb-4">Current Order</h2>
-
-          {/* Customer & Table Info */}
-          <div className="mb-4 space-y-2">
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              size="sm"
-              onClick={() => setShowCustomerSearch(true)}
-            >
-              <User className="h-4 w-4 mr-2" />
-              {cart.customer ? cart.customer.full_name : 'Select Customer'}
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              size="sm"
-              onClick={() => setShowTableSelector(true)}
-            >
-              <Armchair className="h-4 w-4 mr-2" />
-              {cart.table ? `Table ${cart.table.table_number}` : 'Select Table'}
-            </Button>
-          </div>
-
-          {/* Order Items */}
-          <div className="flex-1 overflow-auto mb-4">
-            {cart.isLoadingCart ? (
-              <div className="text-center py-8 text-gray-400">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto mb-2"></div>
-                <p>Loading cart...</p>
-              </div>
-            ) : cart.items.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">
-                <List className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>No items in cart</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {cart.items.map(item => (
-                  <Card key={item.id} className="p-3">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-sm">{item.product.name}</h4>
-                        <p className="text-xs text-gray-500">₱{item.unitPrice.toFixed(2)} each</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => cart.removeItem(item.id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        ×
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => cart.updateQuantity(item.id, item.quantity - 1)}
-                      >
-                        -
-                      </Button>
-                      <span className="w-12 text-center font-semibold">{item.quantity}</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => cart.updateQuantity(item.id, item.quantity + 1)}
-                      >
-                        +
-                      </Button>
-                      <span className="ml-auto font-bold">
-                        ₱{item.subtotal.toFixed(2)}
-                      </span>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Totals */}
-          <div className="border-t pt-4 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Subtotal:</span>
-              <span>₱{cart.getSubtotal().toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>Tax:</span>
-              <span>₱0.00</span>
-            </div>
-            <div className="flex justify-between text-lg font-bold">
-              <span>Total:</span>
-              <span className="text-amber-600">₱{cart.getTotal().toFixed(2)}</span>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="mt-4 space-y-2">
-            <Button
-              className="w-full bg-amber-600 hover:bg-amber-700"
-              size="lg"
-              disabled={cart.items.length === 0}
-              onClick={() => setShowPaymentPanel(true)}
-            >
-              Proceed to Payment
-            </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                onClick={() => cart.clearCart()}
-                disabled={cart.items.length === 0}
-              >
-                Clear
-              </Button>
-              <Button variant="outline" disabled={cart.items.length === 0}>
-                Hold
-              </Button>
-            </div>
-          </div>
-        </Card>
+      <div className="w-[420px] flex-shrink-0">
+        <OrderSummaryPanel
+          items={cart.items}
+          customer={cart.customer}
+          table={cart.table}
+          subtotal={cart.getSubtotal()}
+          total={cart.getTotal()}
+          isLoading={cart.isLoadingCart}
+          onOpenCustomerSearch={() => setShowCustomerSearch(true)}
+          onOpenTableSelector={() => setShowTableSelector(true)}
+          onUpdateQuantity={handleUpdateQuantity}
+          onRemoveItem={handleRemoveItem}
+          onProceedToPayment={() => setShowPaymentPanel(true)}
+          onClearCart={handleClearCart}
+        />
       </div>
 
       {/* Customer Search Dialog */}
@@ -716,9 +699,9 @@ export function POSInterface() {
       {successMessage && (
         <div className="fixed top-4 right-4 z-50 max-w-md animate-in slide-in-from-top">
           <div className="bg-green-600 text-white px-6 py-4 rounded-lg shadow-lg flex items-start gap-3">
-            <CheckCircle className="h-6 w-6 flex-shrink-0 mt-0.5" />
+            <CheckCircle2 className="h-6 w-6 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold">Payment Successful!</p>
+              <p className="font-semibold">Success!</p>
               <p className="text-sm opacity-90">{successMessage}</p>
             </div>
           </div>
