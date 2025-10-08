@@ -372,86 +372,92 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
         </div>
       )}
       
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column - Product Selection */}
-        <div className="space-y-6">
-          {/* Session Info Header */}
+      {/* Responsive Main Layout Container - Optimized height for better space utilization */}
+      <div className="flex flex-col xl:flex-row gap-4 h-[calc(100vh-12rem)]">
+        {/* Left Column - Product Selection (Expands on XL screens) */}
+        <div className="flex-1 min-w-0 flex flex-col gap-3 min-h-0">
+          {/* Compact Session Info Header */}
           {session && (
-            <Card className="shadow-md">
-              <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50">
-                <CardTitle className="flex items-center justify-between">
-                  <span>Current Session</span>
-                  <Badge className="bg-green-600 text-white">{session.status}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 pt-6">
-              {/* Session Number & Info */}
-              <div className="flex items-center justify-between">
-                <span className="font-mono font-semibold text-sm">{session.session_number}</span>
-                <div className="flex gap-2">
-                  {/* Customer Badge */}
-                  {selectedCustomer ? (
-                    <Badge 
-                      className={`flex items-center gap-1 cursor-pointer ${getTierBadgeColor(selectedCustomer.tier)}`}
-                      onClick={() => setShowCustomerSearch(true)}
-                    >
-                      {selectedCustomer.tier !== 'regular' && <Star className="w-3 h-3" />}
-                      <User className="w-3 h-3" />
-                      {selectedCustomer.full_name}
-                      <Edit className="w-3 h-3 ml-1" />
-                    </Badge>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowCustomerSearch(true)}
-                      className="h-6 text-xs"
-                    >
-                      <User className="w-3 h-3 mr-1" />
-                      Select Customer
-                    </Button>
-                  )}
-
-                  {/* Table Badge */}
-                  {session.table && (
-                    <Badge className="flex items-center gap-1 bg-green-100 text-green-800">
-                      <MapPin className="w-3 h-3" />
-                      Table {session.table.table_number}
-                    </Badge>
-                  )}
+            <Card className="shadow-md flex-shrink-0">
+              <CardContent className="p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  {/* Left: Session Number & Status */}
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-semibold text-sm">{session.session_number}</span>
+                        <Badge className="bg-green-600 text-white text-xs">{session.status}</Badge>
+                      </div>
+                      {session.table && (
+                        <div className="flex items-center gap-1 text-xs text-gray-600 mt-1">
+                          <MapPin className="w-3 h-3" />
+                          Table {session.table.table_number}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Right: Customer & Total */}
+                  <div className="flex items-center gap-3">
+                    {/* Customer Badge */}
+                    {selectedCustomer ? (
+                      <Badge 
+                        className={`flex items-center gap-1 cursor-pointer ${getTierBadgeColor(selectedCustomer.tier)}`}
+                        onClick={() => setShowCustomerSearch(true)}
+                      >
+                        {selectedCustomer.tier !== 'regular' && <Star className="w-3 h-3" />}
+                        <User className="w-3 h-3" />
+                        <span className="hidden sm:inline">{selectedCustomer.full_name}</span>
+                        <span className="sm:hidden">{selectedCustomer.full_name.split(' ')[0]}</span>
+                        <Edit className="w-3 h-3 ml-1" />
+                      </Badge>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowCustomerSearch(true)}
+                        className="h-7 text-xs"
+                      >
+                        <User className="w-3 h-3 mr-1" />
+                        <span className="hidden sm:inline">Select Customer</span>
+                        <span className="sm:hidden">Customer</span>
+                      </Button>
+                    )}
+                    
+                    {/* Session Total */}
+                    <div className="text-right">
+                      <div className="text-xs text-gray-600">Total</div>
+                      <div className="text-lg font-bold text-green-600">
+                        {formatCurrency(session.total_amount || 0)}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+                
+                {/* VIP Notice (if applicable) */}
+                {selectedCustomer && selectedCustomer.tier !== 'regular' && (
+                  <div className="mt-3 p-2 bg-purple-50 rounded text-xs text-purple-800 flex items-center gap-1">
+                    <Star className="w-3 h-3" />
+                    {formatTier(selectedCustomer.tier)} - Special pricing applied
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
-              {/* Customer Details (if VIP) */}
-              {selectedCustomer && selectedCustomer.tier !== 'regular' && (
-                <div className="p-2 bg-purple-50 rounded text-xs text-purple-800">
-                  <Star className="w-3 h-3 inline mr-1" />
-                  {formatTier(selectedCustomer.tier)} - Special pricing applied
-                </div>
-              )}
+          {/* Product Selector - Takes remaining space and scrolls internally */}
+          <div className="flex-1 min-h-0">
+            <SessionProductSelector
+              customerTier={selectedCustomer?.tier || 'regular'}
+              onProductSelect={addToCart}
+            />
+          </div>
+        </div>
 
-              {/* Session Total */}
-              <div className="pt-2 border-t">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Session Total:</span>
-                  <span className="text-lg font-bold text-green-600">
-                    {formatCurrency(session.total_amount || 0)}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Product Selector */}
-        <SessionProductSelector
-          customerTier={selectedCustomer?.tier || 'regular'}
-          onProductSelect={addToCart}
-        />
-      </div>
-
-        {/* Right Column - Cart & Actions */}
-        <div className="space-y-6">{renderCartSection()}</div>
+        {/* Right Column - Cart & Actions (Responsive width) */}
+        <div className="xl:w-[380px] 2xl:w-[420px] flex-shrink-0 min-h-0">
+          {renderCartSection()}
+        </div>
 
         {/* Customer Search Dialog */}
         <CustomerSearch
@@ -464,85 +470,100 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
   );
 
   /**
-   * Render cart section
+   * Render cart section with responsive scrolling
    */
   function renderCartSection() {
     return (
-      <>
-      {/* Cart */}
-      <Card className="shadow-md">
-        <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50">
-          <CardTitle className="flex items-center gap-2">
-            <ShoppingCart className="w-5 h-5 text-blue-600" />
-            Current Order
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6">
-          {cart.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-              <p>No items in cart</p>
-              <p className="text-sm">Add items to create an order</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {cart.map((item, index) => (
-                <div key={index} className="flex items-center gap-3 border-b pb-3">
-                  <div className="flex-1">
-                    <div className="font-medium">{item.item_name}</div>
-                    <div className="text-sm text-gray-600">
-                      {formatCurrency(item.unit_price)} × {item.quantity}
+      <div className="h-full flex flex-col gap-3">
+        {/* Cart */}
+        <Card className="shadow-md flex-1 flex flex-col overflow-hidden min-h-0">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 flex-shrink-0">
+            <CardTitle className="flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-blue-600" />
+              Current Order
+              {cart.length > 0 && (
+                <Badge className="bg-blue-600 text-white ml-2">{cart.length}</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6 flex-1 overflow-y-auto min-h-0">
+            {cart.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                <p className="font-medium">No items in cart</p>
+                <p className="text-sm">Add items to create an order</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {cart.map((item, index) => (
+                  <div key={index} className="border-b pb-3 last:border-b-0">
+                    {/* Item Header */}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm leading-tight line-clamp-2">{item.item_name}</div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          {formatCurrency(item.unit_price)} × {item.quantity}
+                        </div>
+                      </div>
+                      <div className="font-bold text-blue-600 flex-shrink-0">
+                        {formatCurrency(item.total)}
+                      </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="flex items-center justify-between gap-2">
+                      {/* Quantity Controls */}
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateQuantity(index, item.quantity - 1)}
+                          className="h-7 w-7 p-0"
+                        >
+                          -
+                        </Button>
+                        <span className="w-10 text-center font-medium text-sm">{item.quantity}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateQuantity(index, item.quantity + 1)}
+                          className="h-7 w-7 p-0"
+                        >
+                          +
+                        </Button>
+                      </div>
+
+                      {/* Remove Button */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => removeFromCart(index)}
+                        className="h-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
-
-                  {/* Quantity Controls */}
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => updateQuantity(index, item.quantity - 1)}
-                    >
-                      -
-                    </Button>
-                    <span className="w-8 text-center font-medium">{item.quantity}</span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => updateQuantity(index, item.quantity + 1)}
-                    >
-                      +
-                    </Button>
-                  </div>
-
-                  <div className="font-bold w-24 text-right">
-                    {formatCurrency(item.total)}
-                  </div>
-
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => removeFromCart(index)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-
-              {/* Cart Total */}
-              <div className="flex items-center justify-between pt-3 border-t-2">
+                ))}
+              </div>
+            )}
+          </CardContent>
+          
+          {/* Cart Total - Fixed at bottom */}
+          {cart.length > 0 && (
+            <CardContent className="border-t bg-gray-50 flex-shrink-0 py-4">
+              <div className="flex items-center justify-between">
                 <span className="text-lg font-semibold">Total:</span>
                 <span className="text-2xl font-bold text-green-600">
                   {formatCurrency(cartTotal)}
                 </span>
               </div>
-            </div>
+            </CardContent>
           )}
-        </CardContent>
-      </Card>
+        </Card>
 
-        {/* Actions */}
-        <div className="flex gap-3 mt-4">
+        {/* Actions - Fixed at bottom */}
+        <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
           <Button
             variant="outline"
             className="flex-1"
@@ -550,7 +571,8 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
             onClick={createDraftOrder}
           >
             <Clock className="w-4 h-4 mr-2" />
-            Save as Draft
+            <span className="hidden sm:inline">Save as Draft</span>
+            <span className="sm:hidden">Draft</span>
           </Button>
 
           <Button
@@ -561,17 +583,19 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
             {confirming ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Confirming...
+                <span className="hidden sm:inline">Confirming...</span>
+                <span className="sm:hidden">Wait...</span>
               </>
             ) : (
               <>
                 <Send className="w-4 h-4 mr-2" />
-                Confirm & Send to Kitchen
+                <span className="hidden sm:inline">Confirm & Send</span>
+                <span className="sm:hidden">Confirm</span>
               </>
             )}
           </Button>
         </div>
-      </>
+      </div>
     );
   }
 }

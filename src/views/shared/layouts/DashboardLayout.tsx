@@ -29,6 +29,7 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const router = useRouter();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   /**
    * Handle user logout
@@ -48,6 +49,14 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
    */
   const handleMenuClick = () => {
     setIsMobileSidebarOpen(!isMobileSidebarOpen);
+  };
+
+  /**
+   * Toggle desktop sidebar collapse state
+   * Switches between full sidebar (w-64) and icon-only sidebar (w-16)
+   */
+  const handleToggleCollapse = () => {
+    setIsSidebarCollapsed(!isSidebarCollapsed);
   };
 
   /**
@@ -72,8 +81,13 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
     <ToastProvider>
       <NotificationProvider>
         <div className="flex h-screen overflow-hidden bg-gray-50">
-          {/* Sidebar for desktop */}
-          <Sidebar userRole={user?.role} variant="desktop" />
+          {/* Sidebar for desktop with collapse functionality */}
+          <Sidebar 
+            userRole={user?.role} 
+            variant="desktop" 
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={handleToggleCollapse}
+          />
 
           {/* Mobile sidebar overlay */}
           {isMobileSidebarOpen && (

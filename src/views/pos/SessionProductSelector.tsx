@@ -196,16 +196,16 @@ export default function SessionProductSelector({
   return (
     <Card className="h-full flex flex-col overflow-hidden shadow-md">
       {/* Header */}
-      <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+      <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b flex-shrink-0">
         <CardTitle className="flex items-center gap-2">
           <Package className="w-5 h-5 text-blue-600" />
           Select Products
         </CardTitle>
       </CardHeader>
       
-      <CardContent className="flex-1 overflow-hidden flex flex-col p-4 space-y-4">
+      <CardContent className="flex-1 overflow-hidden flex flex-col p-4 space-y-4 min-h-0">
         {/* Search Bar */}
-        <div className="relative">
+        <div className="relative flex-shrink-0">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <Input
             type="text"
@@ -217,15 +217,17 @@ export default function SessionProductSelector({
         </div>
 
         {/* Category Filter */}
-        <CategoryFilter
-          selectedCategoryId={selectedCategory}
-          onCategoryChange={setSelectedCategory}
-          showProductCount={true}
-          productCountPerCategory={productCountPerCategory}
-        />
+        <div className="flex-shrink-0">
+          <CategoryFilter
+            selectedCategoryId={selectedCategory}
+            onCategoryChange={setSelectedCategory}
+            showProductCount={true}
+            productCountPerCategory={productCountPerCategory}
+          />
+        </div>
 
-        {/* Product Grid - Responsive: 1 col (mobile), 2 cols (sm), 3 cols (md), 4 cols (lg+) */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Product Grid - Only this section scrolls */}
+        <div className="flex-1 overflow-y-auto min-h-0">
           {filteredProducts.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <GridIcon className="h-20 w-20 mx-auto mb-4 opacity-30" />
@@ -233,7 +235,7 @@ export default function SessionProductSelector({
               <p className="text-sm mt-2">Try adjusting your search or filters</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 pb-6">
               {filteredProducts.map((product) => (
                 <TabProductCard
                   key={product.id}
