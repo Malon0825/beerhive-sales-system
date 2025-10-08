@@ -11,17 +11,34 @@ import { AppError } from '@/lib/errors/AppError';
 /**
  * CreateOrder Use Case
  * Orchestrates the entire order creation flow
+ * 
+ * Supports two modes:
+ * 1. Standalone orders: Traditional direct-payment orders (no session)
+ * 2. Session-based orders: Tab orders linked to an order session
+ * 
+ * For session-based orders:
+ * - Order is linked to session via session_id
+ * - Database triggers automatically update session totals
+ * - Table assignment is handled by the session (not individual orders)
+ * - Orders start in DRAFT status and are confirmed separately
  */
 export class CreateOrder {
   /**
    * Execute order creation
+   * 
+   * @param dto - Order data transfer object
+   * @param cashierId - ID of the cashier creating the order
+   * @returns Created order with full details
+   * @throws AppError if validation fails or creation errors occur
    */
   static async execute(dto: CreateOrderDTO, cashierId: string) {
     try {
       // Debug: Log incoming order data
       console.log('🔍 [CreateOrder] Received DTO:', {
+        session_id: dto.session_id,
         table_id: dto.table_id,
         customer_id: dto.customer_id,
+        status: dto.status || 'PENDING (default)',
         items_count: dto.items?.length,
         payment_method: dto.payment_method
       });
@@ -85,9 +102,11 @@ export class CreateOrder {
 
       // Step 6: Prepare order data
       const orderData = {
+        session_id: dto.session_id || null,
         customer_id: dto.customer_id || null,
         cashier_id: cashierId,
         table_id: dto.table_id || null,
+        status: dto.status || null, // Allow passing status (e.g., DRAFT for tab orders)
         subtotal: calculations.subtotal,
         discount_amount: calculations.discountAmount,
         tax_amount: calculations.taxAmount,
@@ -103,8 +122,9 @@ export class CreateOrder {
       const order = await OrderRepository.create(orderData, processedItems);
 
       // Step 8: Update table status to OCCUPIED if assigned
-      // This marks the table as occupied and links it to the order
-      if (dto.table_id) {
+      // Note: For session-based orders, table is already assigned to session
+      // Only assign table for standalone orders (without session)
+      if (dto.table_id && !dto.session_id) {
         console.log(`🔍 [CreateOrder] Assigning table ${dto.table_id} to order ${order.id}...`);
         try {
           const updatedTable = await TableRepository.assignOrder(dto.table_id, order.id);
@@ -119,6 +139,8 @@ export class CreateOrder {
           console.error('⚠️ [CreateOrder] Table assignment error (non-fatal):', tableError);
           console.warn('⚠️ [CreateOrder] Order created successfully but table status not updated');
         }
+      } else if (dto.session_id) {
+        console.log('ℹ️ [CreateOrder] Session-based order - table already assigned to session');
       } else {
         console.log('ℹ️ [CreateOrder] No table_id provided, skipping table assignment');
       }
@@ -136,11 +158,17 @@ export class CreateOrder {
       console.log(`✅ [CreateOrder] Order created successfully:`, {
         order_id: fullOrder?.id,
         order_number: fullOrder?.order_number,
+        session_id: fullOrder?.session_id || 'N/A',
         status: fullOrder?.status,
         order_items_count: fullOrder?.order_items?.length || 0
       });
       
-      console.log(`ℹ️  [CreateOrder] Kitchen routing will occur when order is marked as COMPLETED`);
+      if (dto.session_id) {
+        console.log(`🔗 [CreateOrder] Order linked to session: ${dto.session_id}`);
+        console.log(`ℹ️  [CreateOrder] Session totals will be auto-updated by database trigger`);
+      }
+      
+      console.log(`ℹ️  [CreateOrder] Kitchen routing will occur when order is marked as COMPLETED or CONFIRMED`);
 
       return fullOrder;
     } catch (error) {

@@ -8,10 +8,11 @@ import { AppError } from '@/lib/errors/AppError';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { happyHourId: string } }
+  { params }: { params: Promise<{ happyHourId: string }> }
 ) {
   try {
-    const happyHour = await HappyHourRepository.getById(params.happyHourId);
+    const { happyHourId } = await params;
+    const happyHour = await HappyHourRepository.getById(happyHourId);
 
     if (!happyHour) {
       return NextResponse.json(
@@ -21,7 +22,7 @@ export async function GET(
     }
 
     // Also get associated products
-    const products = await HappyHourRepository.getHappyHourProducts(params.happyHourId);
+    const products = await HappyHourRepository.getHappyHourProducts(happyHourId);
 
     return NextResponse.json({
       success: true,
@@ -53,9 +54,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { happyHourId: string } }
+  { params }: { params: Promise<{ happyHourId: string }> }
 ) {
   try {
+    const { happyHourId } = await params;
     const body = await request.json();
 
     // Validate time format if provided
@@ -75,7 +77,7 @@ export async function PATCH(
       }
     }
 
-    const happyHour = await HappyHourRepository.update(params.happyHourId, body);
+    const happyHour = await HappyHourRepository.update(happyHourId, body);
 
     return NextResponse.json({
       success: true,
@@ -105,10 +107,11 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { happyHourId: string } }
+  { params }: { params: Promise<{ happyHourId: string }> }
 ) {
   try {
-    await HappyHourRepository.delete(params.happyHourId);
+    const { happyHourId } = await params;
+    await HappyHourRepository.delete(happyHourId);
 
     return NextResponse.json({
       success: true,

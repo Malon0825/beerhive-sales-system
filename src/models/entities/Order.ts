@@ -11,6 +11,7 @@ export interface Order {
   customer_id: string | null;
   cashier_id: string | null;
   table_id: string | null;
+  session_id?: string | null;  // Added for tab system
   subtotal: number;
   discount_amount: number;
   tax_amount: number;

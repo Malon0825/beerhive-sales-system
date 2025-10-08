@@ -8,10 +8,11 @@ import { AppError } from '@/lib/errors/AppError';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { supplierId: string } }
+  { params }: { params: Promise<{ supplierId: string }> }
 ) {
   try {
-    const supplier = await SupplierRepository.getById(params.supplierId);
+    const { supplierId } = await params;
+    const supplier = await SupplierRepository.getById(supplierId);
 
     if (!supplier) {
       return NextResponse.json(
@@ -47,11 +48,12 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { supplierId: string } }
+  { params }: { params: Promise<{ supplierId: string }> }
 ) {
   try {
+    const { supplierId } = await params;
     const body = await request.json();
-    const supplier = await SupplierRepository.update(params.supplierId, body);
+    const supplier = await SupplierRepository.update(supplierId, body);
 
     return NextResponse.json({
       success: true,
@@ -81,10 +83,11 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { supplierId: string } }
+  { params }: { params: Promise<{ supplierId: string }> }
 ) {
   try {
-    await SupplierRepository.delete(params.supplierId);
+    const { supplierId } = await params;
+    await SupplierRepository.delete(supplierId);
 
     return NextResponse.json({
       success: true,

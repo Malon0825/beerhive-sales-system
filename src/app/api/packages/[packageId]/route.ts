@@ -8,10 +8,11 @@ import { AppError } from '@/lib/errors/AppError';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { packageId: string } }
+  { params }: { params: Promise<{ packageId: string }> }
 ) {
   try {
-    const packageData = await PackageRepository.getById(params.packageId);
+    const { packageId } = await params;
+    const packageData = await PackageRepository.getById(packageId);
 
     if (!packageData) {
       return NextResponse.json(
@@ -47,13 +48,14 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { packageId: string } }
+  { params }: { params: Promise<{ packageId: string }> }
 ) {
   try {
+    const { packageId } = await params;
     const body = await request.json();
 
     // Check if package exists
-    const existingPackage = await PackageRepository.getById(params.packageId);
+    const existingPackage = await PackageRepository.getById(packageId);
     if (!existingPackage) {
       return NextResponse.json(
         { success: false, error: 'Package not found' },
@@ -63,7 +65,7 @@ export async function PATCH(
 
     // If updating package code, check if new code already exists
     if (body.package_code && body.package_code !== existingPackage.package_code) {
-      const codeExists = await PackageRepository.codeExists(body.package_code, params.packageId);
+      const codeExists = await PackageRepository.codeExists(body.package_code, packageId);
       if (codeExists) {
         return NextResponse.json(
           { success: false, error: 'Package code already exists' },
@@ -72,11 +74,11 @@ export async function PATCH(
       }
     }
 
-    const updatedPackage = await PackageRepository.update(params.packageId, body);
+    const updatedPackage = await PackageRepository.update(packageId, body);
 
     // If items are provided, update them
     if (body.items) {
-      await PackageRepository.updateItems(params.packageId, body.items);
+      await PackageRepository.updateItems(packageId, body.items);
     }
 
     return NextResponse.json({
@@ -107,11 +109,12 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { packageId: string } }
+  { params }: { params: Promise<{ packageId: string }> }
 ) {
   try {
+    const { packageId } = await params;
     // Check if package exists
-    const existingPackage = await PackageRepository.getById(params.packageId);
+    const existingPackage = await PackageRepository.getById(packageId);
     if (!existingPackage) {
       return NextResponse.json(
         { success: false, error: 'Package not found' },
@@ -119,7 +122,7 @@ export async function DELETE(
       );
     }
 
-    await PackageRepository.delete(params.packageId);
+    await PackageRepository.delete(packageId);
 
     return NextResponse.json({
       success: true,

@@ -10,18 +10,21 @@ import { AppError } from '@/lib/errors/AppError';
  */
 export class OrderService {
   /**
-   * Complete order (mark as completed)
-   * After completion, routes order items to kitchen/bartender based on product category
+   * Confirm order and send to kitchen/bartender
+   * This triggers food preparation WITHOUT requiring payment
    * 
    * Flow:
-   * 1. Validate order exists and is in pending state
-   * 2. Mark order as completed
+   * 1. Validate order exists and is in draft status
+   * 2. Mark order as confirmed
    * 3. Route order items to kitchen/bartender for preparation
    * 4. Kitchen/bartender will receive real-time notifications
+   * 
+   * @param orderId - Order ID to confirm
+   * @returns Confirmed order
    */
-  static async completeOrder(orderId: string): Promise<Order> {
+  static async confirmOrder(orderId: string): Promise<Order> {
     try {
-      console.log(`🎯 [OrderService.completeOrder] Starting completion for order ${orderId}`);
+      console.log(`🎯 [OrderService.confirmOrder] Confirming order ${orderId}`);
       
       // Step 1: Get order with items
       const order = await OrderRepository.getById(orderId);
@@ -30,32 +33,79 @@ export class OrderService {
         throw new AppError('Order not found', 404);
       }
 
-      if (order.status !== OrderStatus.PENDING) {
-        throw new AppError(`Cannot complete order with status: ${order.status}`, 400);
+      if (order.status !== OrderStatus.DRAFT && order.status !== OrderStatus.PENDING) {
+        throw new AppError(`Cannot confirm order with status: ${order.status}`, 400);
       }
 
-      console.log(`✅ [OrderService.completeOrder] Order validated, ${order.order_items?.length || 0} items found`);
+      console.log(`✅ [OrderService.confirmOrder] Order validated, ${order.order_items?.length || 0} items found`);
 
-      // Step 2: Mark order as completed
-      const completedOrder = await OrderRepository.updateStatus(orderId, OrderStatus.COMPLETED);
-      console.log(`✅ [OrderService.completeOrder] Order marked as COMPLETED`);
+      // Step 2: Mark order as confirmed
+      const confirmedOrder = await OrderRepository.updateStatus(orderId, OrderStatus.CONFIRMED);
+      console.log(`✅ [OrderService.confirmOrder] Order marked as CONFIRMED`);
 
       // Step 3: Route order items to kitchen/bartender
       if (order.order_items && order.order_items.length > 0) {
-        console.log(`🍳 [OrderService.completeOrder] Routing ${order.order_items.length} items to kitchen/bartender...`);
+        console.log(`🍳 [OrderService.confirmOrder] Routing ${order.order_items.length} items to kitchen/bartender...`);
         
         try {
           await KitchenRouting.routeOrder(orderId, order.order_items);
-          console.log(`✅ [OrderService.completeOrder] Kitchen routing completed successfully`);
+          console.log(`✅ [OrderService.confirmOrder] Kitchen routing completed successfully`);
         } catch (routingError) {
-          // Log error but don't fail the order completion
-          // The order is already completed, kitchen routing is supplementary
-          console.error('⚠️  [OrderService.completeOrder] Kitchen routing failed (non-fatal):', routingError);
-          console.warn('⚠️  [OrderService.completeOrder] Order is completed but kitchen may not receive items');
+          // Log error but don't fail the order confirmation
+          console.error('⚠️  [OrderService.confirmOrder] Kitchen routing failed (non-fatal):', routingError);
+          console.warn('⚠️  [OrderService.confirmOrder] Order is confirmed but kitchen may not receive items');
         }
       } else {
-        console.warn('⚠️  [OrderService.completeOrder] No order items to route');
+        console.warn('⚠️  [OrderService.confirmOrder] No order items to route');
       }
+
+      console.log(`🎉 [OrderService.confirmOrder] Order ${orderId} confirmed and sent to kitchen`);
+      return confirmedOrder;
+    } catch (error) {
+      console.error('❌ [OrderService.confirmOrder] Error:', error);
+      throw error instanceof AppError ? error : new AppError('Failed to confirm order', 500);
+    }
+  }
+
+  /**
+   * Complete order (mark as completed after payment)
+   * This is called when payment is processed
+   * 
+   * Flow:
+   * 1. Validate order exists
+   * 2. Mark order as completed
+   * 3. Update payment details
+   * 
+   * Note: Kitchen routing should already have happened on CONFIRMED status
+   * 
+   * @param orderId - Order ID to complete
+   * @returns Completed order
+   */
+  static async completeOrder(orderId: string): Promise<Order> {
+    try {
+      console.log(`🎯 [OrderService.completeOrder] Completing order ${orderId}`);
+      
+      // Get order
+      const order = await OrderRepository.getById(orderId);
+      
+      if (!order) {
+        throw new AppError('Order not found', 404);
+      }
+
+      // Can complete orders in various states (confirmed, served, pending)
+      if (order.status === OrderStatus.COMPLETED) {
+        throw new AppError('Order is already completed', 400);
+      }
+
+      if (order.status === OrderStatus.VOIDED) {
+        throw new AppError('Cannot complete voided order', 400);
+      }
+
+      console.log(`✅ [OrderService.completeOrder] Order validated`);
+
+      // Mark order as completed
+      const completedOrder = await OrderRepository.updateStatus(orderId, OrderStatus.COMPLETED);
+      console.log(`✅ [OrderService.completeOrder] Order marked as COMPLETED`);
 
       console.log(`🎉 [OrderService.completeOrder] Order ${orderId} completed successfully`);
       return completedOrder;

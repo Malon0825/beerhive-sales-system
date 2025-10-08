@@ -165,8 +165,18 @@ export default function TableCard({
         </div>
       </div>
 
-      {/* Current Order Info */}
-      {table.current_order_id && (
+      {/* Current Session/Order Info */}
+      {(table as any).current_session_id && (
+        <div className="mb-3 p-2 bg-green-50 rounded border border-green-200">
+          <p className="text-xs text-green-800 font-semibold">
+            🔓 Tab Open
+          </p>
+          <p className="text-xs text-green-600 mt-0.5">
+            Session active
+          </p>
+        </div>
+      )}
+      {table.current_order_id && !(table as any).current_session_id && (
         <div className="mb-3 p-2 bg-blue-50 rounded border border-blue-200">
           <p className="text-xs text-blue-800 font-medium">
             Order in progress

@@ -19,9 +19,10 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const { orderId } = await params;
     const body = await request.json();
     
     let managerUserId = body.manager_user_id;
@@ -92,7 +93,7 @@ export async function POST(
     const skipSessionCheck = !!body.managerPin;
     
     const voidedOrder = await VoidOrderService.voidOrder(
-      params.orderId,
+      orderId,
       managerUserId,
       body.isReturn ? `[RETURN] ${body.reason}` : body.reason,
       returnInventory,

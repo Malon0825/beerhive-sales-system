@@ -10,10 +10,10 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(
   request: NextRequest,
-  context: any
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const { orderId } = context.params as { orderId: string };
+    const { orderId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const cashierId = searchParams.get('cashierId');
 
@@ -61,10 +61,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  context: any
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const { orderId } = context.params as { orderId: string };
+    const { orderId } = await params;
     const body = await request.json();
     const { cashierId, customerId, tableId, orderNotes, isOnHold } = body;
 
@@ -108,10 +108,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  context: any
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const { orderId } = context.params as { orderId: string };
+    const { orderId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const cashierId = searchParams.get('cashierId');
 

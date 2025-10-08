@@ -9,10 +9,11 @@ import { AppError } from '@/lib/errors/AppError';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { key: string } }
+  { params }: { params: Promise<{ key: string }> }
 ) {
   try {
-    const value = await SettingsService.getSetting(params.key);
+    const { key } = await params;
+    const value = await SettingsService.getSetting(key);
 
     if (value === null) {
       return NextResponse.json(
@@ -24,7 +25,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
-        key: params.key,
+        key,
         value,
       },
     });
@@ -51,9 +52,10 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { key: string } }
+  { params }: { params: Promise<{ key: string }> }
 ) {
   try {
+    const { key } = await params;
     const body = await request.json();
 
     if (body.value === undefined) {
@@ -66,7 +68,7 @@ export async function PUT(
     // TODO: Get user ID from session
     const userId = body.updated_by || 'system';
 
-    await SettingsService.updateSetting(params.key, body.value, userId);
+    await SettingsService.updateSetting(key, body.value, userId);
 
     return NextResponse.json({
       success: true,

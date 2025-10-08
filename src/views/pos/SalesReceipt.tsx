@@ -28,6 +28,12 @@ interface ReceiptOrderData {
 interface SalesReceiptProps {
   orderData: ReceiptOrderData;
   onClose?: () => void;
+  /**
+   * If true, the printed receipt will include active Tailwind/global styles
+   * so that the print preview matches the on-screen dialog. Leave false to
+   * use the legacy minimalist print layout.
+   */
+  matchDialogStyles?: boolean;
 }
 
 /**
@@ -40,7 +46,7 @@ interface SalesReceiptProps {
  * - Payment details
  * - Print-optimized styling
  */
-export function SalesReceipt({ orderData, onClose }: SalesReceiptProps) {
+export function SalesReceipt({ orderData, onClose, matchDialogStyles = false }: SalesReceiptProps) {
   const { order } = orderData;
 
   /**
@@ -70,8 +76,39 @@ export function SalesReceipt({ orderData, onClose }: SalesReceiptProps) {
   }, []);
 
   /**
-   * Trigger browser print dialog using a separate print window
-   * This ensures clean printing without CSS conflicts from the main page
+   * Collect style tags and stylesheets from the current document to inject
+   * into the print window. This preserves Tailwind and global styles so the
+   * printed receipt matches the on-screen preview exactly.
+   *
+   * NOTE: We only copy <link rel="stylesheet"> and <style> tags to avoid
+   * executing any scripts in the print window.
+   */
+  const collectActiveStyles = () => {
+    const parts: string[] = [];
+    // Copy linked stylesheets (e.g., Next.js compiled CSS, Tailwind)
+    document
+      .querySelectorAll('link[rel="stylesheet"]')
+      .forEach((link) => {
+        const href = (link as HTMLLinkElement).href;
+        if (href) {
+          parts.push(`<link rel="stylesheet" href="${href}" />`);
+        }
+      });
+
+    // Copy any inline <style> blocks (e.g., dev mode injected styles)
+    document.querySelectorAll('style').forEach((styleEl) => {
+      parts.push(`<style>${(styleEl as HTMLStyleElement).innerHTML}</style>`);
+    });
+
+    return parts.join('\n');
+  };
+
+  /**
+   * Trigger browser print dialog using a separate print window.
+   *
+   * Design parity fix: inject Tailwind/global styles from the current
+   * document into the print window so the printed layout is identical
+   * to the dialog preview.
    */
   const handlePrint = () => {
     // Get the receipt content
@@ -89,6 +126,9 @@ export function SalesReceipt({ orderData, onClose }: SalesReceiptProps) {
       return;
     }
 
+    // Optionally gather active styles (when matching dialog styles is desired)
+    const activeStyles = matchDialogStyles ? collectActiveStyles() : '';
+
     // Write the receipt content to the new window
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -97,6 +137,7 @@ export function SalesReceipt({ orderData, onClose }: SalesReceiptProps) {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Sales Receipt - ${order.order_number}</title>
+        ${activeStyles}
         <style>
           * {
             margin: 0;

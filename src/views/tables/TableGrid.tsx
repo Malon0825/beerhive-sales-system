@@ -15,8 +15,19 @@ import DeactivateTableDialog from './DeactivateTableDialog';
 import { supabase } from '@/data/supabase/client';
 import { Plus, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { apiPatch, apiPost } from '@/lib/utils/apiClient';
 
-export default function TableGrid() {
+/**
+ * Props for TableGrid component
+ */
+interface TableGridProps {
+  /** Callback when a table is selected */
+  onTableSelect?: (tableId: string | null) => void;
+  /** Currently selected table ID for highlighting */
+  selectedTableId?: string | null;
+}
+
+export default function TableGrid({ onTableSelect, selectedTableId }: TableGridProps) {
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<TableStatus | 'all'>('all');
@@ -130,17 +141,9 @@ export default function TableGrid() {
     notes?: string
   ) => {
     try {
-      const response = await fetch(`/api/tables/${tableId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action, notes }),
-      });
+      const data = await apiPatch(`/api/tables/${tableId}`, { action, notes });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to update table status');
       }
 
@@ -214,17 +217,9 @@ export default function TableGrid() {
    */
   const handleReactivate = async (tableId: string) => {
     try {
-      const response = await fetch(`/api/tables/${tableId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action: 'reactivate' }),
-      });
+      const data = await apiPatch(`/api/tables/${tableId}`, { action: 'reactivate' });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to reactivate table');
       }
 
@@ -256,17 +251,9 @@ export default function TableGrid() {
     notes?: string;
   }) => {
     try {
-      const response = await fetch('/api/tables', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(tableData),
-      });
+      const data = await apiPost('/api/tables', tableData);
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to create table');
       }
 
@@ -290,10 +277,19 @@ export default function TableGrid() {
     }
   };
 
-  // Handle table click
+  /**
+   * Handle table click
+   * Selects the table and notifies parent component
+   */
   const handleTableClick = (table: Table) => {
     console.log('Table clicked:', table);
-    // Future: Navigate to table details or order management
+    
+    // Toggle selection - if already selected, deselect
+    if (selectedTableId === table.id) {
+      onTableSelect?.(null);
+    } else {
+      onTableSelect?.(table.id);
+    }
   };
 
   /**
@@ -457,22 +453,30 @@ export default function TableGrid() {
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Active Tables</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {activeTables.map((table) => (
-                <TableCard
+                <div
                   key={table.id}
-                  table={table}
-                  onReserve={handleReserveClick}
-                  onOccupy={handleOccupyClick}
-                  onQuickAction={handleQuickStatusChange}
-                  onDeactivate={handleDeactivateClick}
-                  onClick={handleTableClick}
-                  // Pass role-based action visibility
-                  canReserve={canReserve}
-                  canOccupy={canOccupy}
-                  canRelease={canRelease}
-                  canMarkCleaned={canMarkCleaned}
-                  canCancelReservation={canCancelReservation}
-                  canDeactivate={canDeactivate}
-                />
+                  className={`transition-all ${
+                    selectedTableId === table.id
+                      ? 'ring-4 ring-blue-500 ring-offset-2 rounded-lg'
+                      : ''
+                  }`}
+                >
+                  <TableCard
+                    table={table}
+                    onReserve={handleReserveClick}
+                    onOccupy={handleOccupyClick}
+                    onQuickAction={handleQuickStatusChange}
+                    onDeactivate={handleDeactivateClick}
+                    onClick={handleTableClick}
+                    // Pass role-based action visibility
+                    canReserve={canReserve}
+                    canOccupy={canOccupy}
+                    canRelease={canRelease}
+                    canMarkCleaned={canMarkCleaned}
+                    canCancelReservation={canCancelReservation}
+                    canDeactivate={canDeactivate}
+                  />
+                </div>
               ))}
             </div>
           </div>

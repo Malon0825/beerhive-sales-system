@@ -8,9 +8,10 @@ import { AppError } from '@/lib/errors/AppError';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { eventId: string } }
+  { params }: { params: Promise<{ eventId: string }> }
 ) {
   try {
+    const { eventId } = await params;
     const body = await request.json();
 
     // Validate order_id
@@ -22,7 +23,7 @@ export async function POST(
     }
 
     const redeemedEvent = await RedemptionService.redeem(
-      params.eventId,
+      eventId,
       body.order_id
     );
 

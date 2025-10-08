@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { PaymentMethod } from '@/models/enums/PaymentMethod';
 import { useCart } from '@/lib/contexts/CartContext';
+import { apiPost } from '@/lib/utils/apiClient';
 import {
   Dialog,
   DialogContent,
@@ -24,37 +25,79 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
+/**
+ * Payment mode: 'pos' for new orders, 'close-tab' for closing existing sessions
+ */
+type PaymentMode = 'pos' | 'close-tab';
+
+/**
+ * Props for PaymentPanel component
+ */
 interface PaymentPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onPaymentComplete: (orderId: string) => void;
+  /**
+   * Called when payment completes successfully.
+   * options.previewReceipt: if true, show receipt dialog for user to print; if false, auto-print immediately.
+   */
+  onPaymentComplete: (orderId: string, options?: { previewReceipt?: boolean }) => void;
+  
+  // Close-tab mode specific props
+  mode?: PaymentMode;
+  sessionId?: string;
+  sessionNumber?: string;
+  sessionTotal?: number;
+  sessionItemCount?: number;
+  sessionCustomer?: { id: string; full_name: string };
+  sessionTable?: { id: string; table_number: string };
 }
 
 /**
  * PaymentPanel Component
- * Handles payment processing for POS orders
+ * Unified payment interface for both POS orders and closing tabs
  * 
  * Features:
+ * - Supports POS mode (new orders) and close-tab mode (existing sessions)
  * - Cash payment with change calculation
+ * - Multiple payment method support
  * - Quick amount selection buttons
- * - Order validation before processing
+ * - Payment validation
  * - Loading and error states
- * - Success confirmation
+ * - Cohesive design across modules
  * 
  * Payment Methods:
- * - Currently enabled: CASH only
- * - Disabled: Card, GCash, PayMaya, Bank Transfer (can be enabled by uncommenting in code)
+ * - CASH (primary method)
+ * - Card, GCash, PayMaya, Bank Transfer (available)
+ * 
+ * @component
  */
-export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentPanelProps) {
-  const cart = useCart();
+export function PaymentPanel({ 
+  open, 
+  onOpenChange, 
+  onPaymentComplete,
+  mode = 'pos',
+  sessionId,
+  sessionNumber,
+  sessionTotal,
+  sessionItemCount,
+  sessionCustomer,
+  sessionTable,
+}: PaymentPanelProps) {
+  const cart = mode === 'pos' ? useCart() : null;
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [amountTendered, setAmountTendered] = useState<string>('');
   const [changeAmount, setChangeAmount] = useState<number>(0);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [referenceNumber, setReferenceNumber] = useState('');
+  // Preview toggle: when unchecked (default), Confirm Payment will auto-print without manual click
+  const [previewReceipt, setPreviewReceipt] = useState(false);
 
-  const total = cart.getTotal();
+  // Get total from cart (POS mode) or session (close-tab mode)
+  const total = mode === 'pos' ? (cart?.getTotal() || 0) : (sessionTotal || 0);
+  const itemCount = mode === 'pos' ? (cart?.getItemCount() || 0) : (sessionItemCount || 0);
+  const customer = mode === 'pos' ? cart?.customer : sessionCustomer;
+  const table = mode === 'pos' ? cart?.table : sessionTable;
 
   /**
    * Calculate change when amount tendered changes
@@ -72,8 +115,7 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
 
   /**
    * Payment method configurations
-   * NOTE: Currently only CASH payment is enabled
-   * Other payment methods (Card, GCash, PayMaya, Bank Transfer) are disabled
+   * All payment methods are available for both POS and close-tab modes
    */
   const paymentMethods = [
     {
@@ -83,43 +125,43 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
       color: 'bg-green-500',
       description: 'Cash payment',
     },
-    // Disabled payment methods - uncomment to enable
-    // {
-    //   method: PaymentMethod.CARD,
-    //   label: 'Card',
-    //   icon: CreditCard,
-    //   color: 'bg-blue-500',
-    //   description: 'Credit/Debit Card',
-    // },
-    // {
-    //   method: PaymentMethod.GCASH,
-    //   label: 'GCash',
-    //   icon: Smartphone,
-    //   color: 'bg-sky-500',
-    //   description: 'GCash e-wallet',
-    // },
-    // {
-    //   method: PaymentMethod.PAYMAYA,
-    //   label: 'PayMaya',
-    //   icon: Smartphone,
-    //   color: 'bg-emerald-500',
-    //   description: 'PayMaya e-wallet',
-    // },
-    // {
-    //   method: PaymentMethod.BANK_TRANSFER,
-    //   label: 'Bank Transfer',
-    //   icon: Building2,
-    //   color: 'bg-purple-500',
-    //   description: 'Bank Transfer',
-    // },
+    {
+      method: PaymentMethod.CARD,
+      label: 'Card',
+      icon: CreditCard,
+      color: 'bg-blue-500',
+      description: 'Credit/Debit Card',
+    },
+    {
+      method: PaymentMethod.GCASH,
+      label: 'GCash',
+      icon: Smartphone,
+      color: 'bg-sky-500',
+      description: 'GCash e-wallet',
+    },
+    {
+      method: PaymentMethod.PAYMAYA,
+      label: 'PayMaya',
+      icon: Smartphone,
+      color: 'bg-emerald-500',
+      description: 'PayMaya e-wallet',
+    },
+    {
+      method: PaymentMethod.BANK_TRANSFER,
+      label: 'Bank Transfer',
+      icon: Building2,
+      color: 'bg-purple-500',
+      description: 'Bank Transfer',
+    },
   ];
 
   /**
-   * Validate order before processing payment
-   * Currently validates cash-only payments
+   * Validate payment before processing
+   * Works for both POS and close-tab modes
    */
   const validateOrder = (): string | null => {
-    if (cart.items.length === 0) {
+    // Only validate cart for POS mode
+    if (mode === 'pos' && cart && cart.items.length === 0) {
       return 'Cart is empty';
     }
 
@@ -127,7 +169,7 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
       return 'Please select a payment method';
     }
 
-    // Validate cash payment (currently the only enabled method)
+    // Validate cash payment
     if (selectedMethod === PaymentMethod.CASH) {
       const tendered = parseFloat(amountTendered);
       if (isNaN(tendered) || tendered < total) {
@@ -135,23 +177,23 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
       }
     }
 
-    // Note: Digital payment validation removed since only CASH is enabled
-    // Uncomment below if you re-enable digital payment methods:
-    // if (
-    //   selectedMethod === PaymentMethod.GCASH ||
-    //   selectedMethod === PaymentMethod.PAYMAYA ||
-    //   selectedMethod === PaymentMethod.BANK_TRANSFER
-    // ) {
-    //   if (!referenceNumber.trim()) {
-    //     return 'Reference number is required for this payment method';
-    //   }
-    // }
+    // Validate digital payments (require reference number)
+    if (
+      selectedMethod === PaymentMethod.GCASH ||
+      selectedMethod === PaymentMethod.PAYMAYA ||
+      selectedMethod === PaymentMethod.BANK_TRANSFER
+    ) {
+      if (!referenceNumber.trim()) {
+        return 'Reference number is required for this payment method';
+      }
+    }
 
     return null;
   };
 
   /**
-   * Process payment and create order
+   * Process payment
+   * Handles both POS orders and closing tabs
    */
   const handlePayment = async () => {
     // Validate
@@ -165,59 +207,66 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
       setProcessing(true);
       setError(null);
 
-      // Prepare order data
-      const orderData = {
-        customer_id: cart.customer?.id,
-        table_id: cart.table?.id,
-        items: cart.items.map((item) => ({
-          product_id: item.product.id,
-          quantity: item.quantity,
-          notes: item.notes,
-        })),
-        payment_method: selectedMethod,
-        amount_tendered: selectedMethod === PaymentMethod.CASH 
-          ? parseFloat(amountTendered) 
-          : total,
-        change_amount: selectedMethod === PaymentMethod.CASH ? changeAmount : 0,
-        notes: referenceNumber ? `Ref: ${referenceNumber}` : undefined,
-      };
+      let response;
+      let apiUrl;
+      let requestBody;
 
-      // Debug: Log order data being sent
-      console.log('🔍 [PaymentPanel] Sending order data:', {
-        ...orderData,
-        table_info: cart.table ? {
-          id: cart.table.id,
-          table_number: cart.table.table_number,
-          status: cart.table.status
-        } : 'No table selected'
-      });
+      if (mode === 'pos') {
+        // POS Mode: Create new order
+        apiUrl = '/api/orders';
+        requestBody = {
+          customer_id: cart?.customer?.id,
+          table_id: cart?.table?.id,
+          items: cart?.items.map((item) => ({
+            product_id: item.product.id,
+            quantity: item.quantity,
+            notes: item.notes,
+          })) || [],
+          payment_method: selectedMethod,
+          amount_tendered: selectedMethod === PaymentMethod.CASH 
+            ? parseFloat(amountTendered) 
+            : total,
+          change_amount: selectedMethod === PaymentMethod.CASH ? changeAmount : 0,
+          notes: referenceNumber ? `Ref: ${referenceNumber}` : undefined,
+        };
 
-      // Submit order
-      const response = await fetch('/api/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData),
-      });
+        console.log('🔍 [PaymentPanel-POS] Creating order:', requestBody);
+      } else {
+        // Close-Tab Mode: Close existing session
+        apiUrl = `/api/order-sessions/${sessionId}/close`;
+        requestBody = {
+          payment_method: selectedMethod,
+          amount_tendered: selectedMethod === PaymentMethod.CASH 
+            ? parseFloat(amountTendered) 
+            : total,
+          reference_number: referenceNumber || undefined,
+        };
 
-      const result = await response.json();
+        console.log('🔍 [PaymentPanel-CloseTab] Closing session:', sessionId);
+      }
 
-      // Debug: Log API response
-      console.log('🔍 [PaymentPanel] Order API response:', {
-        status: response.status,
+      // Submit payment using authenticated API client
+      const result = await apiPost(apiUrl, requestBody);
+
+      console.log('🔍 [PaymentPanel] API response:', {
+        mode,
         success: result.success,
-        order_id: result.data?.id,
-        table_id: result.data?.table_id
       });
 
-      if (!response.ok || !result.success) {
+      if (!result.success) {
         throw new Error(result.error || 'Failed to process payment');
       }
 
-      // Success
-      console.log('✅ [PaymentPanel] Order created successfully, order ID:', result.data.id);
-      onPaymentComplete(result.data.id);
+      // Success - Close modal and trigger completion handler
+      console.log('✅ [PaymentPanel] Payment processed successfully');
+      
+      // Call completion handler with orderId/sessionId
+      // For POS mode: pass orderId from newly created order
+      // For close-tab mode: pass sessionId that was provided in props
+      const completionId = mode === 'pos' ? result.data.id : sessionId!;
+      onPaymentComplete(completionId, { previewReceipt });
+      
+      // Reset form and close modal
       resetForm();
       onOpenChange(false);
     } catch (err: any) {
@@ -249,6 +298,7 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
     }
   };
 
+
   /**
    * Quick amount buttons for cash payment
    */
@@ -262,31 +312,44 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">Complete Payment</DialogTitle>
-          <DialogDescription>
-            Select payment method and complete the transaction
-          </DialogDescription>
-        </DialogHeader>
+        {/* Payment Form */}
+            <DialogHeader>
+              <DialogTitle className="text-2xl">
+                {mode === 'pos' ? 'Complete Payment' : 'Close Tab & Pay'}
+              </DialogTitle>
+              <DialogDescription>
+                {mode === 'pos' 
+                  ? 'Select payment method and complete the transaction'
+                  : 'Process payment and close the tab'}
+              </DialogDescription>
+            </DialogHeader>
 
-        {/* Order Summary */}
+        {/* Order/Tab Summary */}
         <Card className="p-4 bg-gray-50">
-          <h3 className="font-semibold mb-3">Order Summary</h3>
+          <h3 className="font-semibold mb-3">
+            {mode === 'pos' ? 'Order Summary' : 'Tab Summary'}
+          </h3>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span>Items ({cart.getItemCount()}):</span>
-              <span>₱{cart.getSubtotal().toFixed(2)}</span>
-            </div>
-            {cart.customer && (
+            {mode === 'close-tab' && sessionNumber && (
               <div className="flex justify-between text-blue-600">
-                <span>Customer:</span>
-                <span>{cart.customer.full_name}</span>
+                <span>Tab Number:</span>
+                <span className="font-mono">{sessionNumber}</span>
               </div>
             )}
-            {cart.table && (
+            <div className="flex justify-between">
+              <span>Items ({itemCount}):</span>
+              <span>₱{total.toFixed(2)}</span>
+            </div>
+            {customer && (
+              <div className="flex justify-between text-blue-600">
+                <span>Customer:</span>
+                <span>{customer.full_name}</span>
+              </div>
+            )}
+            {table && (
               <div className="flex justify-between text-amber-600">
                 <span>Table:</span>
-                <span>Table {cart.table.table_number}</span>
+                <span>Table {table.table_number}</span>
               </div>
             )}
             <div className="border-t pt-2 mt-2">
@@ -411,6 +474,20 @@ export function PaymentPanel({ open, onOpenChange, onPaymentComplete }: PaymentP
         )}
 
         {/* Action Buttons */}
+        {/* Print Preview Toggle */}
+        <div className="flex items-center justify-between mt-2">
+          <label className="flex items-center gap-2 select-none text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={previewReceipt}
+              onChange={(e) => setPreviewReceipt(e.target.checked)}
+              disabled={processing}
+            />
+            <span>Preview receipt before printing</span>
+          </label>
+        </div>
+
         <DialogFooter className="flex gap-2">
           <Button
             type="button"

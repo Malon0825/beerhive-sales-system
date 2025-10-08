@@ -10,10 +10,10 @@ import { AppError } from '@/lib/errors/AppError';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { tableNumber: string } }
+  { params }: { params: Promise<{ tableNumber: string }> }
 ) {
   try {
-    const { tableNumber } = params;
+    const { tableNumber } = await params;
 
     if (!tableNumber) {
       return NextResponse.json(

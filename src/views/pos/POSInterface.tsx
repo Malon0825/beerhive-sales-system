@@ -179,7 +179,12 @@ export function POSInterface() {
    * Handle payment completion
    * Marks the order as completed, fetches order details, and displays receipt for printing
    */
-  const handlePaymentComplete = async (orderId: string) => {
+  /**
+   * Handle payment completion
+   * If previewReceipt is true → show receipt dialog for manual print.
+   * If previewReceipt is false (default) → auto-print via receipt API (HTML) without showing dialog.
+   */
+  const handlePaymentComplete = async (orderId: string, options?: { previewReceipt?: boolean }) => {
     try {
       // Mark order as completed
       const response = await fetch(`/api/orders/${orderId}`, {
@@ -192,12 +197,30 @@ export function POSInterface() {
         throw new Error('Failed to complete order');
       }
 
-      // Fetch complete order data for receipt
-      const orderData = await fetchOrderForReceipt(orderId);
-      
-      // Set receipt data and show receipt
-      setReceiptData(orderData);
-      setShowReceipt(true);
+      const wantsPreview = options?.previewReceipt === true;
+      if (wantsPreview) {
+        // Preview: open legacy HTML receipt without auto-print
+        window.open(
+          `/api/orders/${orderId}/receipt?format=html`,
+          '_blank',
+          'width=400,height=600'
+        );
+      } else {
+        // Auto-print without showing the dialog (department store flow)
+        const printWindow = window.open(
+          `/api/orders/${orderId}/receipt?format=html`,
+          '_blank',
+          'width=400,height=600'
+        );
+        if (printWindow) {
+          printWindow.addEventListener('load', () => {
+            printWindow.print();
+            printWindow.addEventListener('afterprint', () => {
+              try { printWindow.close(); } catch {}
+            });
+          });
+        }
+      }
       
       // Show success message
       setSuccessMessage(`Order completed successfully! Order ID: ${orderId}`);
@@ -220,6 +243,7 @@ export function POSInterface() {
       }, 7000);
     }
   };
+
 
   /**
    * Handle receipt close

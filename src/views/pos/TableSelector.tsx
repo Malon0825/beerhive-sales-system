@@ -12,7 +12,10 @@ import {
 } from '../shared/ui/dialog';
 import { Button } from '../shared/ui/button';
 import { Badge } from '../shared/ui/badge';
-import { Armchair, Users, MapPin } from 'lucide-react';
+import { Receipt, Clock, DollarSign, Plus, Armchair, Users, MapPin } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils/formatters';
+import { useRouter } from 'next/navigation';
+import { apiGet } from '@/lib/utils/apiClient';
 import { supabase } from '@/data/supabase/client';
 
 interface TableSelectorProps {
@@ -41,21 +44,19 @@ export function TableSelector({ open, onOpenChange, onSelectTable }: TableSelect
   const fetchTables = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/tables');
-      const result = await response.json();
+      const result = await apiGet('/api/tables');
 
       if (result.success) {
-        setTables(result.data);
+        setTables(result.data || []);
       } else {
-        console.error('Error fetching tables:', result.error);
+        console.error('Failed to fetch tables:', result.error);
       }
     } catch (error) {
-      console.error('Error fetching tables:', error);
+      console.error('Failed to fetch tables:', error);
     } finally {
       setLoading(false);
     }
   };
-
   /**
    * Load tables when dialog opens
    */

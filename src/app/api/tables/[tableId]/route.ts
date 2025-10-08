@@ -13,13 +13,14 @@ import { UserRole } from '@/models/enums/UserRole';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { tableId: string } }
+  { params }: { params: Promise<{ tableId: string }> }
 ) {
   try {
+    const { tableId } = await params;
     // Authorization: allow staff including waiter to view a table
     await requireRole(request, [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.WAITER]);
 
-    const table = await TableRepository.getById(params.tableId);
+    const table = await TableRepository.getById(tableId);
 
     if (!table) {
       return NextResponse.json(
@@ -55,9 +56,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { tableId: string } }
+  { params }: { params: Promise<{ tableId: string }> }
 ) {
   try {
+    const { tableId } = await params;
     const body = await request.json();
     
     let table;
@@ -70,47 +72,47 @@ export async function PATCH(
           await requireRole(request, [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.WAITER]);
           // If no order ID provided, just mark as occupied (for walk-ins)
           if (body.orderId) {
-            table = await TableService.occupyTable(params.tableId, body.orderId, supabaseAdmin);
+            table = await TableService.occupyTable(tableId, body.orderId, supabaseAdmin);
           } else {
             // Just update status to occupied without linking to an order
-            table = await TableRepository.updateStatus(params.tableId, TableStatus.OCCUPIED, supabaseAdmin);
+            table = await TableRepository.updateStatus(tableId, TableStatus.OCCUPIED, supabaseAdmin);
           }
           break;
 
         case 'release':
           // Authorization: release allowed for cashier, manager, admin, waiter (expanded)
           await requireRole(request, [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.WAITER]);
-          table = await TableService.releaseTable(params.tableId, supabaseAdmin);
+          table = await TableService.releaseTable(tableId, supabaseAdmin);
           break;
 
         case 'markCleaned':
           // Authorization: waiter can mark cleaned (plus manager/admin)
           await requireRole(request, [UserRole.ADMIN, UserRole.MANAGER, UserRole.WAITER]);
-          table = await TableService.markCleaned(params.tableId, supabaseAdmin);
+          table = await TableService.markCleaned(tableId, supabaseAdmin);
           break;
 
         case 'reserve':
           // Authorization: reservations are manager/admin only
           await requireManagerOrAbove(request);
-          table = await TableService.reserveTable(params.tableId, body.notes, supabaseAdmin);
+          table = await TableService.reserveTable(tableId, body.notes, supabaseAdmin);
           break;
 
         case 'cancelReservation':
           // Authorization: manager/admin only
           await requireManagerOrAbove(request);
-          table = await TableService.cancelReservation(params.tableId, supabaseAdmin);
+          table = await TableService.cancelReservation(tableId, supabaseAdmin);
           break;
 
         case 'deactivate':
           // Authorization: manager/admin only
           await requireManagerOrAbove(request);
-          table = await TableRepository.deactivate(params.tableId, supabaseAdmin);
+          table = await TableRepository.deactivate(tableId, supabaseAdmin);
           break;
 
         case 'reactivate':
           // Authorization: manager/admin only
           await requireManagerOrAbove(request);
-          table = await TableRepository.reactivate(params.tableId, supabaseAdmin);
+          table = await TableRepository.reactivate(tableId, supabaseAdmin);
           break;
 
         default:
@@ -123,7 +125,7 @@ export async function PATCH(
       // Regular update
       // Authorization: regular updates restricted to manager/admin
       await requireManagerOrAbove(request);
-      table = await TableRepository.update(params.tableId, body);
+      table = await TableRepository.update(tableId, body);
     }
 
     return NextResponse.json({

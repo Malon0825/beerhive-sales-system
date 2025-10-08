@@ -19,7 +19,8 @@ import {
   Warehouse,
   UserCheck,
   Monitor,
-  Beer
+  Beer,
+  Receipt
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { UserRole } from '@/models/enums/UserRole';
@@ -87,6 +88,12 @@ const menuItems: MenuItem[] = [
     href: '/tables',
     // Grant waiter access to tables management per role policy update
     roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER, UserRole.WAITER],
+  },
+  {
+    label: 'Tab Management',
+    icon: <Receipt className="h-5 w-5" />,
+    href: '/tabs',
+    roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER],
   },
   {
     label: 'Current Orders',
