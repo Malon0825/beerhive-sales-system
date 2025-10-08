@@ -5,6 +5,7 @@ import { Card } from '@/views/shared/ui/card';
 import { Badge } from '@/views/shared/ui/badge';
 import { Input } from '@/views/shared/ui/input';
 import { LoadingSpinner } from '@/views/shared/feedback/LoadingSpinner';
+import { StockStatusBadge } from '@/views/shared/components/StockStatusBadge';
 import { Search, Package } from 'lucide-react';
 import CategoryFilter from './components/CategoryFilter';
 
@@ -102,6 +103,35 @@ export function ProductGrid({
   };
 
   /**
+   * Check if product is a drink/beverage
+   * Drinks require strict stock validation
+   */
+  const isDrinkProduct = (product: Product): boolean => {
+    const categoryName = product.category?.name?.toLowerCase() || '';
+    return (
+      categoryName.includes('beer') ||
+      categoryName.includes('beverage') ||
+      categoryName.includes('drink') ||
+      categoryName.includes('alcohol')
+    );
+  };
+
+  /**
+   * Check if product should be displayed
+   * Drinks with 0 stock are hidden, food items always shown
+   */
+  const shouldDisplayProduct = (product: Product): boolean => {
+    if (!product.is_active) return false;
+    
+    // Hide drinks with no stock
+    if (isDrinkProduct(product) && product.current_stock <= 0) {
+      return false;
+    }
+    
+    return true;
+  };
+
+  /**
    * Handle product click - INSTANT DATABASE INSERT
    * This is the key function that makes items appear in real-time
    */
@@ -112,10 +142,18 @@ export function ProductGrid({
       return;
     }
 
-    // Check stock
-    if (product.current_stock <= 0) {
-      alert('Product out of stock');
+    // Check stock for drinks (strict validation)
+    if (isDrinkProduct(product) && product.current_stock <= 0) {
+      alert('This beverage is out of stock');
       return;
+    }
+
+    // Warn for food items with low stock
+    if (!isDrinkProduct(product) && product.current_stock <= 0) {
+      const confirmed = confirm(
+        'This item shows low stock. Kitchen will confirm availability. Continue?'
+      );
+      if (!confirmed) return;
     }
 
     try {
@@ -173,7 +211,7 @@ export function ProductGrid({
   };
 
   /**
-   * Filter products by search query and category
+   * Filter products by search query, category, and stock availability
    */
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
@@ -185,7 +223,9 @@ export function ProductGrid({
       const matchesCategory =
         !selectedCategory || product.category_id === selectedCategory;
 
-      return matchesSearch && matchesCategory;
+      const shouldDisplay = shouldDisplayProduct(product);
+
+      return matchesSearch && matchesCategory && shouldDisplay;
     });
   }, [products, searchQuery, selectedCategory]);
 
@@ -213,18 +253,6 @@ export function ProductGrid({
     return `₱${amount.toFixed(2)}`;
   };
 
-  /**
-   * Get stock badge color
-   */
-  const getStockBadge = (stock: number) => {
-    if (stock <= 0) {
-      return <Badge className="bg-red-100 text-red-800">Out of Stock</Badge>;
-    }
-    if (stock <= 10) {
-      return <Badge className="bg-yellow-100 text-yellow-800">Low Stock</Badge>;
-    }
-    return <Badge className="bg-green-100 text-green-800">In Stock</Badge>;
-  };
 
   if (loading) {
     return (
@@ -277,8 +305,9 @@ export function ProductGrid({
           filteredProducts.map((product) => {
             const price = getProductPrice(product);
             const isAdding = addingProduct === product.id;
-            const outOfStock = product.current_stock <= 0;
-            const canAdd = currentOrderId && !outOfStock && !isAdding;
+            const isDrink = isDrinkProduct(product);
+            const outOfStock = isDrink && product.current_stock <= 0;
+            const canAdd = currentOrderId && !isAdding;
 
             return (
               <Card
@@ -334,8 +363,14 @@ export function ProductGrid({
                   )}
                 </div>
 
-                {/* Stock Badge */}
-                <div className="mt-2">{getStockBadge(product.current_stock)}</div>
+                {/* Stock Status Badge */}
+                <div className="mt-2">
+                  <StockStatusBadge
+                    currentStock={product.current_stock}
+                    reorderPoint={10}
+                    categoryName={product.category?.name || ''}
+                  />
+                </div>
 
                 {/* Adding Indicator */}
                 {isAdding && (

@@ -5,6 +5,7 @@ import { ProductRepository } from '@/data/repositories/ProductRepository';
 import { OrderService } from '@/core/services/orders/OrderService';
 import { OrderCalculation } from '@/core/services/orders/OrderCalculation';
 import { PricingService } from '@/core/services/pricing/PricingService';
+import { StockValidationService } from '@/core/services/inventory/StockValidationService';
 import { CreateOrderDTO } from '@/models/dtos/CreateOrderDTO';
 import { AppError } from '@/lib/errors/AppError';
 
@@ -47,6 +48,36 @@ export class CreateOrder {
       if (!validation.isValid) {
         throw new AppError(`Validation failed: ${validation.errors.join(', ')}`, 400);
       }
+
+      // Step 1.5: Validate stock availability for order items
+      console.log('🔍 [CreateOrder] Validating stock availability for order items...');
+      const stockValidation = await StockValidationService.validateOrderStock(
+        dto.items.map((item: any) => ({
+          product_id: item.product_id || null,
+          quantity: item.quantity,
+          item_name: item.name || undefined,
+        }))
+      );
+
+      // Log warnings for low stock items (non-blocking)
+      if (stockValidation.warnings.length > 0) {
+        console.warn('⚠️  [CreateOrder] Stock warnings:', stockValidation.warnings);
+      }
+
+      // Block order creation if stock validation fails (drinks without stock)
+      if (!stockValidation.valid) {
+        const unavailableList = stockValidation.unavailableItems
+          .map(item => `${item.productName} (requested: ${item.requested}, available: ${item.available})`)
+          .join(', ');
+        
+        console.error('❌ [CreateOrder] Insufficient stock for items:', unavailableList);
+        throw new AppError(
+          `Insufficient stock: ${unavailableList}`,
+          400
+        );
+      }
+
+      console.log('✅ [CreateOrder] Stock validation passed');
 
       // Step 2: Get customer if provided (customer is optional for orders)
       let customer = null;

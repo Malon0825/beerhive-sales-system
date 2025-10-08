@@ -149,18 +149,35 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
 
   /**
    * Add item to cart from product selection
+   * If product already exists in cart, increment quantity instead of creating duplicate
    */
   const addToCart = (product: any, price: number) => {
-    const item: CartItem = {
-      product_id: product.id,
-      item_name: product.name,
-      quantity: 1,
-      unit_price: price,
-      subtotal: price,
-      total: price,
-      is_vip_price: session?.customer?.tier !== 'regular' && product.vip_price ? true : false,
-    };
-    setCart([...cart, item]);
+    // Check if product already exists in cart
+    const existingItemIndex = cart.findIndex(
+      item => item.product_id === product.id && item.unit_price === price
+    );
+
+    if (existingItemIndex !== -1) {
+      // Product exists - increment quantity
+      const updatedCart = [...cart];
+      const existingItem = updatedCart[existingItemIndex];
+      existingItem.quantity += 1;
+      existingItem.subtotal = existingItem.unit_price * existingItem.quantity;
+      existingItem.total = existingItem.subtotal;
+      setCart(updatedCart);
+    } else {
+      // New product - add to cart
+      const item: CartItem = {
+        product_id: product.id,
+        item_name: product.name,
+        quantity: 1,
+        unit_price: price,
+        subtotal: price,
+        total: price,
+        is_vip_price: session?.customer?.tier !== 'regular' && product.vip_price ? true : false,
+      };
+      setCart([...cart, item]);
+    }
   };
 
   /**

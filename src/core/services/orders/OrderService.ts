@@ -2,6 +2,7 @@ import { OrderRepository } from '@/data/repositories/OrderRepository';
 import { Order } from '@/models/entities/Order';
 import { OrderStatus } from '@/models/enums/OrderStatus';
 import { KitchenRouting } from '@/core/services/kitchen/KitchenRouting';
+import { StockDeduction } from '@/core/services/inventory/StockDeduction';
 import { AppError } from '@/lib/errors/AppError';
 
 /**
@@ -74,18 +75,20 @@ export class OrderService {
    * Flow:
    * 1. Validate order exists
    * 2. Mark order as completed
-   * 3. Update payment details
+   * 3. Deduct inventory stock for products
+   * 4. Update payment details
    * 
    * Note: Kitchen routing should already have happened on CONFIRMED status
    * 
    * @param orderId - Order ID to complete
+   * @param userId - ID of user completing the order (for inventory audit trail)
    * @returns Completed order
    */
-  static async completeOrder(orderId: string): Promise<Order> {
+  static async completeOrder(orderId: string, userId?: string): Promise<Order> {
     try {
       console.log(`🎯 [OrderService.completeOrder] Completing order ${orderId}`);
       
-      // Get order
+      // Get order with items
       const order = await OrderRepository.getById(orderId);
       
       if (!order) {
@@ -101,11 +104,38 @@ export class OrderService {
         throw new AppError('Cannot complete voided order', 400);
       }
 
-      console.log(`✅ [OrderService.completeOrder] Order validated`);
+      console.log(`✅ [OrderService.completeOrder] Order validated with ${order.order_items?.length || 0} items`);
 
       // Mark order as completed
       const completedOrder = await OrderRepository.updateStatus(orderId, OrderStatus.COMPLETED);
       console.log(`✅ [OrderService.completeOrder] Order marked as COMPLETED`);
+
+      // Deduct inventory stock for order items
+      if (order.order_items && order.order_items.length > 0) {
+        const performedBy = userId || order.cashier_id || '';
+        
+        try {
+          console.log(`📦 [OrderService.completeOrder] Deducting stock for ${order.order_items.length} items...`);
+          
+          await StockDeduction.deductForOrder(
+            orderId,
+            order.order_items.map((item: any) => ({
+              product_id: item.product_id,
+              quantity: item.quantity,
+            })),
+            performedBy
+          );
+          
+          console.log(`✅ [OrderService.completeOrder] Stock deduction completed successfully`);
+        } catch (stockError) {
+          // Log error but don't fail the order (order is already completed)
+          console.error('⚠️  [OrderService.completeOrder] Stock deduction failed (non-fatal):', stockError);
+          console.warn('⚠️  [OrderService.completeOrder] Order completed but inventory may not be updated');
+          console.warn('⚠️  [OrderService.completeOrder] Manual inventory adjustment may be required');
+        }
+      } else {
+        console.warn('⚠️  [OrderService.completeOrder] No items to deduct from inventory');
+      }
 
       console.log(`🎉 [OrderService.completeOrder] Order ${orderId} completed successfully`);
       return completedOrder;

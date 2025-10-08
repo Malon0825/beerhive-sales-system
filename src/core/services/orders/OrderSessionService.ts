@@ -3,6 +3,7 @@ import { OrderRepository } from '@/data/repositories/OrderRepository';
 import { OrderSession, CreateOrderSessionDto, CloseOrderSessionDto } from '@/models/entities/OrderSession';
 import { SessionStatus } from '@/models/enums/SessionStatus';
 import { OrderStatus } from '@/models/enums/OrderStatus';
+import { StockDeduction } from '@/core/services/inventory/StockDeduction';
 import { AppError } from '@/lib/errors/AppError';
 
 /**
@@ -201,8 +202,10 @@ export class OrderSessionService {
       // Calculate change
       const change = paymentData.amount_tendered - session.total_amount;
 
-      // Update all orders in session to COMPLETED
+      // Update all orders in session to COMPLETED and deduct inventory
       const orders = session.orders || [];
+      const performedBy = paymentData.closed_by || '';
+      
       for (const order of orders) {
         if (order.status !== OrderStatus.COMPLETED && order.status !== OrderStatus.VOIDED) {
           await OrderRepository.updateStatus(order.id, OrderStatus.COMPLETED);
@@ -214,6 +217,28 @@ export class OrderSessionService {
             change_amount: change,
             completed_at: new Date().toISOString(),
           });
+
+          // Deduct inventory stock for this order
+          if (order.order_items && order.order_items.length > 0) {
+            try {
+              console.log(`📦 [OrderSessionService.closeTab] Deducting stock for order ${order.order_number}`);
+              
+              await StockDeduction.deductForOrder(
+                order.id,
+                order.order_items.map((item: any) => ({
+                  product_id: item.product_id,
+                  quantity: item.quantity,
+                })),
+                performedBy
+              );
+              
+              console.log(`✅ [OrderSessionService.closeTab] Stock deducted for order ${order.order_number}`);
+            } catch (stockError) {
+              // Log error but don't fail the tab closure (payment already processed)
+              console.error(`⚠️  [OrderSessionService.closeTab] Stock deduction failed for order ${order.order_number}:`, stockError);
+              console.warn('⚠️  [OrderSessionService.closeTab] Manual inventory adjustment may be required');
+            }
+          }
         }
       }
 

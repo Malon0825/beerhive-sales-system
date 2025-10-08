@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/views/shared/ui/card
 import { Input } from '@/views/shared/ui/input';
 import { Badge } from '@/views/shared/ui/badge';
 import { Button } from '@/views/shared/ui/button';
+import { StockStatusBadge } from '@/views/shared/components/StockStatusBadge';
 import { Search, Package, Plus, Loader2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatters';
 import CategoryFilter from './components/CategoryFilter';
@@ -93,7 +94,36 @@ export default function SessionProductSelector({
   };
 
   /**
-   * Filter products by search query and category
+   * Check if product is a drink/beverage
+   * Drinks require strict stock validation
+   */
+  const isDrinkProduct = (product: Product): boolean => {
+    const categoryName = product.category?.name?.toLowerCase() || '';
+    return (
+      categoryName.includes('beer') ||
+      categoryName.includes('beverage') ||
+      categoryName.includes('drink') ||
+      categoryName.includes('alcohol')
+    );
+  };
+
+  /**
+   * Check if product should be displayed
+   * Drinks with 0 stock are hidden, food items always shown
+   */
+  const shouldDisplayProduct = (product: Product): boolean => {
+    if (!product.is_active) return false;
+    
+    // Hide drinks with no stock
+    if (isDrinkProduct(product) && product.current_stock <= 0) {
+      return false;
+    }
+    
+    return true;
+  };
+
+  /**
+   * Filter products by search query, category, and stock availability
    */
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
@@ -105,7 +135,9 @@ export default function SessionProductSelector({
       const matchesCategory =
         !selectedCategory || product.category_id === selectedCategory;
 
-      return matchesSearch && matchesCategory;
+      const shouldDisplay = shouldDisplayProduct(product);
+
+      return matchesSearch && matchesCategory && shouldDisplay;
     });
   }, [products, searchQuery, selectedCategory]);
 
@@ -130,9 +162,18 @@ export default function SessionProductSelector({
    * Handle product selection
    */
   const handleProductClick = (product: Product) => {
-    if (product.current_stock <= 0) {
-      alert('Product out of stock');
+    // Check stock for drinks (strict validation)
+    if (isDrinkProduct(product) && product.current_stock <= 0) {
+      alert('This beverage is out of stock');
       return;
+    }
+
+    // Warn for food items with low stock
+    if (!isDrinkProduct(product) && product.current_stock <= 0) {
+      const confirmed = confirm(
+        'This item shows low stock. Kitchen will confirm availability. Continue?'
+      );
+      if (!confirmed) return;
     }
 
     const price = getProductPrice(product);
@@ -188,7 +229,8 @@ export default function SessionProductSelector({
           ) : (
             filteredProducts.map((product) => {
               const price = getProductPrice(product);
-              const outOfStock = product.current_stock <= 0;
+              const isDrink = isDrinkProduct(product);
+              const outOfStock = isDrink && product.current_stock <= 0;
 
               return (
                 <Card
@@ -242,21 +284,14 @@ export default function SessionProductSelector({
                         )}
                       </div>
 
-                      {/* Stock Badge */}
+                      {/* Stock Status Badge */}
                       <div className="mt-1">
-                        {outOfStock ? (
-                          <Badge className="bg-red-100 text-red-800 text-xs">
-                            Out of Stock
-                          </Badge>
-                        ) : product.current_stock <= 10 ? (
-                          <Badge className="bg-yellow-100 text-yellow-800 text-xs">
-                            Low Stock ({product.current_stock})
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-green-100 text-green-800 text-xs">
-                            In Stock
-                          </Badge>
-                        )}
+                        <StockStatusBadge
+                          currentStock={product.current_stock}
+                          reorderPoint={10}
+                          categoryName={product.category?.name || ''}
+                          compact
+                        />
                       </div>
                     </div>
 
