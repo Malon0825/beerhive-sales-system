@@ -14,24 +14,43 @@ export interface AuthenticatedUser {
 
 /**
  * Get the authenticated user from the request
- * Extracts the token from Authorization header and validates it
+ * Supports both Bearer token (Authorization header) and cookie-based authentication
  * @param request - Next.js request object
  * @returns Authenticated user or null if not authenticated
  */
 export async function getAuthenticatedUser(request: NextRequest): Promise<AuthenticatedUser | null> {
   try {
-    const authHeader = request.headers.get('authorization');
+    let userId: string | null = null;
+
+    // Method 1: Try cookie-based authentication (primary method for web UI)
+    const userIdCookie = request.cookies.get('user-id')?.value;
+    const authTokenCookie = request.cookies.get('auth-token')?.value;
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return null;
+    if (userIdCookie) {
+      // Direct user ID from cookie (set during login)
+      userId = userIdCookie;
+    } else if (authTokenCookie) {
+      // Verify auth token with Supabase
+      const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(authTokenCookie);
+      if (!error && authUser) {
+        userId = authUser.id;
+      }
     }
 
-    const token = authHeader.substring(7);
+    // Method 2: Try Authorization header (Bearer token) - for API clients
+    if (!userId) {
+      const authHeader = request.headers.get('authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(token);
+        if (!error && authUser) {
+          userId = authUser.id;
+        }
+      }
+    }
 
-    // Verify the token with Supabase
-    const { data: { user: authUser }, error } = await supabaseAdmin.auth.getUser(token);
-
-    if (error || !authUser) {
+    // No authentication found
+    if (!userId) {
       return null;
     }
 
@@ -39,10 +58,11 @@ export async function getAuthenticatedUser(request: NextRequest): Promise<Authen
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
       .select('id, username, email, full_name, role, is_active')
-      .eq('id', authUser.id)
+      .eq('id', userId)
       .single();
 
     if (userError || !user) {
+      console.error('User lookup error:', userError);
       return null;
     }
 
