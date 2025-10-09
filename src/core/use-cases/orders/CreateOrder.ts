@@ -2,6 +2,7 @@ import { OrderRepository } from '@/data/repositories/OrderRepository';
 import { CustomerRepository } from '@/data/repositories/CustomerRepository';
 import { TableRepository } from '@/data/repositories/TableRepository';
 import { ProductRepository } from '@/data/repositories/ProductRepository';
+import { PackageRepository } from '@/data/repositories/PackageRepository';
 import { OrderService } from '@/core/services/orders/OrderService';
 import { OrderCalculation } from '@/core/services/orders/OrderCalculation';
 import { PricingService } from '@/core/services/pricing/PricingService';
@@ -49,32 +50,43 @@ export class CreateOrder {
         throw new AppError(`Validation failed: ${validation.errors.join(', ')}`, 400);
       }
 
-      // Step 1.5: Validate stock availability for order items
+      // Step 1.5: Validate stock availability for order items (only for products, not packages)
       console.log('🔍 [CreateOrder] Validating stock availability for order items...');
-      const stockValidation = await StockValidationService.validateOrderStock(
-        dto.items.map((item: any) => ({
-          product_id: item.product_id || null,
-          quantity: item.quantity,
-          item_name: item.name || undefined,
-        }))
-      );
-
-      // Log warnings for low stock items (non-blocking)
-      if (stockValidation.warnings.length > 0) {
-        console.warn('⚠️  [CreateOrder] Stock warnings:', stockValidation.warnings);
+      
+      // Filter out packages - only validate stock for products
+      const productItems = dto.items.filter((item: any) => item.product_id && !item.package_id);
+      const packageItems = dto.items.filter((item: any) => item.package_id);
+      
+      if (packageItems.length > 0) {
+        console.log(`📦 [CreateOrder] Found ${packageItems.length} package(s) - skipping stock validation for packages`);
       }
-
-      // Block order creation if stock validation fails (drinks without stock)
-      if (!stockValidation.valid) {
-        const unavailableList = stockValidation.unavailableItems
-          .map(item => `${item.productName} (requested: ${item.requested}, available: ${item.available})`)
-          .join(', ');
-        
-        console.error('❌ [CreateOrder] Insufficient stock for items:', unavailableList);
-        throw new AppError(
-          `Insufficient stock: ${unavailableList}`,
-          400
+      
+      if (productItems.length > 0) {
+        const stockValidation = await StockValidationService.validateOrderStock(
+          productItems.map((item: any) => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+            item_name: item.name || undefined,
+          }))
         );
+
+        // Log warnings for low stock items (non-blocking)
+        if (stockValidation.warnings.length > 0) {
+          console.warn('⚠️  [CreateOrder] Stock warnings:', stockValidation.warnings);
+        }
+
+        // Block order creation if stock validation fails (drinks without stock)
+        if (!stockValidation.valid) {
+          const unavailableList = stockValidation.unavailableItems
+            .map(item => `${item.productName} (requested: ${item.requested}, available: ${item.available})`)
+            .join(', ');
+          
+          console.error('❌ [CreateOrder] Insufficient stock for items:', unavailableList);
+          throw new AppError(
+            `Insufficient stock: ${unavailableList}`,
+            400
+          );
+        }
       }
 
       console.log('✅ [CreateOrder] Stock validation passed');
@@ -210,44 +222,91 @@ export class CreateOrder {
 
   /**
    * Process order items with pricing logic
+   * Handles both products and packages
    */
   private static async processOrderItems(items: any[], customer: any) {
     const processedItems = [];
 
     for (const item of items) {
-      // Get product
-      const product = await ProductRepository.getById(item.product_id);
-      if (!product) {
-        throw new AppError(`Product ${item.product_id} not found`, 404);
+      // Check if this is a package or a product
+      if (item.package_id) {
+        // Process package item
+        console.log(`📦 [CreateOrder] Processing package item: ${item.package_id}`);
+        
+        const pkg = await PackageRepository.getById(item.package_id);
+        if (!pkg) {
+          throw new AppError(`Package ${item.package_id} not found`, 404);
+        }
+
+        // Determine package price based on customer tier
+        const isVIP = customer && customer.tier && customer.tier !== 'regular';
+        const unitPrice = isVIP && pkg.vip_price ? pkg.vip_price : pkg.base_price;
+
+        // Prepare package order item
+        const orderItem = {
+          product_id: null,
+          package_id: item.package_id,
+          item_name: pkg.name,
+          quantity: item.quantity || 1,
+          unit_price: unitPrice,
+          subtotal: unitPrice * (item.quantity || 1),
+          discount_amount: item.discount_amount || 0,
+          total: OrderCalculation.calculateOrderItemTotal(
+            item.quantity || 1,
+            unitPrice,
+            item.discount_amount || 0
+          ),
+          is_vip_price: isVIP && pkg.vip_price ? true : false,
+          is_complimentary: item.is_complimentary || false,
+          notes: item.notes || null,
+        };
+
+        console.log(`✅ [CreateOrder] Package item processed:`, {
+          name: orderItem.item_name,
+          unit_price: orderItem.unit_price,
+          is_vip_price: orderItem.is_vip_price
+        });
+
+        processedItems.push(orderItem);
+      } else if (item.product_id) {
+        // Process regular product item
+        console.log(`🍺 [CreateOrder] Processing product item: ${item.product_id}`);
+        
+        const product = await ProductRepository.getById(item.product_id);
+        if (!product) {
+          throw new AppError(`Product ${item.product_id} not found`, 404);
+        }
+
+        // Get pricing
+        const pricing = await PricingService.getProductPrice(
+          product,
+          customer,
+          item.quantity
+        );
+
+        // Prepare product order item
+        const orderItem = {
+          product_id: item.product_id,
+          package_id: null,
+          item_name: product.name,
+          quantity: item.quantity,
+          unit_price: pricing.unitPrice,
+          subtotal: pricing.unitPrice * item.quantity,
+          discount_amount: item.discount_amount || 0,
+          total: OrderCalculation.calculateOrderItemTotal(
+            item.quantity,
+            pricing.unitPrice,
+            item.discount_amount || 0
+          ),
+          is_vip_price: pricing.isVIPPrice,
+          is_complimentary: item.is_complimentary || false,
+          notes: item.notes || null,
+        };
+
+        processedItems.push(orderItem);
+      } else {
+        throw new AppError('Order item must have either product_id or package_id', 400);
       }
-
-      // Get pricing
-      const pricing = await PricingService.getProductPrice(
-        product,
-        customer,
-        item.quantity
-      );
-
-      // Prepare order item
-      const orderItem = {
-        product_id: item.product_id,
-        package_id: null,
-        item_name: product.name,
-        quantity: item.quantity,
-        unit_price: pricing.unitPrice,
-        subtotal: pricing.unitPrice * item.quantity,
-        discount_amount: item.discount_amount || 0,
-        total: OrderCalculation.calculateOrderItemTotal(
-          item.quantity,
-          pricing.unitPrice,
-          item.discount_amount || 0
-        ),
-        is_vip_price: pricing.isVIPPrice,
-        is_complimentary: item.is_complimentary || false,
-        notes: item.notes || null,
-      };
-
-      processedItems.push(orderItem);
     }
 
     return processedItems;
