@@ -7,13 +7,31 @@
  */
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { DateRangeFilter, DatePeriod } from './DateRangeFilter';
-import { SalesChart } from './SalesChart';
 import { TopProductsTable } from './TopProductsTable';
 import { ExportReportButton } from './ExportReportButton';
 import { ExcelExportButton, ExcelExportMultiSheet } from './ExcelExportButton';
 import { ExcelHeader } from '@/core/services/export/ExcelExportService';
 import { DollarSign, ShoppingCart, Users, TrendingUp, Package, AlertTriangle } from 'lucide-react';
+import { LoadingSkeleton } from '@/components/loading/LoadingSkeleton';
+
+/**
+ * Dynamically import SalesChart to reduce initial bundle size
+ * Recharts is a heavy library (~200KB) and only needed for visualizations
+ */
+const SalesChart = dynamic(
+  () => import('./SalesChart').then(mod => ({ default: mod.SalesChart })),
+  {
+    loading: () => (
+      <div className="bg-white p-6 rounded-lg shadow-sm">
+        <LoadingSkeleton className="h-6 w-48 mb-4" />
+        <LoadingSkeleton className="h-64 w-full" />
+      </div>
+    ),
+    ssr: false,
+  }
+);
 
 interface DashboardData {
   sales: any;

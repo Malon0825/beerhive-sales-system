@@ -9,13 +9,13 @@ import { requireManagerOrAbove } from '@/lib/utils/api-auth';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
     // Verify user has manager or admin role
     await requireManagerOrAbove(request);
     
-    const { userId } = params;
+    const { userId } = await params;
 
     await UserService.deactivateUser(userId);
 

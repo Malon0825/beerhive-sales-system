@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     console.log(`[API /users] ${requestId} ✅ Authorization verified`);
     
     const body = await request.json();
-    const { username, email, password, full_name, role, roles } = body;
+    const { username, email, password, full_name, role, roles, manager_pin } = body;
     
     console.log(`[API /users] ${requestId} Step 2: Validating request body...`);
     console.log(`[API /users] ${requestId} Request data:`, {
@@ -151,6 +151,7 @@ export async function POST(request: NextRequest) {
         full_name,
         role,    // Backward compatibility
         roles,   // Preferred
+        manager_pin,  // Optional PIN for admin/manager users
       },
       requestId // Pass request ID for tracing
     );

@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card } from '@/views/shared/ui/card';
 import { Badge } from '@/views/shared/ui/badge';
 import { Input } from '@/views/shared/ui/input';
 import { LoadingSpinner } from '@/views/shared/feedback/LoadingSpinner';
+import { StockStatusBadge } from '@/views/shared/components/StockStatusBadge';
 import { Search, Package } from 'lucide-react';
+import CategoryFilter from './components/CategoryFilter';
 
 interface Product {
   id: string;
@@ -101,6 +103,35 @@ export function ProductGrid({
   };
 
   /**
+   * Check if product is a drink/beverage
+   * Drinks require strict stock validation
+   */
+  const isDrinkProduct = (product: Product): boolean => {
+    const categoryName = product.category?.name?.toLowerCase() || '';
+    return (
+      categoryName.includes('beer') ||
+      categoryName.includes('beverage') ||
+      categoryName.includes('drink') ||
+      categoryName.includes('alcohol')
+    );
+  };
+
+  /**
+   * Check if product should be displayed
+   * Drinks with 0 stock are hidden, food items always shown
+   */
+  const shouldDisplayProduct = (product: Product): boolean => {
+    if (!product.is_active) return false;
+    
+    // Hide drinks with no stock
+    if (isDrinkProduct(product) && product.current_stock <= 0) {
+      return false;
+    }
+    
+    return true;
+  };
+
+  /**
    * Handle product click - INSTANT DATABASE INSERT
    * This is the key function that makes items appear in real-time
    */
@@ -111,10 +142,18 @@ export function ProductGrid({
       return;
     }
 
-    // Check stock
-    if (product.current_stock <= 0) {
-      alert('Product out of stock');
+    // Check stock for drinks (strict validation)
+    if (isDrinkProduct(product) && product.current_stock <= 0) {
+      alert('This beverage is out of stock');
       return;
+    }
+
+    // Warn for food items with low stock
+    if (!isDrinkProduct(product) && product.current_stock <= 0) {
+      const confirmed = confirm(
+        'This item shows low stock. Kitchen will confirm availability. Continue?'
+      );
+      if (!confirmed) return;
     }
 
     try {
@@ -172,33 +211,40 @@ export function ProductGrid({
   };
 
   /**
-   * Filter products by search query and category
+   * Filter products by search query, category, and stock availability
    */
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch =
-      searchQuery === '' ||
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesSearch =
+        searchQuery === '' ||
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.sku.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesCategory =
-      !selectedCategory || product.category_id === selectedCategory;
+      const matchesCategory =
+        !selectedCategory || product.category_id === selectedCategory;
 
-    return matchesSearch && matchesCategory;
-  });
+      const shouldDisplay = shouldDisplayProduct(product);
+
+      return matchesSearch && matchesCategory && shouldDisplay;
+    });
+  }, [products, searchQuery, selectedCategory]);
 
   /**
-   * Get unique categories from products
+   * Calculate product count per category for display
    */
-  const categories = Array.from(
-    new Set(products.map((p) => p.category_id).filter(Boolean))
-  ).map((catId) => {
-    const product = products.find((p) => p.category_id === catId);
-    return {
-      id: catId,
-      name: product?.category?.name || 'Unknown',
-      color: product?.category?.color_code,
+  const productCountPerCategory = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: products.length,
     };
-  });
+
+    products.forEach((product) => {
+      if (product.category_id) {
+        counts[product.category_id] = (counts[product.category_id] || 0) + 1;
+      }
+    });
+
+    return counts;
+  }, [products]);
 
   /**
    * Format currency
@@ -207,18 +253,6 @@ export function ProductGrid({
     return `₱${amount.toFixed(2)}`;
   };
 
-  /**
-   * Get stock badge color
-   */
-  const getStockBadge = (stock: number) => {
-    if (stock <= 0) {
-      return <Badge className="bg-red-100 text-red-800">Out of Stock</Badge>;
-    }
-    if (stock <= 10) {
-      return <Badge className="bg-yellow-100 text-yellow-800">Low Stock</Badge>;
-    }
-    return <Badge className="bg-green-100 text-green-800">In Stock</Badge>;
-  };
 
   if (loading) {
     return (
@@ -229,7 +263,7 @@ export function ProductGrid({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-800">Products</h2>
@@ -253,39 +287,12 @@ export function ProductGrid({
       </div>
 
       {/* Category Filter */}
-      {categories.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          <button
-            onClick={() => setSelectedCategory(null)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-              selectedCategory === null
-                ? 'bg-amber-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            All Products
-          </button>
-          {categories.map((category: any) => (
-            <button
-              key={category.id}
-              onClick={() => setSelectedCategory(category.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                selectedCategory === category.id
-                  ? 'bg-amber-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-              style={{
-                backgroundColor:
-                  selectedCategory === category.id
-                    ? category.color || '#d97706'
-                    : undefined,
-              }}
-            >
-              {category.name}
-            </button>
-          ))}
-        </div>
-      )}
+      <CategoryFilter
+        selectedCategoryId={selectedCategory}
+        onCategoryChange={setSelectedCategory}
+        showProductCount={true}
+        productCountPerCategory={productCountPerCategory}
+      />
 
       {/* Product Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -298,8 +305,9 @@ export function ProductGrid({
           filteredProducts.map((product) => {
             const price = getProductPrice(product);
             const isAdding = addingProduct === product.id;
-            const outOfStock = product.current_stock <= 0;
-            const canAdd = currentOrderId && !outOfStock && !isAdding;
+            const isDrink = isDrinkProduct(product);
+            const outOfStock = isDrink && product.current_stock <= 0;
+            const canAdd = currentOrderId && !isAdding;
 
             return (
               <Card
@@ -355,8 +363,14 @@ export function ProductGrid({
                   )}
                 </div>
 
-                {/* Stock Badge */}
-                <div className="mt-2">{getStockBadge(product.current_stock)}</div>
+                {/* Stock Status Badge */}
+                <div className="mt-2">
+                  <StockStatusBadge
+                    currentStock={product.current_stock}
+                    reorderPoint={10}
+                    categoryName={product.category?.name || ''}
+                  />
+                </div>
 
                 {/* Adding Indicator */}
                 {isAdding && (

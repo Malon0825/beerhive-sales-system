@@ -7,10 +7,10 @@ import { NotificationService } from '@/core/services/notifications/NotificationS
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { notificationId: string } }
+  { params }: { params: Promise<{ notificationId: string }> }
 ) {
   try {
-    const { notificationId } = params;
+    const { notificationId } = await params;
 
     const success = await NotificationService.markAsRead(notificationId);
 
@@ -40,10 +40,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { notificationId: string } }
+  { params }: { params: Promise<{ notificationId: string }> }
 ) {
   try {
-    const { notificationId } = params;
+    const { notificationId } = await params;
 
     const success = await NotificationService.deleteNotification(notificationId);
 

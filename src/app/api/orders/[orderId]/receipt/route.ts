@@ -15,10 +15,10 @@ export const runtime = 'nodejs';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const { orderId } = params;
+    const { orderId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const format = searchParams.get('format') || 'html'; // html, pdf, text
 

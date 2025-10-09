@@ -86,6 +86,16 @@ input[type="number"] {
   animation: slideUp 0.3s ease-out;
 }
 
+/* Hide scrollbar but maintain functionality - for category sliders and other horizontal scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}
+
 /* ============================================
    Print Styles for Thermal Receipts (80mm)
    ============================================ */
@@ -181,5 +191,15 @@ input[type="number"] {
   /* Prevent elements from breaking across pages */
   .no-break {
     page-break-inside: avoid;
+  }
+
+  /* Hide scrollbar but maintain functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari, Opera */
   }
 }

@@ -8,10 +8,11 @@ import { AppError } from '@/lib/errors/AppError';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { poId: string } }
+  { params }: { params: Promise<{ poId: string }> }
 ) {
   try {
-    const purchaseOrder = await PurchaseOrderRepository.getById(params.poId);
+    const { poId } = await params;
+    const purchaseOrder = await PurchaseOrderRepository.getById(poId);
 
     if (!purchaseOrder) {
       return NextResponse.json(
@@ -47,9 +48,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { poId: string } }
+  { params }: { params: Promise<{ poId: string }> }
 ) {
   try {
+    const { poId } = await params;
     const body = await request.json();
 
     if (!body.status) {
@@ -63,7 +65,7 @@ export async function PATCH(
     const userId = body.user_id || 'system';
 
     const purchaseOrder = await PurchaseOrderRepository.updateStatus(
-      params.poId,
+      poId,
       body.status,
       userId
     );

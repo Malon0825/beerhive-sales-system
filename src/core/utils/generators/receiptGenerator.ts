@@ -61,12 +61,17 @@ export interface ReceiptItem {
 export class ReceiptGenerator {
   /**
    * Generate receipt data from order
+   * @param orderId - The ID of the order to generate receipt for
+   * @param settings - Optional business settings override
+   * @returns Receipt data formatted for printing
    */
   static async generateReceipt(orderId: string, settings?: any): Promise<ReceiptData> {
-    // Fetch order data
-    const { supabase } = await import('@/data/supabase/client');
+    console.log(`📄 [ReceiptGenerator] Generating receipt for order: ${orderId}`);
     
-    const { data: order, error } = await supabase
+    // Fetch order data using admin client (bypasses RLS for server-side operations)
+    const { supabaseAdmin } = await import('@/data/supabase/server-client');
+    
+    const { data: order, error } = await supabaseAdmin
       .from('orders')
       .select(`
         *,
@@ -77,14 +82,26 @@ export class ReceiptGenerator {
       .eq('id', orderId)
       .single();
 
-    if (error || !order) {
-      throw new Error('Order not found');
+    if (error) {
+      console.error('❌ [ReceiptGenerator] Database error:', error);
+      throw new Error(`Order not found: ${error.message}`);
     }
+    
+    if (!order) {
+      console.error('❌ [ReceiptGenerator] Order not found in database:', orderId);
+      throw new Error(`Order not found with ID: ${orderId}`);
+    }
+    
+    console.log(`✅ [ReceiptGenerator] Order found:`, {
+      order_number: order.order_number,
+      status: order.status,
+      items_count: order.order_items?.length || 0
+    });
 
     // Get cashier info separately
     let cashier = null;
     if (order.cashier_id) {
-      const result = await supabase
+      const result = await supabaseAdmin
         .from('users')
         .select('full_name')
         .eq('id', order.cashier_id)
@@ -135,12 +152,13 @@ export class ReceiptGenerator {
 
   /**
    * Get business settings for receipt
+   * Uses admin client to bypass RLS for server-side operations
    */
   private static async getBusinessSettings() {
     try {
-      const { supabase } = await import('@/data/supabase/client');
+      const { supabaseAdmin } = await import('@/data/supabase/server-client');
       
-      const { data } = await supabase
+      const { data } = await supabaseAdmin
         .from('system_settings')
         .select('key, value')
         .in('key', [
@@ -285,6 +303,7 @@ export class ReceiptGenerator {
 
   /**
    * Generate HTML receipt for browser printing
+   * Includes logo, enhanced styling, and print-optimized CSS
    */
   static generateHTMLReceipt(data: ReceiptData): string {
     return `
@@ -292,98 +311,408 @@ export class ReceiptGenerator {
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Receipt - ${data.orderNumber}</title>
   <style>
+    /* Print-specific styles */
     @media print {
-      @page { margin: 0; }
-      body { margin: 0; }
+      @page { 
+        margin: 0;
+        size: 80mm auto;
+      }
+      body { 
+        margin: 0;
+        padding: 0;
+      }
+      /* Ensure all elements print */
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+    }
+    
+    /* Base styles */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
     
     body {
       font-family: 'Courier New', monospace;
       font-size: 12px;
-      line-height: 1.4;
+      line-height: 1.5;
       max-width: 80mm;
       margin: 0 auto;
-      padding: 5mm;
+      padding: 8mm;
+      background: white;
+      color: #000;
     }
     
-    .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .header { font-size: 14px; margin-bottom: 10px; }
-    .divider { border-top: 1px dashed #000; margin: 5px 0; }
-    .thick-divider { border-top: 2px solid #000; margin: 5px 0; }
-    .item-row { display: flex; justify-content: space-between; margin: 2px 0; }
-    .total-row { display: flex; justify-content: space-between; font-weight: bold; }
-    .footer { margin-top: 10px; font-size: 10px; }
+    /* Logo container */
+    .logo-container {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    
+    .logo {
+      width: 100px;
+      height: 100px;
+      margin: 0 auto 10px;
+      display: block;
+    }
+    
+    /* Header styles */
+    .header {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    
+    .business-name {
+      font-size: 18px;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+    
+    .business-info {
+      font-size: 10px;
+      color: #333;
+      line-height: 1.4;
+    }
+    
+    /* Dividers */
+    .divider {
+      border-top: 1px dashed #000;
+      margin: 10px 0;
+    }
+    
+    .thick-divider {
+      border-top: 2px solid #000;
+      margin: 10px 0;
+    }
+    
+    .double-divider {
+      border-top: 3px double #000;
+      margin: 10px 0;
+    }
+    
+    /* Order info section */
+    .order-info {
+      margin: 15px 0;
+      font-size: 11px;
+    }
+    
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 3px 0;
+    }
+    
+    .info-label {
+      color: #333;
+    }
+    
+    .info-value {
+      font-weight: 600;
+      text-align: right;
+    }
+    
+    /* Items section */
+    .items-section {
+      margin: 15px 0;
+    }
+    
+    .items-header {
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #000;
+      margin-bottom: 10px;
+    }
+    
+    .item-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 8px 0;
+      font-size: 11px;
+    }
+    
+    .item-details {
+      flex: 1;
+      padding-right: 10px;
+    }
+    
+    .item-name {
+      font-weight: 500;
+    }
+    
+    .item-price {
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    
+    .item-note {
+      font-size: 9px;
+      color: #555;
+      font-style: italic;
+      margin-left: 15px;
+      margin-top: 2px;
+    }
+    
+    .item-badge {
+      font-size: 9px;
+      font-weight: bold;
+      margin-left: 15px;
+      margin-top: 2px;
+    }
+    
+    .complimentary {
+      color: #2d7a2d;
+    }
+    
+    /* Totals section */
+    .totals-section {
+      margin: 15px 0;
+    }
+    
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 5px 0;
+      font-size: 11px;
+    }
+    
+    .total-label {
+      color: #333;
+    }
+    
+    .total-value {
+      font-weight: 500;
+    }
+    
+    .discount-row {
+      color: #2d7a2d;
+    }
+    
+    .grand-total {
+      font-size: 14px;
+      font-weight: bold;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 2px solid #000;
+    }
+    
+    /* Payment section */
+    .payment-section {
+      margin: 15px 0;
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 3px;
+    }
+    
+    .payment-title {
+      font-weight: bold;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    
+    .payment-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 4px 0;
+      font-size: 11px;
+    }
+    
+    .payment-method {
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+    
+    .change-row {
+      font-weight: bold;
+      color: #2d7a2d;
+      padding-top: 6px;
+      margin-top: 6px;
+      border-top: 1px solid #ccc;
+    }
+    
+    /* Footer section */
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+    }
+    
+    .footer-message {
+      font-size: 11px;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
+    .footer-submessage {
+      font-size: 10px;
+      font-weight: 600;
+      color: #b8860b;
+      margin-bottom: 10px;
+    }
+    
+    .footer-info {
+      font-size: 9px;
+      color: #666;
+      font-style: italic;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #ddd;
+    }
+    
+    .powered-by {
+      font-size: 8px;
+      color: #999;
+      margin-top: 5px;
+    }
+    
+    /* Print timestamp */
+    .print-timestamp {
+      text-align: center;
+      font-size: 8px;
+      color: #999;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #ddd;
+    }
   </style>
 </head>
 <body>
-  <div class="center header bold">
-    ${data.businessName.toUpperCase()}
+  <!-- Logo -->
+  <div class="logo-container">
+    <img src="/beerhive-logo.png" alt="BeerHive Logo" class="logo" onerror="this.style.display='none'">
   </div>
-  ${data.businessAddress ? `<div class="center">${data.businessAddress}</div>` : ''}
-  ${data.businessPhone ? `<div class="center">${data.businessPhone}</div>` : ''}
-  ${data.businessEmail ? `<div class="center">${data.businessEmail}</div>` : ''}
   
-  <div class="thick-divider"></div>
-  
-  <div>Order #: ${data.orderNumber}</div>
-  <div>Date: ${format(data.orderDate, 'MMM dd, yyyy HH:mm')}</div>
-  ${data.tableNumber ? `<div>Table: ${data.tableNumber}</div>` : ''}
-  ${data.customerName ? `<div>Customer: ${data.customerName}${data.customerTier && data.customerTier !== 'regular' ? ` (${data.customerTier.toUpperCase()})` : ''}</div>` : ''}
-  <div>Cashier: ${data.cashierName}</div>
-  
-  <div class="divider"></div>
-  
-  ${data.items.map(item => `
-    <div class="item-row">
-      <div>${item.quantity}x ${item.name}</div>
-      <div>${this.formatCurrency(item.total)}</div>
+  <!-- Business Header -->
+  <div class="header">
+    <div class="business-name">${data.businessName.toUpperCase()}</div>
+    <div class="business-info">
+      ${data.businessAddress ? `${data.businessAddress}<br>` : ''}
+      ${data.businessPhone ? `${data.businessPhone}<br>` : ''}
+      ${data.businessEmail ? `${data.businessEmail}<br>` : ''}
+      Craft Beer &amp; Great Food
     </div>
-    ${item.notes ? `<div style="padding-left: 20px; font-size: 10px;">Note: ${item.notes}</div>` : ''}
-    ${item.isComplimentary ? `<div style="padding-left: 20px; font-weight: bold;">** COMPLIMENTARY **</div>` : ''}
-  `).join('')}
-  
-  <div class="divider"></div>
-  
-  <div class="item-row">
-    <div>Subtotal:</div>
-    <div>${this.formatCurrency(data.subtotal)}</div>
-  </div>
-  ${data.discountAmount > 0 ? `
-  <div class="item-row">
-    <div>Discount:</div>
-    <div>-${this.formatCurrency(data.discountAmount)}</div>
-  </div>` : ''}
-  ${data.taxAmount > 0 ? `
-  <div class="item-row">
-    <div>Tax:</div>
-    <div>${this.formatCurrency(data.taxAmount)}</div>
-  </div>` : ''}
-  
-  <div class="thick-divider"></div>
-  
-  <div class="total-row">
-    <div>TOTAL:</div>
-    <div>${this.formatCurrency(data.totalAmount)}</div>
   </div>
   
-  <div class="thick-divider"></div>
+  <div class="double-divider"></div>
   
-  <div style="margin-top: 10px;">
-    <div>Payment: ${data.paymentMethod.toUpperCase()}</div>
-    ${data.amountTendered ? `<div>Tendered: ${this.formatCurrency(data.amountTendered)}</div>` : ''}
-    ${data.changeAmount ? `<div>Change: ${this.formatCurrency(data.changeAmount)}</div>` : ''}
+  <!-- Order Information -->
+  <div class="order-info">
+    <div class="info-row">
+      <span class="info-label">Order #:</span>
+      <span class="info-value">${data.orderNumber}</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Date:</span>
+      <span class="info-value">${format(data.orderDate, 'MMM dd, yyyy HH:mm')}</span>
+    </div>
+    ${data.tableNumber ? `
+    <div class="info-row">
+      <span class="info-label">Table:</span>
+      <span class="info-value">Table ${data.tableNumber}</span>
+    </div>` : ''}
+    ${data.customerName ? `
+    <div class="info-row">
+      <span class="info-label">Customer:</span>
+      <span class="info-value">${data.customerName}${data.customerTier && data.customerTier !== 'regular' ? ` (${data.customerTier.toUpperCase()})` : ''}</span>
+    </div>` : ''}
+    <div class="info-row">
+      <span class="info-label">Cashier:</span>
+      <span class="info-value">${data.cashierName}</span>
+    </div>
   </div>
   
   <div class="divider"></div>
   
-  <div class="center footer">
-    ${data.footerMessage || 'Thank you for your patronage!'}
+  <!-- Order Items -->
+  <div class="items-section">
+    <div class="items-header">Order Items</div>
+    ${data.items.map(item => `
+      <div class="item-row">
+        <div class="item-details">
+          <div class="item-name">${item.quantity}x ${item.name}</div>
+          ${item.notes ? `<div class="item-note">ⓘ Note: ${item.notes}</div>` : ''}
+          ${item.isComplimentary ? `<div class="item-badge complimentary">✓ COMPLIMENTARY</div>` : ''}
+        </div>
+        <div class="item-price">${this.formatCurrency(item.total)}</div>
+      </div>
+    `).join('')}
   </div>
-  <div class="center footer">
-    Powered by BeerHive POS
+  
+  <div class="divider"></div>
+  
+  <!-- Totals -->
+  <div class="totals-section">
+    <div class="total-row">
+      <span class="total-label">Subtotal:</span>
+      <span class="total-value">${this.formatCurrency(data.subtotal)}</span>
+    </div>
+    ${data.discountAmount > 0 ? `
+    <div class="total-row discount-row">
+      <span class="total-label">Discount:</span>
+      <span class="total-value">-${this.formatCurrency(data.discountAmount)}</span>
+    </div>` : ''}
+    ${data.taxAmount > 0 ? `
+    <div class="total-row">
+      <span class="total-label">Tax:</span>
+      <span class="total-value">${this.formatCurrency(data.taxAmount)}</span>
+    </div>` : ''}
+    
+    <div class="total-row grand-total">
+      <span>TOTAL:</span>
+      <span>${this.formatCurrency(data.totalAmount)}</span>
+    </div>
+  </div>
+  
+  <div class="thick-divider"></div>
+  
+  <!-- Payment Details -->
+  ${data.paymentMethod ? `
+  <div class="payment-section">
+    <div class="payment-title">Payment Details</div>
+    <div class="payment-row">
+      <span>Method:</span>
+      <span class="payment-method">${data.paymentMethod}</span>
+    </div>
+    ${data.amountTendered ? `
+    <div class="payment-row">
+      <span>Tendered:</span>
+      <span>${this.formatCurrency(data.amountTendered)}</span>
+    </div>` : ''}
+    ${data.changeAmount !== null && data.changeAmount !== undefined && data.changeAmount > 0 ? `
+    <div class="payment-row change-row">
+      <span>Change:</span>
+      <span>${this.formatCurrency(data.changeAmount)}</span>
+    </div>` : ''}
+  </div>` : ''}
+  
+  <div class="double-divider"></div>
+  
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-message">Thank You For Your Patronage!</div>
+    <div class="footer-submessage">Please Come Again!</div>
+    <div class="footer-info">
+      ${data.footerMessage || 'This serves as your official receipt'}<br>
+      Visit us at www.beerhivepub.com
+    </div>
+    <div class="powered-by">Powered by BeerHive POS</div>
+  </div>
+  
+  <!-- Print Timestamp -->
+  <div class="print-timestamp">
+    Printed: ${format(new Date(), 'MMM dd, yyyy HH:mm:ss')}
   </div>
 </body>
 </html>

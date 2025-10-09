@@ -13,6 +13,14 @@ export class OrderRepository {
   /**
    * Create new order with items
    * Uses admin client to bypass RLS policies for order creation
+   * 
+   * @param orderData - Order data including session_id, customer_id, table_id, status, etc.
+   * @param orderItems - Array of order items to be created
+   * @returns Created order object
+   * @throws AppError if creation fails
+   * 
+   * Note: Status defaults to PENDING if not provided in orderData.
+   * For tab system orders, pass status: OrderStatus.DRAFT to create draft orders.
    */
   static async create(orderData: any, orderItems: any[]): Promise<Order> {
     try {
@@ -20,13 +28,13 @@ export class OrderRepository {
       const orderNumber = await this.generateOrderNumber();
 
       // Use admin client to bypass RLS issues
-      // Create order
+      // Create order with provided status or default to PENDING
       const { data: order, error: orderError } = await supabaseAdmin
         .from('orders')
         .insert({
           ...orderData,
           order_number: orderNumber,
-          status: OrderStatus.PENDING,
+          status: orderData.status || OrderStatus.PENDING, // Use provided status or default to PENDING
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })

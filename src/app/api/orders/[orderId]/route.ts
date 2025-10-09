@@ -9,21 +9,22 @@ import { AppError } from '@/lib/errors/AppError';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const { orderId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const includeSummary = searchParams.get('includeSummary') === 'true';
 
     if (includeSummary) {
-      const orderSummary = await OrderService.getOrderSummary(params.orderId);
+      const orderSummary = await OrderService.getOrderSummary(orderId);
       return NextResponse.json({
         success: true,
         data: orderSummary,
       });
     }
 
-    const order = await OrderRepository.getById(params.orderId);
+    const order = await OrderRepository.getById(orderId);
 
     if (!order) {
       return NextResponse.json(
@@ -59,9 +60,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const { orderId } = await params;
     const body = await request.json();
     
     let order;
@@ -70,15 +72,15 @@ export async function PATCH(
     if (body.action) {
       switch (body.action) {
         case 'complete':
-          order = await OrderService.completeOrder(params.orderId);
+          order = await OrderService.completeOrder(orderId);
           break;
 
         case 'hold':
-          order = await OrderService.holdOrder(params.orderId);
+          order = await OrderService.holdOrder(orderId);
           break;
 
         case 'resume':
-          order = await OrderService.resumeOrder(params.orderId);
+          order = await OrderService.resumeOrder(orderId);
           break;
 
         default:
@@ -89,7 +91,7 @@ export async function PATCH(
       }
     } else {
       // Regular update
-      order = await OrderRepository.update(params.orderId, body);
+      order = await OrderRepository.update(orderId, body);
     }
 
     return NextResponse.json({

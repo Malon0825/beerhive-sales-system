@@ -10,6 +10,7 @@ export interface CreateUserInput {
   full_name: string;
   role?: UserRole;  // Single role (backward compatibility)
   roles?: UserRole[];  // Multiple roles (preferred)
+  manager_pin?: string;  // Optional PIN for admin/manager authorization
 }
 
 export interface UpdateUserInput {
@@ -19,6 +20,7 @@ export interface UpdateUserInput {
   role?: UserRole;  // Single role (backward compatibility)
   roles?: UserRole[];  // Multiple roles (preferred)
   is_active?: boolean;
+  manager_pin?: string;  // Optional PIN for admin/manager authorization
 }
 
 /**
@@ -33,7 +35,7 @@ export class UserRepository {
     try {
       const { data, error } = await supabaseAdmin
         .from('users')
-        .select('id, username, email, full_name, role, roles, is_active, last_login, created_at')
+        .select('id, username, email, full_name, role, roles, is_active, last_login, created_at, manager_pin')
         .order('created_at', { ascending: false });
 
       if (error) throw new AppError(error.message, 500);
@@ -52,7 +54,7 @@ export class UserRepository {
     try {
       const { data, error } = await supabaseAdmin
         .from('users')
-        .select('id, username, email, full_name, role, roles, is_active, last_login, created_at, updated_at')
+        .select('id, username, email, full_name, role, roles, is_active, last_login, created_at, updated_at, manager_pin')
         .eq('id', id)
         .single();
 
@@ -224,20 +226,28 @@ export class UserRepository {
         roles: rolesArray
       });
       
+      // Prepare user data for insertion
+      const userData: any = {
+        id: authData.user.id,
+        username: input.username,
+        email: input.email,
+        full_name: input.full_name,
+        role: primaryRole,  // Primary role (first in array)
+        roles: rolesArray,  // All roles
+        password_hash: 'managed_by_supabase_auth', // Placeholder
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      
+      // Include manager_pin if provided
+      if (input.manager_pin) {
+        userData.manager_pin = input.manager_pin;
+      }
+      
       const { data, error } = await supabaseAdmin
         .from('users')
-        .upsert({
-          id: authData.user.id,
-          username: input.username,
-          email: input.email,
-          full_name: input.full_name,
-          role: primaryRole,  // Primary role (first in array)
-          roles: rolesArray,  // All roles
-          password_hash: 'managed_by_supabase_auth', // Placeholder
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' })
+        .upsert(userData, { onConflict: 'id' })
         .select()
         .single();
 
@@ -394,6 +404,7 @@ export class UserRepository {
       if (input.email !== undefined) updateData.email = input.email;
       if (input.full_name !== undefined) updateData.full_name = input.full_name;
       if (input.is_active !== undefined) updateData.is_active = input.is_active;
+      if (input.manager_pin !== undefined) updateData.manager_pin = input.manager_pin;
 
       const { data, error } = await supabaseAdmin
         .from('users')

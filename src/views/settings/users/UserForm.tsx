@@ -16,6 +16,7 @@ interface User {
   role: string;  // Primary role (backward compatibility)
   roles?: string[];  // Multiple roles
   is_active: boolean;
+  manager_pin?: string;  // Optional manager PIN for admin/manager users
 }
 
 interface UserFormProps {
@@ -33,6 +34,7 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
     roles: ['cashier'] as string[],  // Multi-role support
     password: '',
     confirmPassword: '',
+    manager_pin: '',  // Optional PIN for admin/manager users
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -52,6 +54,7 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
         roles: userRoles,
         password: '',
         confirmPassword: '',
+        manager_pin: user.manager_pin || '',  // Load existing PIN if available
       });
     }
   }, [user]);
@@ -136,6 +139,13 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
       // Only include password for new users
       if (!user) {
         payload.password = formData.password;
+      }
+      
+      // Include manager_pin if user has admin or manager role
+      // Check if any of the selected roles includes 'admin' or 'manager'
+      const hasManagerRole = formData.roles.some(role => role === 'admin' || role === 'manager');
+      if (hasManagerRole && formData.manager_pin) {
+        payload.manager_pin = formData.manager_pin;
       }
 
       const url = user ? `/api/users/${user.id}` : '/api/users';
@@ -296,6 +306,24 @@ export default function UserForm({ user, onSuccess, onCancel }: UserFormProps) {
           )}
         </div>
       </div>
+
+      {/* Manager PIN (only for admin/manager roles) */}
+      {formData.roles.some(role => role === 'admin' || role === 'manager') && (
+        <div>
+          <Label htmlFor="manager_pin">Manager PIN (Optional)</Label>
+          <Input
+            id="manager_pin"
+            type="text"
+            value={formData.manager_pin}
+            onChange={(e) => setFormData({ ...formData, manager_pin: e.target.value })}
+            placeholder="Enter PIN for authorization"
+            maxLength={6}
+          />
+          <div className="text-gray-500 text-sm mt-1">
+            Used for authorizing order returns and voids. No restrictions on PIN format.
+          </div>
+        </div>
+      )}
 
       {/* Password (only for new users) */}
       {!user && (

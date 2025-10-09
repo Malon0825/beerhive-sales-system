@@ -1,0 +1,167 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { PaymentPanel } from '@/views/pos/PaymentPanel';
+import { apiGet } from '@/lib/utils/apiClient';
+
+/**
+ * Close Tab Page
+ * Route: /order-sessions/[sessionId]/close
+ * 
+ * Uses unified PaymentPanel component for cohesive payment experience
+ * across POS and Tab Management modules
+ */
+export default function CloseTabPage() {
+  const params = useParams();
+  const router = useRouter();
+  const sessionId = params.sessionId as string;
+  const [isOpen, setIsOpen] = useState(true);
+  const [sessionData, setSessionData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  /**
+   * Fetch session data including orders for item count
+   */
+  useEffect(() => {
+    const fetchSession = async () => {
+      try {
+        const data = await apiGet(`/api/order-sessions/${sessionId}`);
+        
+        if (data.success) {
+          setSessionData(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch session:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSession();
+  }, [sessionId]);
+
+  /**
+   * Handle dialog close
+   */
+  const handleClose = () => {
+    setIsOpen(false);
+    router.push('/tabs'); // Redirect to unified tab management
+  };
+
+  /**
+   * Handle successful payment and trigger receipt printing
+   * @param sessionId - The ID of the closed session
+   * @param options - Options containing result data and preview preference
+   */
+  const handleSuccess = (sessionId: string, options?: { previewReceipt?: boolean; resultData?: any }) => {
+    console.log('✅ Payment successful, session closed:', sessionId);
+    
+    // Extract result data containing orders
+    const resultData = options?.resultData;
+    const wantsPreview = options?.previewReceipt === true;
+    
+    if (resultData) {
+      // Get the session's orders for receipt printing
+      const orders = resultData.receipt?.orders || [];
+      
+      console.log('📄 Printing receipts for', orders.length, 'orders');
+      
+      // Print receipt for each order in the session
+      // Note: In a tab/session, multiple orders might exist, we print the main consolidated receipt
+      // For now, we'll print receipts for all orders in the session
+      orders.forEach((order: any, index: number) => {
+        // Get order ID - the order object should have an id property
+        // Since we're getting order data from the closeTab service, we need to find the actual order IDs
+        // The session has the order IDs in sessionData.orders array
+        const sessionOrder = sessionData?.orders?.[index];
+        
+        if (sessionOrder?.id) {
+          setTimeout(() => {
+            if (wantsPreview) {
+              // Preview mode: open receipt without auto-print
+              window.open(
+                `/api/orders/${sessionOrder.id}/receipt?format=html`,
+                '_blank',
+                'width=400,height=600'
+              );
+            } else {
+              // Auto-print mode (default): open and trigger print immediately
+              const printWindow = window.open(
+                `/api/orders/${sessionOrder.id}/receipt?format=html`,
+                '_blank',
+                'width=400,height=600'
+              );
+              
+              if (printWindow) {
+                printWindow.addEventListener('load', () => {
+                  printWindow.print();
+                  // Auto-close after printing (optional)
+                  printWindow.addEventListener('afterprint', () => {
+                    try { printWindow.close(); } catch {}
+                  });
+                });
+              }
+            }
+          }, index * 500); // Stagger multiple receipts by 500ms
+        }
+      });
+    }
+    
+    // Redirect after a brief delay to allow print dialogs to open
+    setTimeout(() => {
+      router.push('/tabs');
+    }, 1500);
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (!sessionData) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-red-600 font-semibold">Session not found</p>
+          <button
+            onClick={() => router.push('/tabs')}
+            className="mt-4 text-blue-600 hover:underline"
+          >
+            Return to Tab Management
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /**
+   * Calculate total item count from all orders in session
+   */
+  const itemCount = sessionData.orders?.reduce((total: number, order: any) => {
+    return total + (order.order_items?.length || 0);
+  }, 0) || 0;
+
+  return (
+    <PaymentPanel
+      open={isOpen}
+      onOpenChange={setIsOpen}
+      onPaymentComplete={handleSuccess}
+      mode="close-tab"
+      sessionId={sessionId}
+      sessionNumber={sessionData.session_number}
+      sessionTotal={sessionData.total_amount || 0}
+      sessionItemCount={itemCount}
+      sessionCustomer={sessionData.customer}
+      sessionTable={sessionData.table}
+    />
+  );
+}

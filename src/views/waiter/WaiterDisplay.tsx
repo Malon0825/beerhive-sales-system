@@ -11,12 +11,14 @@ import { useToast } from '@/lib/hooks/useToast';
 /**
  * WaiterDisplay Component
  * Interface for waiters to view ready orders and mark them as served
+ * Optimized for phone and tablet screens with responsive layout
  * 
  * Features:
  * - Shows only orders with status "ready"
  * - Grouped by table for easy delivery
  * - Mark entire order as served
  * - Realtime updates when kitchen marks items ready
+ * - Responsive layout for phone (single column) and tablet (2 columns) screens
  */
 export function WaiterDisplay() {
   const [orders, setOrders] = useState<KitchenOrderWithRelations[]>([]);
@@ -186,15 +188,56 @@ export function WaiterDisplay() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <div className="bg-white shadow-md p-4 sticky top-0 z-10">
-        <div className="flex justify-between items-center">
+      {/* Header - Responsive Layout */}
+      <div className="bg-white shadow-md p-2 sm:p-4 sticky top-0 z-10">
+        {/* Mobile Layout */}
+        <div className="flex flex-col gap-3 md:hidden">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              <div>
+                <h1 className="text-base font-bold text-gray-800">Waiter - Ready</h1>
+                <p className="text-xs text-gray-600">
+                  {new Date().toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-1"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="text-sm">Refresh</span>
+            </button>
+          </div>
+          
+          {/* Summary - Compact Mobile */}
+          <div className="flex justify-around gap-2 bg-green-50 rounded p-2">
+            <div className="text-center flex-1">
+              <p className="text-xs text-gray-600">Ready Items</p>
+              <p className="text-xl font-bold text-green-600">{orders.length}</p>
+            </div>
+            <div className="text-center flex-1">
+              <p className="text-xs text-gray-600">Tables</p>
+              <p className="text-xl font-bold text-blue-600">
+                {Object.keys(ordersByTable).length}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Tablet/Desktop Layout */}
+        <div className="hidden md:flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <CheckCircle className="h-7 w-7 text-green-600" />
+            <h1 className="text-xl lg:text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <CheckCircle className="h-6 lg:h-7 w-6 lg:w-7 text-green-600" />
               Waiter - Ready Orders
             </h1>
-            <p className="text-sm text-gray-600">
+            <p className="text-xs lg:text-sm text-gray-600">
               {new Date().toLocaleString('en-US', {
                 weekday: 'long',
                 year: 'numeric',
@@ -207,14 +250,14 @@ export function WaiterDisplay() {
           </div>
 
           {/* Summary */}
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 lg:gap-6">
             <div className="text-center">
-              <p className="text-sm text-gray-600">Ready Items</p>
-              <p className="text-3xl font-bold text-green-600">{orders.length}</p>
+              <p className="text-xs lg:text-sm text-gray-600">Ready Items</p>
+              <p className="text-2xl lg:text-3xl font-bold text-green-600">{orders.length}</p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-gray-600">Tables</p>
-              <p className="text-3xl font-bold text-blue-600">
+              <p className="text-xs lg:text-sm text-gray-600">Tables</p>
+              <p className="text-2xl lg:text-3xl font-bold text-blue-600">
                 {Object.keys(ordersByTable).length}
               </p>
             </div>
@@ -224,41 +267,41 @@ export function WaiterDisplay() {
           <button
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-2"
+            className="bg-green-600 text-white px-3 lg:px-4 py-2 rounded hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-2"
           >
-            <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            <RefreshCw className={`h-4 lg:h-5 w-4 lg:w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span className="text-sm lg:text-base">Refresh</span>
           </button>
         </div>
       </div>
 
-      {/* Orders by Table */}
-      <div className="p-4">
+      {/* Orders by Table - Responsive */}
+      <div className="p-2 sm:p-3 md:p-4">
         {orders.length === 0 ? (
-          <div className="text-center py-12">
-            <CheckCircle className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-            <p className="text-xl text-gray-600">No orders ready for delivery</p>
-            <p className="text-sm text-gray-500 mt-2">
+          <div className="text-center py-8 sm:py-12">
+            <CheckCircle className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-gray-400 mb-3 sm:mb-4" />
+            <p className="text-lg sm:text-xl text-gray-600">No orders ready for delivery</p>
+            <p className="text-xs sm:text-sm text-gray-500 mt-2">
               Orders will appear here when kitchen marks them as ready
             </p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-3 sm:space-y-4 md:space-y-6">
             {Object.entries(ordersByTable).map(([tableName, tableOrders]) => (
-              <div key={tableName} className="bg-white rounded-lg shadow-md p-4">
-                {/* Table Header */}
-                <div className="flex items-center justify-between mb-4 pb-3 border-b">
+              <div key={tableName} className="bg-white rounded-lg shadow-md p-3 sm:p-4">
+                {/* Table Header - Responsive */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 pb-3 border-b gap-2">
                   <div>
-                    <h2 className="text-xl font-bold text-gray-800">
+                    <h2 className="text-lg sm:text-xl font-bold text-gray-800">
                       {tableName === 'Takeout' ? '📦 Takeout Order' : `🍽️ Table ${tableName}`}
                     </h2>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-xs sm:text-sm text-gray-600">
                       {tableOrders.length} item{tableOrders.length > 1 ? 's' : ''} ready
                     </p>
                   </div>
                   <div className="flex items-center gap-2 text-gray-600">
-                    <Clock className="h-5 w-5" />
-                    <span className="text-sm">
+                    <Clock className="h-4 sm:h-5 w-4 sm:w-5" />
+                    <span className="text-xs sm:text-sm">
                       Oldest: {Math.floor(
                         (Date.now() - new Date(tableOrders[0].ready_at || tableOrders[0].sent_at).getTime()) / 60000
                       )} min ago
@@ -266,8 +309,8 @@ export function WaiterDisplay() {
                   </div>
                 </div>
 
-                {/* Order Items */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Order Items - Responsive Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4">
                   {tableOrders.map((order) => (
                     <ReadyOrderCard
                       key={order.id}
