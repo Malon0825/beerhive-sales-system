@@ -256,6 +256,7 @@ export function Sidebar({
               <li key={item.href}>
                 <Link
                   href={item.href}
+                  prefetch={true}
                   className={cn(
                     'flex items-center rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2',
                     isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2',
