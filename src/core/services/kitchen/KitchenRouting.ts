@@ -1,5 +1,6 @@
 import { KitchenOrderRepository } from '@/data/repositories/KitchenOrderRepository';
 import { ProductRepository } from '@/data/repositories/ProductRepository';
+import { PackageRepository } from '@/data/repositories/PackageRepository';
 import { CreateKitchenOrderInput } from '@/models/entities/KitchenOrder';
 import { AppError } from '@/lib/errors/AppError';
 
@@ -10,7 +11,8 @@ import { AppError } from '@/lib/errors/AppError';
 export class KitchenRouting {
   /**
    * Route order items to appropriate stations
-   * Analyzes each item and determines destination based on product category
+   * Analyzes each item and determines destination based on product category.
+   * For packages, expands the package and routes each product individually.
    */
   static async routeOrder(orderId: string, orderItems: any[]): Promise<void> {
     try {
@@ -33,20 +35,30 @@ export class KitchenRouting {
       for (const item of orderItems) {
         console.log(`🔍 [KitchenRouting] Processing item: ${item.item_name} (${item.id})`);
         
-        const destination = await this.determineDestination(item);
-        
-        console.log(`📍 [KitchenRouting] Destination for "${item.item_name}": ${destination || 'NULL'}`);
-        
-        if (destination) {
-          kitchenOrders.push({
-            order_id: orderId,
-            order_item_id: item.id,
-            destination,
-            special_instructions: item.notes || undefined,
-            is_urgent: false,
-          });
+        // If it's a package, expand it and route each item individually
+        if (item.package_id) {
+          console.log(`📦 [KitchenRouting] Package detected, expanding items...`);
+          const packageOrders = await this.routePackageItems(orderId, item);
+          kitchenOrders.push(...packageOrders);
+          console.log(`📦 [KitchenRouting] Added ${packageOrders.length} orders from package`);
         } else {
-          console.warn(`⚠️  [KitchenRouting] No destination determined for item: ${item.item_name}`);
+          // Regular product - route as before
+          const destination = await this.determineDestination(item);
+          
+          console.log(`📍 [KitchenRouting] Destination for "${item.item_name}": ${destination || 'NULL'}`);
+          
+          if (destination) {
+            kitchenOrders.push({
+              order_id: orderId,
+              order_item_id: item.id,
+              product_name: item.item_name, // Product name for display
+              destination,
+              special_instructions: item.notes || undefined,
+              is_urgent: false,
+            });
+          } else {
+            console.warn(`⚠️  [KitchenRouting] No destination determined for item: ${item.item_name}`);
+          }
         }
       }
 
@@ -68,7 +80,94 @@ export class KitchenRouting {
   }
 
   /**
+   * Route package items to appropriate stations
+   * Fetches the package details and creates kitchen orders for each item in the package
+   * based on each product's category destination.
+   * 
+   * This method ensures that each product in a package is routed to the correct station
+   * (kitchen or bartender) based on the product's category, rather than sending the entire
+   * package to both stations.
+   * 
+   * @param orderId - The order ID
+   * @param orderItem - The order item representing the package
+   * @returns Array of kitchen orders to be created
+   */
+  private static async routePackageItems(
+    orderId: string,
+    orderItem: any
+  ): Promise<CreateKitchenOrderInput[]> {
+    const kitchenOrders: CreateKitchenOrderInput[] = [];
+
+    try {
+      console.log(`📦 [KitchenRouting.routePackageItems] Fetching package ${orderItem.package_id}...`);
+      
+      // Validate package_id exists
+      if (!orderItem.package_id) {
+        console.error(`❌ [KitchenRouting.routePackageItems] Order item has no package_id`);
+        return kitchenOrders;
+      }
+      
+      // Fetch the package with all its items and product categories
+      const packageData = await PackageRepository.getById(orderItem.package_id);
+      
+      if (!packageData) {
+        console.error(`❌ [KitchenRouting.routePackageItems] Package not found: ${orderItem.package_id}`);
+        return kitchenOrders;
+      }
+
+      console.log(`📦 [KitchenRouting.routePackageItems] Package "${packageData.name}" has ${packageData.items?.length || 0} items`);
+
+      // If package has no items, log warning and return empty array
+      if (!packageData.items || packageData.items.length === 0) {
+        console.warn(`⚠️  [KitchenRouting.routePackageItems] Package "${packageData.name}" has no items configured`);
+        return kitchenOrders;
+      }
+
+      // Process each item in the package
+      for (const packageItem of packageData.items) {
+        const product = packageItem.product;
+        
+        // Validate product exists
+        if (!product || !product.id) {
+          console.warn(`⚠️  [KitchenRouting.routePackageItems] Package item has no valid product data`);
+          continue;
+        }
+
+        console.log(`🔍 [KitchenRouting.routePackageItems] Processing: ${product.name} (qty: ${packageItem.quantity})`);
+
+        // Determine destination based on product's category
+        const destination = await this.determineProductDestination(product);
+
+        console.log(`📍 [KitchenRouting.routePackageItems] ${product.name} → ${destination || 'NO DESTINATION'}`);
+
+        if (destination) {
+          // Create kitchen order for this package item
+          kitchenOrders.push({
+            order_id: orderId,
+            order_item_id: orderItem.id, // Reference the package order item
+            product_name: product.name, // ✅ Actual product name for display
+            destination,
+            special_instructions: `Package: ${packageData.name} (x${packageItem.quantity})`,
+            is_urgent: false,
+          });
+        } else {
+          // Log as error since items without destination won't be prepared
+          console.error(`❌ [KitchenRouting.routePackageItems] Cannot determine destination for "${product.name}" - item will not be routed`);
+        }
+      }
+
+      console.log(`✅ [KitchenRouting.routePackageItems] Created ${kitchenOrders.length} kitchen orders from package "${packageData.name}"`);
+      return kitchenOrders;
+    } catch (error) {
+      console.error('❌ [KitchenRouting.routePackageItems] Error routing package items:', error);
+      console.error('Stack trace:', error);
+      return kitchenOrders; // Return whatever we managed to process
+    }
+  }
+
+  /**
    * Determine destination based on product
+   * Used for regular order items (not packages)
    */
   private static async determineDestination(
     orderItem: any
@@ -76,15 +175,8 @@ export class KitchenRouting {
     try {
       console.log(`🔍 [KitchenRouting.determineDestination] Checking item:`, {
         product_id: orderItem.product_id,
-        package_id: orderItem.package_id,
         item_name: orderItem.item_name
       });
-
-      // If it's a package, route to both (packages typically contain food and drinks)
-      if (orderItem.package_id) {
-        console.log(`📦 [KitchenRouting.determineDestination] Package detected → routing to BOTH`);
-        return 'both';
-      }
 
       // If it's a product, check its category
       if (orderItem.product_id) {
@@ -96,28 +188,10 @@ export class KitchenRouting {
           return null;
         }
 
-        console.log(`📦 [KitchenRouting.determineDestination] Product fetched:`, {
-          id: product.id,
-          name: product.name,
-          has_category: !!product.category,
-          category_name: product.category?.name,
-          default_destination: product.category?.default_destination
-        });
-
-        // If product has a category with default destination
-        if (product.category?.default_destination) {
-          console.log(`✅ [KitchenRouting.determineDestination] Using category destination: ${product.category.default_destination}`);
-          return product.category.default_destination as 'kitchen' | 'bartender' | 'both';
-        }
-
-        console.log(`⚠️  [KitchenRouting.determineDestination] No category destination, analyzing product name...`);
-        // Fallback: analyze product name for keywords
-        const inferredDestination = this.inferDestinationFromName(product.name);
-        console.log(`🔍 [KitchenRouting.determineDestination] Inferred from name: ${inferredDestination}`);
-        return inferredDestination;
+        return await this.determineProductDestination(product);
       }
 
-      console.warn(`⚠️  [KitchenRouting.determineDestination] No product_id or package_id found`);
+      console.warn(`⚠️  [KitchenRouting.determineDestination] No product_id found`);
       return null;
     } catch (error) {
       console.error('❌ [KitchenRouting.determineDestination] Error determining destination:', error);
@@ -129,26 +203,88 @@ export class KitchenRouting {
   }
 
   /**
+   * Determine destination for a product based on its category
+   * 
+   * Uses a three-tier approach:
+   * 1. Primary: Check product's category default_destination (most reliable)
+   * 2. Fallback: Infer from product name using keywords (if category is missing)
+   * 3. Default: Route to kitchen if all else fails
+   * 
+   * @param product - Product object with category information
+   * @returns Destination: 'kitchen', 'bartender', or 'both'
+   */
+  private static async determineProductDestination(
+    product: any
+  ): Promise<'kitchen' | 'bartender' | 'both' | null> {
+    console.log(`📦 [KitchenRouting.determineProductDestination] Product:`, {
+      id: product.id,
+      name: product.name,
+      has_category: !!product.category,
+      category_name: product.category?.name,
+      default_destination: product.category?.default_destination
+    });
+
+    // Validate product has required data
+    if (!product || !product.name) {
+      console.error(`❌ [KitchenRouting.determineProductDestination] Invalid product data`);
+      return null;
+    }
+
+    // Primary method: Use category's default destination (most reliable)
+    if (product.category?.default_destination) {
+      const destination = product.category.default_destination;
+      console.log(`✅ [KitchenRouting.determineProductDestination] Using category "${product.category.name}" destination: ${destination}`);
+      return destination as 'kitchen' | 'bartender' | 'both';
+    }
+
+    // Secondary method: Infer from product name (fallback)
+    if (!product.category) {
+      console.warn(`⚠️  [KitchenRouting.determineProductDestination] Product "${product.name}" has no category assigned`);
+    } else {
+      console.warn(`⚠️  [KitchenRouting.determineProductDestination] Category "${product.category.name}" has no default_destination set`);
+    }
+    
+    console.log(`🔍 [KitchenRouting.determineProductDestination] Falling back to name-based inference...`);
+    const inferredDestination = this.inferDestinationFromName(product.name);
+    console.log(`📋 [KitchenRouting.determineProductDestination] Inferred "${product.name}" → ${inferredDestination}`);
+    
+    return inferredDestination;
+  }
+
+  /**
    * Infer destination from product name (fallback method)
+   * 
+   * This method is used as a last resort when:
+   * - Product has no category assigned, OR
+   * - Product's category has no default_destination configured
+   * 
+   * It analyzes the product name for common food/beverage keywords
+   * to intelligently route the item. This ensures the system remains
+   * functional even with incomplete category configuration.
+   * 
+   * @param productName - Name of the product to analyze
+   * @returns 'kitchen' for food items, 'bartender' for beverages
    */
   private static inferDestinationFromName(productName: string): 'kitchen' | 'bartender' {
     const lowerName = productName.toLowerCase();
 
-    // Beverage keywords
+    // Beverage keywords (drinks, beer, cocktails, etc.)
     const beverageKeywords = [
       'beer', 'wine', 'whiskey', 'vodka', 'rum', 'gin', 'tequila',
       'cocktail', 'mojito', 'margarita', 'juice', 'soda', 'water',
-      'shake', 'smoothie', 'coffee', 'tea', 'latte', 'cappuccino'
+      'shake', 'smoothie', 'coffee', 'tea', 'latte', 'cappuccino',
+      'pale', 'pilsen', 'red horse', 'san miguel', 'bottle', 'draft'
     ];
 
-    // Food keywords
+    // Food keywords (appetizers, main dishes, Filipino food, etc.)
     const foodKeywords = [
       'sisig', 'wings', 'fries', 'burger', 'pizza', 'pasta',
       'rice', 'chicken', 'pork', 'beef', 'fish', 'seafood',
-      'salad', 'soup', 'sandwich', 'pulutan', 'calamares'
+      'salad', 'soup', 'sandwich', 'pulutan', 'calamares',
+      'lumpia', 'adobo', 'sinigang', 'lechon', 'barbecue', 'grilled'
     ];
 
-    // Check for beverage keywords
+    // Check for beverage keywords first
     if (beverageKeywords.some(keyword => lowerName.includes(keyword))) {
       return 'bartender';
     }
@@ -158,7 +294,7 @@ export class KitchenRouting {
       return 'kitchen';
     }
 
-    // Default to kitchen
+    // Default to kitchen (safer to send to kitchen than bartender)
     return 'kitchen';
   }
 

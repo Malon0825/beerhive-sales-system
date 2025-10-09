@@ -20,7 +20,7 @@ interface OrderCardProps {
  * @param onStatusChange - Callback when order status changes
  */
 export function OrderCard({ kitchenOrder, onStatusChange }: OrderCardProps) {
-  const { order, order_item, status, sent_at, is_urgent, special_instructions } = kitchenOrder;
+  const { order, order_item, product_name, status, sent_at, is_urgent, special_instructions } = kitchenOrder;
   
   /**
    * Calculate time elapsed since order was sent (in minutes)
@@ -79,7 +79,7 @@ export function OrderCard({ kitchenOrder, onStatusChange }: OrderCardProps) {
       {/* Order Item Details */}
       <div className="bg-gray-50 rounded p-2 sm:p-3 mb-2 sm:mb-3">
         <div className="flex justify-between items-center mb-1">
-          <p className="font-semibold text-base sm:text-lg flex-1 pr-2">{order_item?.item_name}</p>
+          <p className="font-semibold text-base sm:text-lg flex-1 pr-2">{product_name || order_item?.item_name}</p>
           <span className="text-xl sm:text-2xl font-bold text-blue-600 flex-shrink-0">×{order_item?.quantity}</span>
         </div>
         

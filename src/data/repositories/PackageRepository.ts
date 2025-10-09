@@ -10,6 +10,7 @@ import { AppError } from '@/lib/errors/AppError';
 export class PackageRepository {
   /**
    * Get all packages with their items
+   * Includes product category information for kitchen routing
    * @param includeInactive - If true, returns both active and inactive packages
    */
   static async getAll(includeInactive: boolean = false): Promise<(Package & { items?: PackageItem[] })[]> {
@@ -25,7 +26,18 @@ export class PackageRepository {
             is_choice_item,
             choice_group,
             display_order,
-            product:products(id, name, sku, base_price, image_url)
+            product:products(
+              id,
+              name,
+              sku,
+              base_price,
+              image_url,
+              category:product_categories(
+                id,
+                name,
+                default_destination
+              )
+            )
           )
         `);
 
@@ -49,6 +61,7 @@ export class PackageRepository {
 
   /**
    * Get package by ID with all related items
+   * Includes product category information for kitchen routing
    */
   static async getById(id: string): Promise<(Package & { items?: any[] }) | null> {
     try {
@@ -64,7 +77,20 @@ export class PackageRepository {
             choice_group,
             display_order,
             created_at,
-            product:products(id, name, sku, base_price, vip_price, image_url, unit_of_measure)
+            product:products(
+              id,
+              name,
+              sku,
+              base_price,
+              vip_price,
+              image_url,
+              unit_of_measure,
+              category:product_categories(
+                id,
+                name,
+                default_destination
+              )
+            )
           )
         `)
         .eq('id', id)
@@ -104,6 +130,7 @@ export class PackageRepository {
 
   /**
    * Get active packages valid for current date with items
+   * Includes product category information for kitchen routing
    */
   static async getActivePackages(): Promise<(Package & { items?: any[] })[]> {
     try {
@@ -121,7 +148,20 @@ export class PackageRepository {
             is_choice_item,
             choice_group,
             display_order,
-            product:products(id, name, sku, base_price, vip_price, image_url, unit_of_measure)
+            product:products(
+              id,
+              name,
+              sku,
+              base_price,
+              vip_price,
+              image_url,
+              unit_of_measure,
+              category:product_categories(
+                id,
+                name,
+                default_destination
+              )
+            )
           )
         `)
         .eq('is_active', true)

@@ -8,6 +8,7 @@ export interface KitchenOrder {
   id: string;
   order_id: string;
   order_item_id: string;
+  product_name: string | null; // Name of the actual product to prepare
   destination: 'kitchen' | 'bartender' | 'both';
   status: KitchenOrderStatus;
   sent_at: string;
@@ -26,6 +27,7 @@ export interface KitchenOrder {
 export interface CreateKitchenOrderInput {
   order_id: string;
   order_item_id: string;
+  product_name?: string; // Name of the actual product to prepare (for display)
   destination: 'kitchen' | 'bartender' | 'both';
   special_instructions?: string;
   is_urgent?: boolean;
