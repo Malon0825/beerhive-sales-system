@@ -8,6 +8,7 @@ import { OrderCard } from './OrderCard';
 import { KitchenHeader } from './components/KitchenHeader';
 import { FilterTabs } from './components/FilterTabs';
 import { useToast } from '@/lib/hooks/useToast';
+import { Clock } from 'lucide-react';
 
 /**
  * KitchenDisplay Component
@@ -137,6 +138,18 @@ export function KitchenDisplay() {
     : orders.filter(order => order.status === filter);
 
   /**
+   * Group orders by table for better organization
+   */
+  const ordersByTable = filteredOrders.reduce((acc, order) => {
+    const tableKey = order.order?.table?.table_number || 'Takeout';
+    if (!acc[tableKey]) {
+      acc[tableKey] = [];
+    }
+    acc[tableKey].push(order);
+    return acc;
+  }, {} as Record<string, KitchenOrderWithRelations[]>);
+
+  /**
    * Calculate order counts by status
    */
   const orderCounts = {
@@ -194,7 +207,7 @@ export function KitchenDisplay() {
         />
       </div>
 
-      {/* Orders Grid - Optimized for phone and tablet */}
+      {/* Orders by Table - Organized for efficient preparation */}
       <div className="p-2 sm:p-3 md:p-4">
         {filteredOrders.length === 0 ? (
           <div className="text-center py-8 sm:py-12">
@@ -205,13 +218,40 @@ export function KitchenDisplay() {
             <p className="text-xs sm:text-sm text-gray-500 mt-2">Orders will appear here when customers place them</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
-            {filteredOrders.map((order) => (
-              <OrderCard 
-                key={order.id} 
-                kitchenOrder={order}
-                onStatusChange={handleStatusChange}
-              />
+          <div className="space-y-3 sm:space-y-4 md:space-y-6">
+            {Object.entries(ordersByTable).map(([tableName, tableOrders]) => (
+              <div key={tableName} className="bg-white rounded-lg shadow-md p-3 sm:p-4">
+                {/* Table Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 pb-3 border-b gap-2">
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold text-gray-800">
+                      {tableName === 'Takeout' ? '📦 Takeout Order' : `🍽️ Table ${tableName}`}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-gray-600">
+                      {tableOrders.length} item{tableOrders.length > 1 ? 's' : ''} for this table
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <Clock className="h-4 sm:h-5 w-4 sm:w-5" />
+                    <span className="text-xs sm:text-sm">
+                      Oldest: {Math.floor(
+                        (Date.now() - new Date(tableOrders[0].sent_at).getTime()) / 60000
+                      )} min ago
+                    </span>
+                  </div>
+                </div>
+
+                {/* Order Items Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
+                  {tableOrders.map((order) => (
+                    <OrderCard 
+                      key={order.id} 
+                      kitchenOrder={order}
+                      onStatusChange={handleStatusChange}
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}
