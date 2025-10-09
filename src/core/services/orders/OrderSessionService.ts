@@ -221,7 +221,19 @@ export class OrderSessionService {
           // Deduct inventory stock for this order
           if (order.order_items && order.order_items.length > 0) {
             try {
-              console.log(`📦 [OrderSessionService.closeTab] Deducting stock for order ${order.order_number}`);
+              const itemsToDeduct = order.order_items.map((item: any) => ({
+                product_id: item.product_id,
+                quantity: item.quantity,
+                item_name: item.item_name || 'Unknown',
+              }));
+
+              console.log(
+                `📦 [OrderSessionService.closeTab] Deducting stock for order ${order.order_number} ` +
+                `with ${itemsToDeduct.length} items:`,
+                itemsToDeduct.map((i: any) => 
+                  `${i.item_name} (${i.product_id ? 'Product: ' + i.product_id.substring(0, 8) + '...' : 'Package'}) x${i.quantity}`
+                ).join(', ')
+              );
               
               await StockDeduction.deductForOrder(
                 order.id,
@@ -232,11 +244,16 @@ export class OrderSessionService {
                 performedBy
               );
               
-              console.log(`✅ [OrderSessionService.closeTab] Stock deducted for order ${order.order_number}`);
+              console.log(`✅ [OrderSessionService.closeTab] Stock deducted successfully for order ${order.order_number}`);
             } catch (stockError) {
               // Log error but don't fail the tab closure (payment already processed)
-              console.error(`⚠️  [OrderSessionService.closeTab] Stock deduction failed for order ${order.order_number}:`, stockError);
-              console.warn('⚠️  [OrderSessionService.closeTab] Manual inventory adjustment may be required');
+              console.error(
+                `⚠️  [OrderSessionService.closeTab] Stock deduction failed for order ${order.order_number}:`, 
+                stockError
+              );
+              console.warn(
+                `⚠️  [OrderSessionService.closeTab] Manual inventory adjustment may be required for order ${order.order_number}`
+              );
             }
           }
         }

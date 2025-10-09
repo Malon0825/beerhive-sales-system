@@ -8,6 +8,13 @@ import { AppError } from '@/lib/errors/AppError';
 export class StockDeduction {
   /**
    * Deduct stock for completed order
+   * Processes each product independently to ensure all items are attempted
+   * even if one fails
+   * 
+   * @param orderId - The order ID for reference
+   * @param orderItems - Array of order items to deduct
+   * @param userId - User performing the deduction
+   * @returns Promise that resolves with deduction results
    */
   static async deductForOrder(
     orderId: string,
@@ -17,24 +24,46 @@ export class StockDeduction {
     }>,
     userId: string
   ): Promise<void> {
-    try {
-      const deductions: Array<{
-        productId: string;
-        quantity: number;
-      }> = [];
+    console.log(`📦 [StockDeduction.deductForOrder] Processing ${orderItems.length} items for order ${orderId}`);
 
-      // Collect all product deductions
-      for (const item of orderItems) {
-        if (!item.product_id) continue; // Skip package items or non-product items
+    const deductions: Array<{
+      productId: string;
+      quantity: number;
+    }> = [];
 
-        deductions.push({
-          productId: item.product_id,
-          quantity: item.quantity,
-        });
+    // Collect all product deductions (skip packages and null product_ids)
+    for (const item of orderItems) {
+      if (!item.product_id) {
+        console.log(`⏭️  [StockDeduction.deductForOrder] Skipping item without product_id (likely a package)`);
+        continue;
       }
 
-      // Process each deduction
-      for (const deduction of deductions) {
+      deductions.push({
+        productId: item.product_id,
+        quantity: item.quantity,
+      });
+    }
+
+    console.log(`📦 [StockDeduction.deductForOrder] ${deductions.length} products to deduct`);
+
+    // Track results for each deduction attempt
+    const results: Array<{
+      productId: string;
+      quantity: number;
+      success: boolean;
+      error?: string;
+    }> = [];
+
+    // Process each deduction independently
+    for (let i = 0; i < deductions.length; i++) {
+      const deduction = deductions[i];
+      
+      try {
+        console.log(
+          `📦 [StockDeduction.deductForOrder] [${i + 1}/${deductions.length}] ` +
+          `Deducting ${deduction.quantity} units of product ${deduction.productId}`
+        );
+
         await InventoryRepository.adjustStock(
           deduction.productId,
           -deduction.quantity, // Negative for deduction
@@ -43,17 +72,75 @@ export class StockDeduction {
           userId,
           `Auto deduction for order ${orderId}`
         );
+
+        results.push({
+          productId: deduction.productId,
+          quantity: deduction.quantity,
+          success: true,
+        });
+
+        console.log(
+          `✅ [StockDeduction.deductForOrder] [${i + 1}/${deductions.length}] ` +
+          `Successfully deducted ${deduction.quantity} units of product ${deduction.productId}`
+        );
+      } catch (error) {
+        // Log the error but continue processing other products
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        console.error(
+          `❌ [StockDeduction.deductForOrder] [${i + 1}/${deductions.length}] ` +
+          `Failed to deduct product ${deduction.productId}: ${errorMessage}`
+        );
+
+        results.push({
+          productId: deduction.productId,
+          quantity: deduction.quantity,
+          success: false,
+          error: errorMessage,
+        });
       }
-    } catch (error) {
-      console.error('Stock deduction error:', error);
-      throw error instanceof AppError
-        ? error
-        : new AppError('Failed to deduct stock for order', 500);
+    }
+
+    // Check if any deductions failed
+    const failures = results.filter(r => !r.success);
+    const successes = results.filter(r => r.success);
+
+    console.log(
+      `📊 [StockDeduction.deductForOrder] Results: ` +
+      `${successes.length} succeeded, ${failures.length} failed`
+    );
+
+    // If all deductions failed, throw an error
+    if (failures.length > 0 && successes.length === 0) {
+      throw new AppError(
+        `All stock deductions failed for order ${orderId}. ` +
+        `Failed products: ${failures.map(f => f.productId).join(', ')}`,
+        500
+      );
+    }
+
+    // If some failed but some succeeded, log warning but don't throw
+    if (failures.length > 0) {
+      console.warn(
+        `⚠️  [StockDeduction.deductForOrder] Partial failure: ` +
+        `${failures.length} product(s) failed to deduct. ` +
+        `Manual adjustment may be required for: ${failures.map(f => f.productId).join(', ')}`
+      );
+      
+      // Don't throw error - payment is already processed
+      // Admin should handle manual adjustment
     }
   }
 
   /**
    * Return stock for voided order
+   * Processes each product independently to ensure all items are attempted
+   * even if one fails
+   * 
+   * @param orderId - The order ID for reference
+   * @param orderItems - Array of order items to return
+   * @param userId - User performing the return
+   * @returns Promise that resolves with return results
    */
   static async returnForVoidedOrder(
     orderId: string,
@@ -63,24 +150,46 @@ export class StockDeduction {
     }>,
     userId: string
   ): Promise<void> {
-    try {
-      const returns: Array<{
-        productId: string;
-        quantity: number;
-      }> = [];
+    console.log(`🔄 [StockDeduction.returnForVoidedOrder] Processing ${orderItems.length} items for order ${orderId}`);
 
-      // Collect all product returns
-      for (const item of orderItems) {
-        if (!item.product_id) continue;
+    const returns: Array<{
+      productId: string;
+      quantity: number;
+    }> = [];
 
-        returns.push({
-          productId: item.product_id,
-          quantity: item.quantity,
-        });
+    // Collect all product returns (skip packages and null product_ids)
+    for (const item of orderItems) {
+      if (!item.product_id) {
+        console.log(`⏭️  [StockDeduction.returnForVoidedOrder] Skipping item without product_id`);
+        continue;
       }
 
-      // Process each return
-      for (const returnItem of returns) {
+      returns.push({
+        productId: item.product_id,
+        quantity: item.quantity,
+      });
+    }
+
+    console.log(`🔄 [StockDeduction.returnForVoidedOrder] ${returns.length} products to return`);
+
+    // Track results for each return attempt
+    const results: Array<{
+      productId: string;
+      quantity: number;
+      success: boolean;
+      error?: string;
+    }> = [];
+
+    // Process each return independently
+    for (let i = 0; i < returns.length; i++) {
+      const returnItem = returns[i];
+      
+      try {
+        console.log(
+          `🔄 [StockDeduction.returnForVoidedOrder] [${i + 1}/${returns.length}] ` +
+          `Returning ${returnItem.quantity} units of product ${returnItem.productId}`
+        );
+
         await InventoryRepository.adjustStock(
           returnItem.productId,
           returnItem.quantity, // Positive for return
@@ -89,12 +198,60 @@ export class StockDeduction {
           userId,
           `Stock return for voided order ${orderId}`
         );
+
+        results.push({
+          productId: returnItem.productId,
+          quantity: returnItem.quantity,
+          success: true,
+        });
+
+        console.log(
+          `✅ [StockDeduction.returnForVoidedOrder] [${i + 1}/${returns.length}] ` +
+          `Successfully returned ${returnItem.quantity} units of product ${returnItem.productId}`
+        );
+      } catch (error) {
+        // Log the error but continue processing other products
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        console.error(
+          `❌ [StockDeduction.returnForVoidedOrder] [${i + 1}/${returns.length}] ` +
+          `Failed to return product ${returnItem.productId}: ${errorMessage}`
+        );
+
+        results.push({
+          productId: returnItem.productId,
+          quantity: returnItem.quantity,
+          success: false,
+          error: errorMessage,
+        });
       }
-    } catch (error) {
-      console.error('Stock return error:', error);
-      throw error instanceof AppError
-        ? error
-        : new AppError('Failed to return stock for voided order', 500);
+    }
+
+    // Check if any returns failed
+    const failures = results.filter(r => !r.success);
+    const successes = results.filter(r => r.success);
+
+    console.log(
+      `📊 [StockDeduction.returnForVoidedOrder] Results: ` +
+      `${successes.length} succeeded, ${failures.length} failed`
+    );
+
+    // If all returns failed, throw an error
+    if (failures.length > 0 && successes.length === 0) {
+      throw new AppError(
+        `All stock returns failed for voided order ${orderId}. ` +
+        `Failed products: ${failures.map(f => f.productId).join(', ')}`,
+        500
+      );
+    }
+
+    // If some failed but some succeeded, log warning but don't throw
+    if (failures.length > 0) {
+      console.warn(
+        `⚠️  [StockDeduction.returnForVoidedOrder] Partial failure: ` +
+        `${failures.length} product(s) failed to return. ` +
+        `Manual adjustment may be required for: ${failures.map(f => f.productId).join(', ')}`
+      );
     }
   }
 

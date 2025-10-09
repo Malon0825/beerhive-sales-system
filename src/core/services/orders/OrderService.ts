@@ -115,7 +115,18 @@ export class OrderService {
         const performedBy = userId || order.cashier_id || '';
         
         try {
-          console.log(`📦 [OrderService.completeOrder] Deducting stock for ${order.order_items.length} items...`);
+          const itemsToDeduct = order.order_items.map((item: any) => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+            item_name: item.item_name || 'Unknown',
+          }));
+
+          console.log(
+            `📦 [OrderService.completeOrder] Deducting stock for ${order.order_items.length} items:`,
+            itemsToDeduct.map((i: any) => 
+              `${i.item_name} (${i.product_id ? 'Product: ' + i.product_id.substring(0, 8) + '...' : 'Package'}) x${i.quantity}`
+            ).join(', ')
+          );
           
           await StockDeduction.deductForOrder(
             orderId,
