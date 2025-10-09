@@ -55,7 +55,25 @@ interface CartItem {
   subtotal: number;
   total: number;
   is_vip_price?: boolean;
+  is_package?: boolean;
   notes?: string;
+}
+
+interface Package {
+  id: string;
+  name: string;
+  description?: string;
+  package_type: string;
+  base_price: number;
+  vip_price?: number;
+  is_active: boolean;
+  items?: Array<{
+    product_id: string;
+    quantity: number;
+    product?: {
+      name: string;
+    };
+  }>;
 }
 
 export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: SessionOrderFlowProps) {
@@ -166,7 +184,7 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
   const addToCart = (product: any, price: number) => {
     // Check if product already exists in cart
     const existingItemIndex = cart.findIndex(
-      item => item.product_id === product.id && item.unit_price === price
+      item => item.product_id === product.id && item.unit_price === price && !item.is_package
     );
 
     if (existingItemIndex !== -1) {
@@ -187,9 +205,29 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
         subtotal: price,
         total: price,
         is_vip_price: session?.customer?.tier !== 'regular' && product.vip_price ? true : false,
+        is_package: false,
       };
       setCart([...cart, item]);
     }
+  };
+
+  /**
+   * Add package to cart
+   * Packages are always added as new items (no quantity increment)
+   */
+  const addPackageToCart = (pkg: Package, price: number) => {
+    const item: CartItem = {
+      package_id: pkg.id,
+      item_name: pkg.name,
+      quantity: 1,
+      unit_price: price,
+      subtotal: price,
+      total: price,
+      is_vip_price: session?.customer?.tier !== 'regular' && pkg.vip_price ? true : false,
+      is_package: true,
+    };
+    setCart([...cart, item]);
+    console.log('📦 [SessionOrderFlow] Package added to cart:', pkg.name);
   };
 
   /**
@@ -198,8 +236,8 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
   const removeFromCart = (index: number) => {
     const item = cart[index];
     
-    // Release reserved stock back to memory
-    if (item.product_id) {
+    // Release reserved stock back to memory (only for products, not packages)
+    if (item.product_id && !item.is_package) {
       stockTracker.releaseStock(item.product_id, item.quantity);
       console.log('📦 [SessionOrderFlow] Stock released:', item.item_name, 'qty:', item.quantity);
     }
@@ -218,10 +256,17 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
 
     const updatedCart = [...cart];
     const item = updatedCart[index];
+    
+    // Packages cannot have quantity adjusted (fixed quantity)
+    if (item.is_package) {
+      alert('Package quantity cannot be changed. Remove and re-add to adjust.');
+      return;
+    }
+    
     const quantityDiff = newQuantity - item.quantity;
     
-    // Adjust stock based on quantity change
-    if (item.product_id) {
+    // Adjust stock based on quantity change (only for products)
+    if (item.product_id && !item.is_package) {
       if (quantityDiff > 0) {
         // Increasing quantity - check and reserve more stock
         if (!stockTracker.hasStock(item.product_id, quantityDiff)) {
@@ -450,6 +495,7 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
             <SessionProductSelector
               customerTier={selectedCustomer?.tier || 'regular'}
               onProductSelect={addToCart}
+              onPackageSelect={addPackageToCart}
             />
           </div>
         </div>
@@ -500,7 +546,12 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
                     {/* Item Header */}
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm leading-tight line-clamp-2">{item.item_name}</div>
+                        <div className="flex items-center gap-1">
+                          <div className="font-medium text-sm leading-tight line-clamp-2">{item.item_name}</div>
+                          {item.is_package && (
+                            <Badge className="bg-amber-500 text-white text-xs">PKG</Badge>
+                          )}
+                        </div>
                         <div className="text-xs text-gray-600 mt-1">
                           {formatCurrency(item.unit_price)} × {item.quantity}
                         </div>
@@ -512,26 +563,30 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
 
                     {/* Controls */}
                     <div className="flex items-center justify-between gap-2">
-                      {/* Quantity Controls */}
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => updateQuantity(index, item.quantity - 1)}
-                          className="h-7 w-7 p-0"
-                        >
-                          -
-                        </Button>
-                        <span className="w-10 text-center font-medium text-sm">{item.quantity}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => updateQuantity(index, item.quantity + 1)}
-                          className="h-7 w-7 p-0"
-                        >
-                          +
-                        </Button>
-                      </div>
+                      {/* Quantity Controls - Disabled for packages */}
+                      {!item.is_package ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateQuantity(index, item.quantity - 1)}
+                            className="h-7 w-7 p-0"
+                          >
+                            -
+                          </Button>
+                          <span className="w-10 text-center font-medium text-sm">{item.quantity}</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateQuantity(index, item.quantity + 1)}
+                            className="h-7 w-7 p-0"
+                          >
+                            +
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-gray-500 italic">Fixed quantity</div>
+                      )}
 
                       {/* Remove Button */}
                       <Button
