@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X, Clock, User, MapPin, FileText, Printer } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { X, Printer } from 'lucide-react';
 import { Button } from '@/views/shared/ui/button';
-import { Badge } from '@/views/shared/ui/badge';
-import { formatCurrency, formatDate } from '@/lib/utils/formatters';
+import TabBillReceipt from './TabBillReceipt';
 
 /**
  * BillPreviewModal Component
@@ -72,6 +72,13 @@ export default function BillPreviewModal({
   const [billData, setBillData] = useState<BillData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const printContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
 
   /**
    * Fetch bill preview data from API
@@ -104,244 +111,193 @@ export default function BillPreviewModal({
   }, [isOpen, sessionId]);
 
   /**
-   * Print bill preview
+   * Collect active styles for print window
+   */
+  const collectActiveStyles = () => {
+    const parts: string[] = [];
+    // Copy linked stylesheets
+    document.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
+      const href = (link as HTMLLinkElement).href;
+      if (href) {
+        parts.push(`<link rel="stylesheet" href="${href}" />`);
+      }
+    });
+
+    // Copy inline <style> blocks
+    document.querySelectorAll('style').forEach((styleEl) => {
+      parts.push(`<style>${(styleEl as HTMLStyleElement).innerHTML}</style>`);
+    });
+
+    return parts.join('\n');
+  };
+
+  /**
+   * Print bill preview using separate print window
    */
   const handlePrint = () => {
-    window.print();
+    const printContent = printContainerRef.current;
+    if (!printContent) {
+      console.error('Print content not found');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) {
+      console.error('Failed to open print window');
+      alert('Please allow popups to print the bill');
+      return;
+    }
+
+    const activeStyles = collectActiveStyles();
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Bill Preview - ${billData?.session.session_number}</title>
+        ${activeStyles}
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          
+          body {
+            font-family: monospace;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            color-adjust: exact;
+          }
+          
+          @media print {
+            @page {
+              size: 80mm auto;
+              margin: 5mm;
+            }
+            
+            body {
+              margin: 0;
+              padding: 0;
+            }
+          }
+          
+          img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+          }
+        </style>
+      </head>
+      <body>
+        ${printContent.innerHTML}
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+
+    setTimeout(() => {
+      printWindow.print();
+      setTimeout(() => {
+        printWindow.close();
+      }, 100);
+    }, 250);
   };
 
-  /**
-   * Format duration
-   */
-  const formatDuration = (minutes: number): string => {
-    if (minutes < 60) {
-      return `${minutes} minutes`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return `${hours} hour${hours > 1 ? 's' : ''} ${remainingMinutes} min`;
-  };
-
-  /**
-   * Get status badge color
-   */
-  const getStatusColor = (status: string): string => {
-    switch (status) {
-      case 'draft':
-        return 'bg-gray-500';
-      case 'confirmed':
-        return 'bg-blue-500';
-      case 'preparing':
-        return 'bg-yellow-500';
-      case 'ready':
-        return 'bg-green-500';
-      case 'served':
-        return 'bg-purple-500';
-      default:
-        return 'bg-gray-500';
-    }
-  };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">Bill Preview</h2>
-            <p className="text-blue-100 text-sm mt-1">NOT AN OFFICIAL RECEIPT</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="overflow-y-auto max-h-[calc(90vh-200px)]">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="mt-4 text-gray-600">Loading bill...</p>
-              </div>
+    <>
+      {/* Bill Preview Modal */}
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-4 flex items-center justify-between sticky top-0 z-10">
+            <div>
+              <h2 className="text-xl font-bold">Bill Preview</h2>
+              <p className="text-amber-100 text-xs mt-1">Customer Bill</p>
             </div>
-          ) : error ? (
-            <div className="p-6 text-center">
-              <div className="text-red-500 mb-4">⚠️</div>
-              <p className="text-red-600 font-semibold">{error}</p>
-              <Button onClick={fetchBillPreview} className="mt-4">
-                Retry
-              </Button>
-            </div>
-          ) : billData ? (
-            <div className="p-6 space-y-6">
-              {/* Session Info */}
-              <div className="border-b pb-4 space-y-2">
-                <div className="flex items-center gap-2 text-lg font-semibold">
-                  <FileText className="w-5 h-5" />
-                  {billData.session.session_number}
-                </div>
-                
-                {billData.session.table && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <MapPin className="w-4 h-4" />
-                    <span>
-                      {billData.session.table.table_number}
-                      {billData.session.table.area && ` - ${billData.session.table.area}`}
-                    </span>
-                  </div>
-                )}
-
-                {billData.session.customer && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <User className="w-4 h-4" />
-                    <span>{billData.session.customer.full_name}</span>
-                    {billData.session.customer.tier && (
-                      <Badge variant="outline" className="text-xs">
-                        {billData.session.customer.tier}
-                      </Badge>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Clock className="w-4 h-4" />
-                  <span>Duration: {formatDuration(billData.session.duration_minutes)}</span>
-                </div>
-              </div>
-
-              {/* Orders */}
-              <div className="space-y-6">
-                {billData.orders.map((order, orderIndex) => (
-                  <div key={order.id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{order.order_number}</span>
-                        <Badge className={getStatusColor(order.status)}>
-                          {order.status}
-                        </Badge>
-                      </div>
-                      <span className="text-sm text-gray-500">
-                        {formatDate(order.created_at)}
-                      </span>
-                    </div>
-
-                    {/* Order Items */}
-                    <div className="space-y-2">
-                      {order.items.map((item, itemIndex) => (
-                        <div
-                          key={itemIndex}
-                          className="flex items-center justify-between text-sm"
-                        >
-                          <div className="flex-1">
-                            <span className="font-medium">{item.quantity}x</span>{' '}
-                            <span>{item.item_name}</span>
-                            {item.is_vip_price && (
-                              <Badge variant="outline" className="ml-2 text-xs">
-                                VIP
-                              </Badge>
-                            )}
-                            {item.is_complimentary && (
-                              <Badge variant="outline" className="ml-2 text-xs bg-green-50">
-                                FREE
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="font-medium">
-                            {item.is_complimentary ? 'FREE' : formatCurrency(item.total)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Order Total */}
-                    {order.discount_amount > 0 && (
-                      <div className="flex justify-between text-sm text-gray-600 mt-2 pt-2 border-t">
-                        <span>Discount:</span>
-                        <span>-{formatCurrency(order.discount_amount)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between font-semibold mt-2 pt-2 border-t">
-                      <span>Order Total:</span>
-                      <span>{formatCurrency(order.total_amount)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Grand Total */}
-              <div className="border-t-2 border-gray-300 pt-4 space-y-2">
-                <div className="flex justify-between text-lg">
-                  <span>Subtotal:</span>
-                  <span>{formatCurrency(billData.totals.subtotal)}</span>
-                </div>
-                
-                {billData.totals.discount_amount > 0 && (
-                  <div className="flex justify-between text-red-600">
-                    <span>Discount:</span>
-                    <span>-{formatCurrency(billData.totals.discount_amount)}</span>
-                  </div>
-                )}
-
-                {billData.totals.tax_amount > 0 && (
-                  <div className="flex justify-between">
-                    <span>Tax:</span>
-                    <span>{formatCurrency(billData.totals.tax_amount)}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between text-2xl font-bold text-green-600 pt-2 border-t">
-                  <span>TOTAL:</span>
-                  <span>{formatCurrency(billData.totals.total_amount)}</span>
-                </div>
-              </div>
-
-              {/* Notice */}
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
-                <p className="text-sm font-semibold text-yellow-800">
-                  THIS IS NOT AN OFFICIAL RECEIPT
-                </p>
-                <p className="text-xs text-yellow-700 mt-1">
-                  Please proceed to payment counter to settle your bill
-                </p>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        {/* Footer Actions */}
-        {!loading && !error && billData && (
-          <div className="border-t bg-gray-50 p-4 flex items-center justify-between">
-            <Button
-              variant="outline"
-              onClick={handlePrint}
-              className="flex items-center gap-2"
+            <button
+              onClick={onClose}
+              className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
             >
-              <Printer className="w-4 h-4" />
-              Print Bill
-            </Button>
-
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose}>
-                Close
-              </Button>
-              {onProceedToPayment && (
-                <Button
-                  onClick={onProceedToPayment}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  Proceed to Payment
-                </Button>
-              )}
-            </div>
+              <X className="w-5 h-5" />
+            </button>
           </div>
-        )}
+
+          {/* Content */}
+          <div className="overflow-y-auto max-h-[calc(90vh-180px)]">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading bill...</p>
+                </div>
+              </div>
+            ) : error ? (
+              <div className="p-6 text-center">
+                <div className="text-red-500 mb-4 text-4xl">⚠️</div>
+                <p className="text-red-600 font-semibold">{error}</p>
+                <Button onClick={fetchBillPreview} className="mt-4">
+                  Retry
+                </Button>
+              </div>
+            ) : billData ? (
+              <TabBillReceipt billData={billData} isPrintMode={false} />
+            ) : null}
+          </div>
+
+          {/* Footer Actions */}
+          {!loading && !error && billData && (
+            <div className="border-t bg-gray-50 p-4 flex flex-col sm:flex-row items-center justify-between gap-2 sticky bottom-0">
+              <Button
+                variant="outline"
+                onClick={handlePrint}
+                className="flex items-center gap-2 w-full sm:w-auto"
+              >
+                <Printer className="w-4 h-4" />
+                Print Bill
+              </Button>
+
+              <div className="flex gap-2 w-full sm:w-auto">
+                <Button variant="outline" onClick={onClose} className="flex-1 sm:flex-none">
+                  Close
+                </Button>
+                {onProceedToPayment && (
+                  <Button
+                    onClick={onProceedToPayment}
+                    className="bg-green-600 hover:bg-green-700 flex-1 sm:flex-none"
+                  >
+                    Proceed to Payment
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* Hidden print container */}
+      {isMounted && billData && createPortal(
+        <div 
+          ref={printContainerRef} 
+          style={{ 
+            position: 'fixed',
+            left: '-9999px',
+            top: '0',
+            width: '80mm',
+            visibility: 'hidden'
+          }}
+        >
+          <TabBillReceipt billData={billData} isPrintMode={true} />
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
