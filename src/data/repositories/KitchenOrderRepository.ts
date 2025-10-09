@@ -22,6 +22,7 @@ export class KitchenOrderRepository {
         .insert({
           order_id: input.order_id,
           order_item_id: input.order_item_id,
+          product_name: input.product_name || null,
           destination: input.destination,
           special_instructions: input.special_instructions || null,
           is_urgent: input.is_urgent || false,
@@ -52,6 +53,7 @@ export class KitchenOrderRepository {
       const insertData = inputs.map(input => ({
         order_id: input.order_id,
         order_item_id: input.order_item_id,
+        product_name: input.product_name || null,
         destination: input.destination,
         special_instructions: input.special_instructions || null,
         is_urgent: input.is_urgent || false,

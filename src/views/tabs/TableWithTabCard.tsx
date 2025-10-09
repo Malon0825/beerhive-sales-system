@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Badge } from '@/views/shared/ui/badge';
 import { Button } from '@/views/shared/ui/button';
 import { Card, CardContent } from '@/views/shared/ui/card';
@@ -11,9 +11,11 @@ import {
   Plus, 
   Eye,
   CreditCard,
-  ShoppingCart
+  ShoppingCart,
+  Shuffle
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatters';
+import { ChangeTableDialog } from './ChangeTableDialog';
 
 /**
  * TableWithTabCard Component
@@ -49,6 +51,7 @@ interface TableWithTabCardProps {
   onViewBill: (sessionId: string) => void;
   onAddOrder: (sessionId: string) => void;
   onCloseTab: (sessionId: string) => void;
+  onTableChanged?: () => void;
 }
 
 export default function TableWithTabCard({
@@ -58,7 +61,9 @@ export default function TableWithTabCard({
   onViewBill,
   onAddOrder,
   onCloseTab,
+  onTableChanged,
 }: TableWithTabCardProps) {
+  const [showChangeTableDialog, setShowChangeTableDialog] = useState(false);
   /**
    * Calculate duration since session opened
    */
@@ -209,6 +214,21 @@ export default function TableWithTabCard({
                   View Bill
                 </Button>
               </div>
+              
+              {/* Change Table Button */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full text-xs h-8 border-orange-200 text-orange-700 hover:bg-orange-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowChangeTableDialog(true);
+                }}
+              >
+                <Shuffle className="w-3 h-3 mr-1" />
+                Change Table
+              </Button>
+              
               <Button
                 size="sm"
                 className="w-full bg-green-600 hover:bg-green-700 text-xs h-8"
@@ -242,6 +262,21 @@ export default function TableWithTabCard({
           )}
         </div>
       </CardContent>
+      
+      {/* Change Table Dialog */}
+      {session && (
+        <ChangeTableDialog
+          open={showChangeTableDialog}
+          onOpenChange={setShowChangeTableDialog}
+          sessionId={session.id}
+          currentTableNumber={table.table_number}
+          onSuccess={() => {
+            if (onTableChanged) {
+              onTableChanged();
+            }
+          }}
+        />
+      )}
     </Card>
   );
 }
