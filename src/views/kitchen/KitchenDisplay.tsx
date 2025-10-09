@@ -12,12 +12,14 @@ import { useToast } from '@/lib/hooks/useToast';
 /**
  * KitchenDisplay Component
  * Main kitchen display interface for managing order preparation with realtime updates
+ * Optimized for phone and tablet screens with responsive grid layout
  * 
  * Features:
  * - Realtime order updates via Supabase subscriptions
  * - Status filtering (all, pending, preparing, ready)
  * - Manual refresh capability
  * - Automatic status change handling
+ * - Responsive layout for phone (single column) and tablet (2 columns) screens
  */
 export function KitchenDisplay() {
   const [orders, setOrders] = useState<KitchenOrderWithRelations[]>([]);
@@ -184,7 +186,7 @@ export function KitchenDisplay() {
       />
 
       {/* Filter Tabs */}
-      <div className="bg-white px-4 pb-4">
+      <div className="bg-white px-2 sm:px-4 pb-3 sm:pb-4">
         <FilterTabs
           activeFilter={filter}
           onFilterChange={setFilter}
@@ -192,18 +194,18 @@ export function KitchenDisplay() {
         />
       </div>
 
-      {/* Orders Grid */}
-      <div className="p-4">
+      {/* Orders Grid - Optimized for phone and tablet */}
+      <div className="p-2 sm:p-3 md:p-4">
         {filteredOrders.length === 0 ? (
-          <div className="text-center py-12">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="text-center py-8 sm:py-12">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-gray-400 mb-3 sm:mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <p className="text-xl text-gray-600">No orders to display</p>
-            <p className="text-sm text-gray-500 mt-2">Orders will appear here when customers place them</p>
+            <p className="text-lg sm:text-xl text-gray-600">No orders to display</p>
+            <p className="text-xs sm:text-sm text-gray-500 mt-2">Orders will appear here when customers place them</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-3 md:gap-4">
             {filteredOrders.map((order) => (
               <OrderCard 
                 key={order.id} 
