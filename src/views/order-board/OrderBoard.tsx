@@ -3,13 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRealtime } from '@/lib/hooks/useRealtime';
 import OrderBoardCard from './OrderBoardCard';
+import SessionBoardCard from './SessionBoardCard';
 import { Button } from '@/views/shared/ui/button';
-import { RefreshCw, Filter } from 'lucide-react';
+import { RefreshCw, Filter, Layers, FileText } from 'lucide-react';
 import { LoadingSpinner } from '@/views/shared/feedback/LoadingSpinner';
 
 /**
  * OrderBoard Component
  * Real-time display of all customer orders
+ * Groups orders by session (tab) when applicable
  * Updates automatically when new orders are created or modified by cashiers
  */
 
@@ -28,18 +30,38 @@ interface Order {
   total_amount: number;
   status: string;
   created_at: string;
+  session_id?: string | null;
+}
+
+interface Session {
+  session_id: string;
+  session_number: string;
+  session_status: string;
+  session_opened_at: string;
+  orders: Order[];
+  customer?: {
+    full_name: string;
+    customer_number: string;
+  } | null;
+  table?: {
+    table_number: string;
+    area?: string;
+  } | null;
+  total_amount: number;
+  earliest_created_at: string;
 }
 
 type FilterStatus = 'all' | 'pending' | 'completed' | 'voided';
 
 export default function OrderBoard() {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [standaloneOrders, setStandaloneOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   /**
-   * Fetch all orders from the API
+   * Fetch all orders and sessions from the API
    */
   const fetchOrders = useCallback(async () => {
     try {
@@ -48,10 +70,13 @@ export default function OrderBoard() {
       if (!response.ok) throw new Error('Failed to fetch orders');
       
       const data = await response.json();
-      setOrders(data.orders || []);
+      setSessions(data.sessions || []);
+      setStandaloneOrders(data.standalone_orders || []);
       setLastUpdate(new Date());
+      
+      console.log(`📊 [OrderBoard] Loaded ${data.sessions?.length || 0} sessions, ${data.standalone_orders?.length || 0} standalone orders`);
     } catch (error) {
-      console.error('Error fetching orders:', error);
+      console.error('❌ [OrderBoard] Error fetching orders:', error);
     } finally {
       setLoading(false);
     }
@@ -61,9 +86,19 @@ export default function OrderBoard() {
    * Handle real-time order updates
    */
   const handleOrderUpdate = useCallback((payload: any) => {
-    console.log('Order update received:', payload);
+    console.log('🔄 [OrderBoard] Order update received:', payload);
     
     // Refresh the entire order list to get updated data with relations
+    fetchOrders();
+  }, [fetchOrders]);
+
+  /**
+   * Handle real-time session updates
+   */
+  const handleSessionUpdate = useCallback((payload: any) => {
+    console.log('🔄 [OrderBoard] Session update received:', payload);
+    
+    // Refresh to update session status
     fetchOrders();
   }, [fetchOrders]);
 
@@ -77,6 +112,15 @@ export default function OrderBoard() {
   });
 
   /**
+   * Subscribe to real-time session updates
+   */
+  useRealtime({
+    table: 'order_sessions',
+    event: '*',
+    onChange: handleSessionUpdate,
+  });
+
+  /**
    * Initial data fetch
    */
   useEffect(() => {
@@ -84,21 +128,36 @@ export default function OrderBoard() {
   }, [fetchOrders]);
 
   /**
-   * Filter orders based on selected status
+   * Filter sessions based on order status
    */
-  const filteredOrders = orders.filter((order) => {
+  const filteredSessions = sessions.filter((session) => {
+    if (filterStatus === 'all') return true;
+    // Session matches if any of its orders match the filter
+    return session.orders.some(order => order.status === filterStatus);
+  });
+
+  /**
+   * Filter standalone orders based on selected status
+   */
+  const filteredStandaloneOrders = standaloneOrders.filter((order) => {
     if (filterStatus === 'all') return true;
     return order.status === filterStatus;
   });
 
   /**
-   * Get count for each status
+   * Calculate all orders from sessions
    */
+  const allSessionOrders = sessions.flatMap(s => s.orders);
+
+  /**
+   * Get count for each status across all orders (session + standalone)
+   */
+  const allOrders = [...allSessionOrders, ...standaloneOrders];
   const statusCounts = {
-    all: orders.length,
-    pending: orders.filter(o => o.status === 'pending').length,
-    completed: orders.filter(o => o.status === 'completed').length,
-    voided: orders.filter(o => o.status === 'voided').length,
+    all: allOrders.length,
+    pending: allOrders.filter(o => o.status === 'pending').length,
+    completed: allOrders.filter(o => o.status === 'completed').length,
+    voided: allOrders.filter(o => o.status === 'voided').length,
   };
 
   return (
@@ -146,7 +205,11 @@ export default function OrderBoard() {
       </div>
 
       {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <p className="text-sm text-purple-600 font-medium">Tab Sessions</p>
+          <p className="text-3xl font-bold text-purple-700">{sessions.length}</p>
+        </div>
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-600 font-medium">Total Orders</p>
           <p className="text-3xl font-bold text-blue-700">{statusCounts.all}</p>
@@ -166,14 +229,14 @@ export default function OrderBoard() {
       </div>
 
       {/* Loading State */}
-      {loading && orders.length === 0 && (
+      {loading && sessions.length === 0 && standaloneOrders.length === 0 && (
         <div className="flex justify-center items-center py-12">
           <LoadingSpinner size="lg" />
         </div>
       )}
 
       {/* Empty State */}
-      {!loading && filteredOrders.length === 0 && (
+      {!loading && filteredSessions.length === 0 && filteredStandaloneOrders.length === 0 && (
         <div className="text-center py-12">
           <p className="text-gray-500 text-lg">
             {filterStatus === 'all' 
@@ -183,16 +246,47 @@ export default function OrderBoard() {
         </div>
       )}
 
-      {/* Order Grid */}
-      {filteredOrders.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredOrders.map((order) => (
-            <OrderBoardCard 
-              key={order.id} 
-              order={order} 
-              onOrderUpdated={fetchOrders}
-            />
-          ))}
+      {/* Tab Sessions Section */}
+      {filteredSessions.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Layers className="h-5 w-5 text-purple-600" />
+            <h2 className="text-xl font-bold text-gray-900">Tab Sessions</h2>
+            <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-full text-sm font-semibold">
+              {filteredSessions.length}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredSessions.map((session) => (
+              <SessionBoardCard 
+                key={session.session_id} 
+                session={session} 
+                onSessionUpdated={fetchOrders}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Standalone Orders Section */}
+      {filteredStandaloneOrders.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <FileText className="h-5 w-5 text-blue-600" />
+            <h2 className="text-xl font-bold text-gray-900">Standalone Orders</h2>
+            <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-sm font-semibold">
+              {filteredStandaloneOrders.length}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredStandaloneOrders.map((order) => (
+              <OrderBoardCard 
+                key={order.id} 
+                order={order} 
+                onOrderUpdated={fetchOrders}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
