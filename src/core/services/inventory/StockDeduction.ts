@@ -8,13 +8,15 @@ import { AppError } from '@/lib/errors/AppError';
 export class StockDeduction {
   /**
    * Deduct stock for completed order
+   * 
    * Processes each product independently to ensure all items are attempted
-   * even if one fails
+   * even if one fails. Handles user ID validation to prevent UUID errors.
    * 
    * @param orderId - The order ID for reference
    * @param orderItems - Array of order items to deduct
-   * @param userId - User performing the deduction
+   * @param userId - User performing the deduction (must be valid UUID)
    * @returns Promise that resolves with deduction results
+   * @throws AppError if all deductions fail
    */
   static async deductForOrder(
     orderId: string,
@@ -24,6 +26,13 @@ export class StockDeduction {
     }>,
     userId: string
   ): Promise<void> {
+    // Validate userId is provided and not empty
+    if (!userId || userId.trim() === '') {
+      throw new AppError(
+        'Valid user ID required for stock deduction. Cannot process order without user attribution.',
+        400
+      );
+    }
     console.log(`📦 [StockDeduction.deductForOrder] Processing ${orderItems.length} items for order ${orderId}`);
 
     const deductions: Array<{
@@ -134,13 +143,15 @@ export class StockDeduction {
 
   /**
    * Return stock for voided order
+   * 
    * Processes each product independently to ensure all items are attempted
-   * even if one fails
+   * even if one fails. Handles user ID validation to prevent UUID errors.
    * 
    * @param orderId - The order ID for reference
    * @param orderItems - Array of order items to return
-   * @param userId - User performing the return
+   * @param userId - User performing the return (must be valid UUID)
    * @returns Promise that resolves with return results
+   * @throws AppError if all returns fail
    */
   static async returnForVoidedOrder(
     orderId: string,
@@ -150,6 +161,13 @@ export class StockDeduction {
     }>,
     userId: string
   ): Promise<void> {
+    // Validate userId is provided and not empty
+    if (!userId || userId.trim() === '') {
+      throw new AppError(
+        'Valid user ID required for stock return. Cannot process voided order without user attribution.',
+        400
+      );
+    }
     console.log(`🔄 [StockDeduction.returnForVoidedOrder] Processing ${orderItems.length} items for order ${orderId}`);
 
     const returns: Array<{

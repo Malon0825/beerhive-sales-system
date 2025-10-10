@@ -176,9 +176,13 @@ export class OrderSessionService {
    * Close a tab and process final payment
    * Marks all orders as completed and closes the session
    * 
+   * Updates order cashier_id to reflect who completed the payment,
+   * ensuring accurate reporting of cashier performance.
+   * 
    * @param sessionId - Session ID
-   * @param paymentData - Payment information
+   * @param paymentData - Payment information including closed_by user ID
    * @returns Closed session with receipt data
+   * @throws AppError if session not found, not open, or payment validation fails
    */
   static async closeTab(sessionId: string, paymentData: CloseOrderSessionDto) {
     try {
@@ -199,19 +203,28 @@ export class OrderSessionService {
         throw new AppError('Payment amount is less than total', 400);
       }
 
+      // Validate closed_by user ID is provided
+      if (!paymentData.closed_by) {
+        throw new AppError('User ID (closed_by) is required to close tab', 400);
+      }
+
       // Calculate change
       const change = paymentData.amount_tendered - session.total_amount;
 
       // Update all orders in session to COMPLETED and deduct inventory
       const orders = session.orders || [];
-      const performedBy = paymentData.closed_by || '';
+      const performedByUserId = paymentData.closed_by;
+      
+      console.log(`👤 [OrderSessionService.closeTab] Closing tab as user: ${performedByUserId}`);
       
       for (const order of orders) {
         if (order.status !== OrderStatus.COMPLETED && order.status !== OrderStatus.VOIDED) {
           await OrderRepository.updateStatus(order.id, OrderStatus.COMPLETED);
           
-          // Update payment details on the order
+          // Update payment details and cashier_id on the order
+          // This ensures the user who closed the tab is credited in reports
           await OrderRepository.update(order.id, {
+            cashier_id: performedByUserId,
             payment_method: paymentData.payment_method as any,
             amount_tendered: paymentData.amount_tendered,
             change_amount: change,
@@ -241,7 +254,7 @@ export class OrderSessionService {
                   product_id: item.product_id,
                   quantity: item.quantity,
                 })),
-                performedBy
+                performedByUserId
               );
               
               console.log(`✅ [OrderSessionService.closeTab] Stock deducted successfully for order ${order.order_number}`);

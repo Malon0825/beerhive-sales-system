@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OrderSessionService } from '@/core/services/orders/OrderSessionService';
 import { AppError } from '@/lib/errors/AppError';
+import { getAuthenticatedUser } from '@/lib/utils/api-auth';
+import { UserRepository } from '@/data/repositories/UserRepository';
 
 /**
  * POST /api/order-sessions/[sessionId]/close
  * Close a session and process final payment
+ * 
+ * Authentication:
+ * - Attempts to get authenticated user from request
+ * - Falls back to default POS user if not authenticated
+ * - User who closes the tab is recorded as cashier for reporting
  */
 export async function POST(
   request: NextRequest,
@@ -13,7 +20,28 @@ export async function POST(
   try {
     const { sessionId } = await params;
     const body = await request.json();
-    const { payment_method, amount_tendered, discount_amount, notes, closed_by } = body;
+    const { payment_method, amount_tendered, discount_amount, notes } = body;
+
+    // Get authenticated user or fall back to default POS user
+    let closedByUserId: string;
+    const authenticatedUser = await getAuthenticatedUser(request);
+    
+    if (authenticatedUser) {
+      closedByUserId = authenticatedUser.id;
+      console.log('✅ [Close Tab] Authenticated user closing tab:', {
+        id: authenticatedUser.id,
+        username: authenticatedUser.username,
+        role: authenticatedUser.role
+      });
+    } else {
+      // Fall back to default POS user
+      const defaultPOSUser = await UserRepository.getDefaultPOSUser();
+      closedByUserId = defaultPOSUser.id;
+      console.log('⚠️  [Close Tab] No authenticated user, using default POS user:', {
+        id: defaultPOSUser.id,
+        username: defaultPOSUser.username
+      });
+    }
 
     // Validation
     if (!payment_method) {
@@ -35,7 +63,7 @@ export async function POST(
       amount_tendered,
       discount_amount,
       notes,
-      closed_by,
+      closed_by: closedByUserId,
     });
 
     return NextResponse.json({
