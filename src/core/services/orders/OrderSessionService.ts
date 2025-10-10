@@ -224,57 +224,23 @@ export class OrderSessionService {
           // Update payment details and cashier_id on the order
           // This ensures the user who closed the tab is credited in reports
           await OrderRepository.update(order.id, {
-            cashier_id: performedByUserId,
+            cashier_id: performedByUserId, // This ensures the user who closed the tab is credited in reports
             payment_method: paymentData.payment_method as any,
             amount_tendered: paymentData.amount_tendered,
             change_amount: change,
             completed_at: new Date().toISOString(),
           });
 
-          // Deduct inventory stock for this order
-          if (order.order_items && order.order_items.length > 0) {
-            try {
-              const itemsToDeduct = order.order_items.map((item: any) => ({
-                product_id: item.product_id,
-                quantity: item.quantity,
-                item_name: item.item_name || 'Unknown',
-              }));
-
-              console.log(
-                `📦 [OrderSessionService.closeTab] Deducting stock for order ${order.order_number} ` +
-                `with ${itemsToDeduct.length} items:`,
-                itemsToDeduct.map((i: any) => 
-                  `${i.item_name} (${i.product_id ? 'Product: ' + i.product_id.substring(0, 8) + '...' : 'Package'}) x${i.quantity}`
-                ).join(', ')
-              );
-              
-              await StockDeduction.deductForOrder(
-                order.id,
-                order.order_items.map((item: any) => ({
-                  product_id: item.product_id,
-                  quantity: item.quantity,
-                })),
-                performedByUserId
-              );
-              
-              console.log(`✅ [OrderSessionService.closeTab] Stock deducted successfully for order ${order.order_number}`);
-            } catch (stockError) {
-              // Log error but don't fail the tab closure (payment already processed)
-              console.error(
-                `⚠️  [OrderSessionService.closeTab] Stock deduction failed for order ${order.order_number}:`, 
-                stockError
-              );
-              console.warn(
-                `⚠️  [OrderSessionService.closeTab] Manual inventory adjustment may be required for order ${order.order_number}`
-              );
-            }
-          }
+          // Stock was already deducted when order was CONFIRMED
+          // No additional stock deduction needed at payment time
+          console.log(
+            `ℹ️  [OrderSessionService.closeTab] Stock for order ${order.order_number} ` +
+            `was already deducted at confirmation time. No additional deduction needed.`
+          );
         }
       }
 
       console.log(`✅ [OrderSessionService.closeTab] ${orders.length} orders marked as completed`);
-
-      // Close the session
       const closedSession = await OrderSessionRepository.close(sessionId, paymentData.closed_by);
 
       // Clear table session reference

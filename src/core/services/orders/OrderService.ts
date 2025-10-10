@@ -14,16 +14,22 @@ export class OrderService {
    * Confirm order and send to kitchen/bartender
    * This triggers food preparation WITHOUT requiring payment
    * 
+   * IMPORTANT: Stock is deducted immediately when order is confirmed!
+   * This prevents overbooking across multiple tables/sessions.
+   * 
    * Flow:
    * 1. Validate order exists and is in draft status
-   * 2. Mark order as confirmed
-   * 3. Route order items to kitchen/bartender for preparation
-   * 4. Kitchen/bartender will receive real-time notifications
+   * 2. Check stock availability for all items
+   * 3. Deduct stock immediately (reserves inventory)
+   * 4. Mark order as confirmed
+   * 5. Route order items to kitchen/bartender for preparation
+   * 6. Kitchen/bartender will receive real-time notifications
    * 
    * @param orderId - Order ID to confirm
+   * @param userId - User ID for inventory audit trail (optional)
    * @returns Confirmed order
    */
-  static async confirmOrder(orderId: string): Promise<Order> {
+  static async confirmOrder(orderId: string, userId?: string): Promise<Order> {
     try {
       console.log(`🎯 [OrderService.confirmOrder] Confirming order ${orderId}`);
       
@@ -40,11 +46,78 @@ export class OrderService {
 
       console.log(`✅ [OrderService.confirmOrder] Order validated, ${order.order_items?.length || 0} items found`);
 
-      // Step 2: Mark order as confirmed
+      // Step 2: Check stock availability for all items
+      if (order.order_items && order.order_items.length > 0) {
+        console.log(`🔍 [OrderService.confirmOrder] Checking stock availability for ${order.order_items.length} items...`);
+        
+        const itemsToCheck = order.order_items
+          .filter((item: any) => item.product_id) // Only check products, not packages
+          .map((item: any) => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+          }));
+
+        if (itemsToCheck.length > 0) {
+          const stockCheck = await StockDeduction.checkStockAvailability(itemsToCheck);
+          
+          if (!stockCheck.available) {
+            const insufficientDetails = stockCheck.insufficientItems
+              .map(item => `Product ${item.productId.substring(0, 8)}: requested ${item.requested}, available ${item.available}`)
+              .join('; ');
+            
+            throw new AppError(
+              `Insufficient stock to confirm order. ${insufficientDetails}`,
+              400
+            );
+          }
+          
+          console.log(`✅ [OrderService.confirmOrder] Stock availability confirmed`);
+        }
+      }
+
+      // Step 3: Deduct stock immediately (reserves inventory)
+      if (order.order_items && order.order_items.length > 0) {
+        const performedBy = userId || order.cashier_id || '';
+        
+        try {
+          const itemsToDeduct = order.order_items.map((item: any) => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+            item_name: item.item_name || 'Unknown',
+          }));
+
+          console.log(
+            `📦 [OrderService.confirmOrder] Deducting stock for ${order.order_items.length} items:`,
+            itemsToDeduct.map((i: any) => 
+              `${i.item_name} (${i.product_id ? 'Product: ' + i.product_id.substring(0, 8) + '...' : 'Package'}) x${i.quantity}`
+            ).join(', ')
+          );
+          
+          await StockDeduction.deductForOrder(
+            orderId,
+            order.order_items.map((item: any) => ({
+              product_id: item.product_id,
+              quantity: item.quantity,
+            })),
+            performedBy
+          );
+          
+          console.log(`✅ [OrderService.confirmOrder] Stock deducted successfully (inventory reserved)`);
+        } catch (stockError) {
+          // If stock deduction fails, don't confirm the order
+          console.error('❌ [OrderService.confirmOrder] Stock deduction failed:', stockError);
+          throw new AppError(
+            `Cannot confirm order: Stock deduction failed. ${stockError instanceof Error ? stockError.message : 'Unknown error'}`,
+            400
+          );
+        }
+      }
+
+      // Step 4: Mark order as confirmed
       const confirmedOrder = await OrderRepository.updateStatus(orderId, OrderStatus.CONFIRMED);
       console.log(`✅ [OrderService.confirmOrder] Order marked as CONFIRMED`);
 
-      // Step 3: Route order items to kitchen/bartender
+      // Step 5: Route order items to kitchen/bartender
       if (order.order_items && order.order_items.length > 0) {
         console.log(`🍳 [OrderService.confirmOrder] Routing ${order.order_items.length} items to kitchen/bartender...`);
         
@@ -72,16 +145,19 @@ export class OrderService {
    * Complete order (mark as completed after payment)
    * This is called when payment is processed
    * 
+   * IMPORTANT: Stock is NOT deducted here!
+   * Stock is already deducted when order was CONFIRMED.
+   * This method only marks the order as paid/completed.
+   * 
    * Flow:
    * 1. Validate order exists
    * 2. Mark order as completed
-   * 3. Deduct inventory stock for products
-   * 4. Update payment details
+   * 3. Update payment details
    * 
-   * Note: Kitchen routing should already have happened on CONFIRMED status
+   * Note: Kitchen routing and stock deduction happened on CONFIRMED status
    * 
    * @param orderId - Order ID to complete
-   * @param userId - ID of user completing the order (for inventory audit trail)
+   * @param userId - ID of user completing the order (for audit trail)
    * @returns Completed order
    */
   static async completeOrder(orderId: string, userId?: string): Promise<Order> {
@@ -110,43 +186,9 @@ export class OrderService {
       const completedOrder = await OrderRepository.updateStatus(orderId, OrderStatus.COMPLETED);
       console.log(`✅ [OrderService.completeOrder] Order marked as COMPLETED`);
 
-      // Deduct inventory stock for order items
-      if (order.order_items && order.order_items.length > 0) {
-        const performedBy = userId || order.cashier_id || '';
-        
-        try {
-          const itemsToDeduct = order.order_items.map((item: any) => ({
-            product_id: item.product_id,
-            quantity: item.quantity,
-            item_name: item.item_name || 'Unknown',
-          }));
-
-          console.log(
-            `📦 [OrderService.completeOrder] Deducting stock for ${order.order_items.length} items:`,
-            itemsToDeduct.map((i: any) => 
-              `${i.item_name} (${i.product_id ? 'Product: ' + i.product_id.substring(0, 8) + '...' : 'Package'}) x${i.quantity}`
-            ).join(', ')
-          );
-          
-          await StockDeduction.deductForOrder(
-            orderId,
-            order.order_items.map((item: any) => ({
-              product_id: item.product_id,
-              quantity: item.quantity,
-            })),
-            performedBy
-          );
-          
-          console.log(`✅ [OrderService.completeOrder] Stock deduction completed successfully`);
-        } catch (stockError) {
-          // Log error but don't fail the order (order is already completed)
-          console.error('⚠️  [OrderService.completeOrder] Stock deduction failed (non-fatal):', stockError);
-          console.warn('⚠️  [OrderService.completeOrder] Order completed but inventory may not be updated');
-          console.warn('⚠️  [OrderService.completeOrder] Manual inventory adjustment may be required');
-        }
-      } else {
-        console.warn('⚠️  [OrderService.completeOrder] No items to deduct from inventory');
-      }
+      // Stock was already deducted when order was CONFIRMED
+      // No stock changes needed here
+      console.log(`ℹ️  [OrderService.completeOrder] Stock was already deducted at confirmation time`);
 
       console.log(`🎉 [OrderService.completeOrder] Order ${orderId} completed successfully`);
       return completedOrder;

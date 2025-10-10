@@ -1,5 +1,6 @@
 import { InventoryRepository } from '@/data/repositories/InventoryRepository';
 import { AppError } from '@/lib/errors/AppError';
+import { supabaseAdmin } from '@/data/supabase/server-client';
 
 /**
  * StockDeduction Service
@@ -275,6 +276,8 @@ export class StockDeduction {
 
   /**
    * Check if order items have sufficient stock
+   * 
+   * Uses server-side admin client to bypass RLS and get accurate stock levels
    */
   static async checkStockAvailability(
     orderItems: Array<{
@@ -290,6 +293,8 @@ export class StockDeduction {
     }>;
   }> {
     try {
+      console.log(`🔍 [StockDeduction.checkStockAvailability] Checking stock for ${orderItems.length} items...`);
+      
       const insufficientItems: Array<{
         productId: string;
         requested: number;
@@ -297,16 +302,20 @@ export class StockDeduction {
       }> = [];
 
       for (const item of orderItems) {
-        if (!item.product_id) continue;
+        if (!item.product_id) {
+          console.log(`⏭️  [StockDeduction.checkStockAvailability] Skipping item without product_id`);
+          continue;
+        }
 
-        // Get product
-        const { data: product, error } = await (await import('@/data/supabase/client')).supabase
+        // Get product using server-side admin client (bypasses RLS)
+        const { data: product, error } = await supabaseAdmin
           .from('products')
-          .select('id, current_stock')
+          .select('id, name, current_stock')
           .eq('id', item.product_id)
           .single();
 
-        if (error || !product) {
+        if (error) {
+          console.error(`❌ [StockDeduction.checkStockAvailability] Error fetching product ${item.product_id}:`, error);
           insufficientItems.push({
             productId: item.product_id,
             requested: item.quantity,
@@ -315,21 +324,49 @@ export class StockDeduction {
           continue;
         }
 
-        if ((product.current_stock ?? 0) < item.quantity) {
+        if (!product) {
+          console.warn(`⚠️  [StockDeduction.checkStockAvailability] Product not found: ${item.product_id}`);
           insufficientItems.push({
             productId: item.product_id,
             requested: item.quantity,
-            available: product.current_stock ?? 0,
+            available: 0,
           });
+          continue;
+        }
+
+        const currentStock = product.current_stock ?? 0;
+        console.log(
+          `📊 [StockDeduction.checkStockAvailability] Product: ${product.name || item.product_id.substring(0, 8)} ` +
+          `- Current: ${currentStock}, Requested: ${item.quantity}`
+        );
+
+        if (currentStock < item.quantity) {
+          console.warn(
+            `⚠️  [StockDeduction.checkStockAvailability] Insufficient stock for ${product.name || item.product_id}: ` +
+            `Available ${currentStock}, Requested ${item.quantity}`
+          );
+          insufficientItems.push({
+            productId: item.product_id,
+            requested: item.quantity,
+            available: currentStock,
+          });
+        } else {
+          console.log(`✅ [StockDeduction.checkStockAvailability] Sufficient stock available`);
         }
       }
 
+      const allAvailable = insufficientItems.length === 0;
+      console.log(
+        `${allAvailable ? '✅' : '❌'} [StockDeduction.checkStockAvailability] ` +
+        `Result: ${allAvailable ? 'All items available' : `${insufficientItems.length} item(s) insufficient`}`
+      );
+
       return {
-        available: insufficientItems.length === 0,
+        available: allAvailable,
         insufficientItems,
       };
     } catch (error) {
-      console.error('Check stock availability error:', error);
+      console.error('❌ [StockDeduction.checkStockAvailability] Error:', error);
       throw error instanceof AppError
         ? error
         : new AppError('Failed to check stock availability', 500);

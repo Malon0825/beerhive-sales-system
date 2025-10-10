@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OrderService } from '@/core/services/orders/OrderService';
 import { AppError } from '@/lib/errors/AppError';
+import { getAuthenticatedUser } from '@/lib/utils/api-auth';
+import { UserRepository } from '@/data/repositories/UserRepository';
 
 /**
  * PATCH /api/orders/[orderId]/confirm
  * Confirm an order and send to kitchen/bartender
- * This triggers food preparation WITHOUT requiring payment
+ * 
+ * IMPORTANT: This deducts stock immediately to prevent overbooking!
+ * Stock is reserved when order is confirmed, not when customer pays.
+ * 
+ * This triggers food preparation WITHOUT requiring payment.
  */
 export async function PATCH(
   request: NextRequest,
@@ -14,12 +20,27 @@ export async function PATCH(
   try {
     const { orderId } = await params;
 
-    const confirmedOrder = await OrderService.confirmOrder(orderId);
+    // Get authenticated user for stock deduction audit trail
+    let userId: string;
+    const authenticatedUser = await getAuthenticatedUser(request);
+    
+    if (authenticatedUser) {
+      userId = authenticatedUser.id;
+      console.log(`✅ [PATCH /api/orders/${orderId}/confirm] Authenticated user: ${authenticatedUser.username}`);
+    } else {
+      // Fall back to default POS user
+      const defaultUser = await UserRepository.getDefaultPOSUser();
+      userId = defaultUser.id;
+      console.log(`⚠️  [PATCH /api/orders/${orderId}/confirm] Using default POS user: ${defaultUser.username}`);
+    }
+
+    // Confirm order (this will check stock availability and deduct stock)
+    const confirmedOrder = await OrderService.confirmOrder(orderId, userId);
 
     return NextResponse.json({
       success: true,
       data: confirmedOrder,
-      message: 'Order confirmed and sent to kitchen',
+      message: 'Order confirmed and sent to kitchen. Stock has been reserved.',
     });
   } catch (error) {
     console.error('Confirm order error:', error);
