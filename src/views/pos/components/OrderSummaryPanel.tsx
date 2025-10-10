@@ -125,11 +125,21 @@ export function OrderSummaryPanel({
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex-1 min-w-0 pr-2">
                     <h4 className="font-semibold text-sm leading-tight">
-                      {item.product.name}
+                      {item.itemName}
+                      {item.isPackage && (
+                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                          Package
+                        </span>
+                      )}
                     </h4>
                     <p className="text-xs text-gray-500 mt-1">
-                      ₱{item.unitPrice.toFixed(2)} each
+                      ₱{item.unitPrice.toFixed(2)} {item.isPackage ? 'per package' : 'each'}
                     </p>
+                    {item.isPackage && item.package?.items && item.package.items.length > 0 && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Includes: {item.package.items.map((pi: any) => `${pi.product?.name || 'Item'} (${pi.quantity})`).join(', ')}
+                      </p>
+                    )}
                   </div>
                   <Button
                     variant="ghost"
@@ -143,29 +153,35 @@ export function OrderSummaryPanel({
 
                 {/* Quantity Controls */}
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    
-                    <span className="w-12 text-center font-bold text-lg">
-                      {item.quantity}
-                    </span>
-                    
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
+                  {!item.isPackage ? (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      
+                      <span className="w-12 text-center font-bold text-lg">
+                        {item.quantity}
+                      </span>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500">
+                      Quantity: {item.quantity}
+                    </div>
+                  )}
 
                   {/* Item Subtotal */}
                   <span className="font-bold text-lg text-amber-600">

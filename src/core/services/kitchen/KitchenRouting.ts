@@ -81,15 +81,14 @@ export class KitchenRouting {
 
   /**
    * Route package items to appropriate stations
-   * Fetches the package details and creates kitchen orders for each item in the package
-   * based on each product's category destination.
+   * Uses the already-loaded package data from the order item to route each product
+   * to the correct station (kitchen or bartender) based on category destination.
    * 
    * This method ensures that each product in a package is routed to the correct station
-   * (kitchen or bartender) based on the product's category, rather than sending the entire
-   * package to both stations.
+   * based on the product's category, rather than sending the entire package to both stations.
    * 
    * @param orderId - The order ID
-   * @param orderItem - The order item representing the package
+   * @param orderItem - The order item representing the package (with package data pre-loaded)
    * @returns Array of kitchen orders to be created
    */
   private static async routePackageItems(
@@ -99,7 +98,7 @@ export class KitchenRouting {
     const kitchenOrders: CreateKitchenOrderInput[] = [];
 
     try {
-      console.log(`📦 [KitchenRouting.routePackageItems] Fetching package ${orderItem.package_id}...`);
+      console.log(`📦 [KitchenRouting.routePackageItems] Processing package ${orderItem.package_id}...`);
       
       // Validate package_id exists
       if (!orderItem.package_id) {
@@ -107,8 +106,14 @@ export class KitchenRouting {
         return kitchenOrders;
       }
       
-      // Fetch the package with all its items and product categories
-      const packageData = await PackageRepository.getById(orderItem.package_id);
+      // Use pre-loaded package data from order item (more efficient than fetching again)
+      let packageData = orderItem.package;
+      
+      // Fallback: If package data not pre-loaded, fetch it
+      if (!packageData) {
+        console.warn(`⚠️  [KitchenRouting.routePackageItems] Package data not pre-loaded, fetching...`);
+        packageData = await PackageRepository.getById(orderItem.package_id);
+      }
       
       if (!packageData) {
         console.error(`❌ [KitchenRouting.routePackageItems] Package not found: ${orderItem.package_id}`);

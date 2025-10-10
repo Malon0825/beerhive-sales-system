@@ -8,14 +8,22 @@ import { PaymentMethod } from '@/models/enums/PaymentMethod';
 import { Package } from '@/models/entities/Package';
 import { CurrentOrder, CurrentOrderItem } from '@/data/repositories/CurrentOrderRepository';
 
+/**
+ * Cart Item Interface
+ * Represents an item in the shopping cart
+ * Can be either a product or a package
+ */
 export interface CartItem {
   id: string; // Temp ID for cart
-  product: Product;
+  product?: Product; // Only set for product items
+  package?: Package & { items?: any[] }; // Only set for package items
   quantity: number;
   unitPrice: number;
   subtotal: number;
   discount: number;
   notes?: string;
+  itemName: string; // Display name (product or package name)
+  isPackage: boolean; // Flag to identify package items
 }
 
 interface CartContextType {
@@ -87,39 +95,64 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
           setCurrentOrderId(activeOrder.id);
           
           // Convert database items to cart items
-          const cartItems: CartItem[] = activeOrder.items.map((item: any) => ({
-            id: `db-${item.id}`, // Mark as DB-synced
-            product: {
-              id: item.product_id,
-              name: item.item_name,
-              base_price: item.unit_price,
-              // Add other required Product fields with defaults
-              sku: '',
-              barcode: null,
-              description: null,
-              category_id: null,
-              vip_price: null,
-              cost_price: null,
-              current_stock: 0,
-              unit_of_measure: 'pcs',
-              reorder_point: 0,
-              reorder_quantity: 0,
-              size_variant: null,
-              alcohol_percentage: null,
-              image_url: null,
-              display_order: 0,
-              is_active: true,
-              is_featured: false,
-              created_by: null,
-              created_at: '',
-              updated_at: '',
-            },
-            quantity: item.quantity,
-            unitPrice: item.unit_price,
-            subtotal: item.subtotal,
-            discount: item.discount_amount || 0,
-            notes: item.notes,
-          }));
+          const cartItems: CartItem[] = activeOrder.items.map((item: any) => {
+            const isPackage = !!item.package_id;
+            
+            return {
+              id: `db-${item.id}`, // Mark as DB-synced
+              product: item.product_id ? {
+                id: item.product_id,
+                name: item.item_name,
+                base_price: item.unit_price,
+                // Add other required Product fields with defaults
+                sku: '',
+                barcode: null,
+                description: null,
+                category_id: null,
+                vip_price: null,
+                cost_price: null,
+                current_stock: 0,
+                unit_of_measure: 'pcs',
+                reorder_point: 0,
+                reorder_quantity: 0,
+                size_variant: null,
+                alcohol_percentage: null,
+                image_url: null,
+                display_order: 0,
+                is_active: true,
+                is_featured: false,
+                created_by: null,
+                created_at: '',
+                updated_at: '',
+              } : undefined,
+              package: item.package_id ? {
+                id: item.package_id,
+                name: item.item_name,
+                base_price: item.unit_price,
+                // Add other required Package fields with defaults
+                package_code: '',
+                description: null,
+                package_type: 'regular' as const,
+                vip_price: null,
+                valid_from: null,
+                valid_until: null,
+                max_quantity_per_transaction: 1,
+                is_addon_eligible: false,
+                time_restrictions: null,
+                is_active: true,
+                created_by: null,
+                created_at: '',
+                updated_at: '',
+              } : undefined,
+              quantity: item.quantity,
+              unitPrice: item.unit_price,
+              subtotal: item.subtotal,
+              discount: item.discount_amount || 0,
+              notes: item.notes,
+              itemName: item.item_name,
+              isPackage,
+            };
+          });
           
           // Restore cart items
           setItems(cartItems);
@@ -201,7 +234,7 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
       console.log('🔵 [CartContext] Order ID obtained:', orderId);
       
       // Check if product already in cart
-      const existingItem = items.find(item => item.product.id === product.id);
+      const existingItem = items.find(item => !item.isPackage && item.product?.id === product.id);
       
       if (existingItem) {
         console.log('🔵 [CartContext] Item already exists, updating quantity');
@@ -229,7 +262,7 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
         
         setItems(prevItems => 
           prevItems.map(item => 
-            item.product.id === product.id
+            !item.isPackage && item.product?.id === product.id
               ? { ...item, quantity: newQuantity, subtotal: newSubtotal }
               : item
           )
@@ -271,6 +304,8 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
               unitPrice: product.base_price,
               subtotal: product.base_price * quantity,
               discount: 0,
+              itemName: product.name,
+              isPackage: false,
             };
             
             setItems(prevItems => [...prevItems, newItem]);
@@ -304,6 +339,8 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
           unitPrice: product.base_price,
           subtotal: product.base_price * quantity,
           discount: 0,
+          itemName: product.name,
+          isPackage: false,
         };
 
         return [...prevItems, newItem];
@@ -312,7 +349,11 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
   }, [items, ensureCurrentOrder, cashierId]);
 
   /**
-   * Add a package to cart (adds all package items)
+   * Add a package to cart as a single item
+   * The package is added with its package price, not decomposed into individual products.
+   * Kitchen routing will handle expanding the package for station assignments.
+   * 
+   * @param pkg - Package to add with its items
    */
   const addPackage = useCallback(async (pkg: Package & { items?: any[] }) => {
     console.log('[CartContext] addPackage called with:', pkg);
@@ -325,20 +366,69 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
 
     console.log('[CartContext] Package items:', pkg.items);
 
-    // Add each package item using addItem (which syncs to DB)
-    for (const packageItem of pkg.items) {
-      const product = packageItem.product;
+    try {
+      // Ensure we have a current order in the database
+      console.log('📦 [CartContext] Ensuring current order exists for package...');
+      const orderId = await ensureCurrentOrder();
+      console.log('📦 [CartContext] Order ID obtained:', orderId);
       
-      if (!product) {
-        console.warn('[CartContext] Package item missing product data:', packageItem);
-        continue;
-      }
+      // Check if package already in cart (packages don't stack, each is a separate item)
+      // For now, allow multiple instances of the same package
+      
+      // Add package as a single item to database
+      const itemData: CurrentOrderItem = {
+        package_id: pkg.id,
+        item_name: pkg.name,
+        quantity: 1, // Packages are typically quantity 1
+        unit_price: pkg.base_price,
+        subtotal: pkg.base_price,
+        discount_amount: 0,
+        total: pkg.base_price,
+      };
 
-      await addItem(product, packageItem.quantity);
+      if (cashierId) {
+        console.log('📦 [CartContext] Sending package to API:', { orderId, itemData });
+        const response = await fetch(`/api/current-orders/${orderId}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cashierId,
+            item: itemData,
+          }),
+        });
+
+        console.log('📦 [CartContext] API Response status:', response.status);
+        const result = await response.json();
+        console.log('📦 [CartContext] API Response:', result);
+        
+        if (result.success && result.data?.id) {
+          // Add to local state with DB ID
+          const newItem: CartItem = {
+            id: `db-${result.data.id}`, // Mark as DB-synced
+            package: pkg,
+            quantity: 1,
+            unitPrice: pkg.base_price,
+            subtotal: pkg.base_price,
+            discount: 0,
+            itemName: pkg.name,
+            isPackage: true,
+          };
+          
+          setItems(prevItems => [...prevItems, newItem]);
+          console.log('📦 [CartContext] Package added to current order:', result.data.id);
+        }
+      }
+    } catch (error) {
+      console.error('❌ [CartContext] Error adding package:', error);
+      console.error('❌ [CartContext] Error details:', {
+        message: (error as Error).message,
+        stack: (error as Error).stack,
+        cashierId,
+        packageId: pkg.id
+      });
+      alert('Failed to add package. Please try again.');
     }
-    
-    console.log('[CartContext] Package items added to cart');
-  }, [addItem]);
+  }, [ensureCurrentOrder, cashierId]);
 
   /**
    * Remove item from cart and sync to database

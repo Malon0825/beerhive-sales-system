@@ -66,6 +66,10 @@ export async function GET(request: NextRequest) {
  * 2. Validates the user has POS privileges (admin, manager, or cashier)
  * 3. Falls back to default POS user if no auth or invalid user
  * 
+ * Order Confirmation Flow:
+ * - If payment_method is provided (POS direct payment): Auto-confirm and route to kitchen
+ * - If no payment_method (tab/draft order): Keep as PENDING/DRAFT, confirm later
+ * 
  * Note: The cashier_id field can be any user with POS privileges (admin/manager/cashier)
  * 
  * @throws AppError if no POS user exists in system
@@ -79,7 +83,8 @@ export async function POST(request: NextRequest) {
       table_id: body.table_id,
       customer_id: body.customer_id,
       items_count: body.items?.length,
-      payment_method: body.payment_method
+      payment_method: body.payment_method,
+      has_payment: !!body.payment_method
     });
     
     // Get user ID from authenticated session or use default POS user
@@ -120,8 +125,35 @@ export async function POST(request: NextRequest) {
       order_number: order.order_number,
       table_id: order.table_id,
       status: order.status,
+      has_payment: !!body.payment_method,
       cashier_id: cashierId
     });
+
+    // Auto-confirm POS orders (ones with payment_method = immediate payment)
+    // This ensures kitchen routing happens immediately for paid orders
+    if (body.payment_method) {
+      console.log('🔍 [POST /api/orders] Payment method detected - auto-confirming order for kitchen routing...');
+      const { OrderService } = await import('@/core/services/orders/OrderService');
+      
+      try {
+        await OrderService.confirmOrder(order.id, cashierId!);
+        console.log('✅ [POST /api/orders] Order auto-confirmed and routed to kitchen');
+      } catch (confirmError) {
+        // Log error but don't fail the order creation (order is already created)
+        console.error('⚠️ [POST /api/orders] Auto-confirm failed (non-fatal):', confirmError);
+        console.warn('⚠️ [POST /api/orders] Order created but not sent to kitchen - may need manual confirmation');
+      }
+      
+      // Reload order to get updated status
+      const { OrderRepository } = await import('@/data/repositories/OrderRepository');
+      const updatedOrder = await OrderRepository.getById(order.id);
+      
+      return NextResponse.json({
+        success: true,
+        data: updatedOrder || order,
+        message: 'Order created and sent to kitchen',
+      }, { status: 201 });
+    }
 
     return NextResponse.json({
       success: true,
