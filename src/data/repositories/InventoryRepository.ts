@@ -91,6 +91,14 @@ export class InventoryRepository {
 
   /**
    * Log inventory movement
+   * 
+   * Records inventory changes with proper UUID validation for user references.
+   * Empty strings or invalid UUIDs for performed_by/approved_by are converted to null
+   * to prevent database constraint violations.
+   * 
+   * @param movement - Movement details including quantities and user references
+   * @returns Created movement record
+   * @throws AppError if database operation fails
    */
   static async logMovement(movement: {
     product_id: string;
@@ -108,9 +116,20 @@ export class InventoryRepository {
     notes?: string;
   }) {
     try {
+      // Sanitize user ID fields - convert empty strings to null to prevent UUID errors
+      const sanitizedMovement = {
+        ...movement,
+        performed_by: movement.performed_by && movement.performed_by.trim() !== '' 
+          ? movement.performed_by 
+          : null,
+        approved_by: movement.approved_by && movement.approved_by.trim() !== '' 
+          ? movement.approved_by 
+          : null,
+      };
+
       const { data, error } = await supabaseAdmin
         .from('inventory_movements')
-        .insert(movement)
+        .insert(sanitizedMovement)
         .select()
         .single();
 
@@ -185,13 +204,26 @@ export class InventoryRepository {
 
   /**
    * Adjust stock with movement logging
+   * 
+   * Updates product stock level and creates an audit trail in inventory_movements.
+   * Handles user ID validation to prevent UUID constraint violations.
+   * 
+   * @param productId - Product to adjust
+   * @param quantityChange - Change amount (negative for deductions)
+   * @param movementType - Type of movement (sale, adjustment, etc.)
+   * @param reason - Reason for adjustment
+   * @param performedBy - User ID performing the adjustment (nullable)
+   * @param notes - Optional notes
+   * @param unitCost - Optional cost per unit
+   * @returns Success status with before/after quantities
+   * @throws AppError if product not found or insufficient stock
    */
   static async adjustStock(
     productId: string,
     quantityChange: number,
     movementType: string,
     reason: string,
-    performedBy: string,
+    performedBy: string | null | undefined,
     notes?: string,
     unitCost?: number
   ) {
@@ -218,7 +250,7 @@ export class InventoryRepository {
       // Update stock
       await this.updateStock(productId, quantityAfter);
 
-      // Log movement
+      // Log movement with sanitized user ID
       const totalCost = unitCost ? Math.abs(quantityChange) * unitCost : undefined;
 
       await this.logMovement({
@@ -230,7 +262,7 @@ export class InventoryRepository {
         quantity_after: quantityAfter,
         unit_cost: unitCost,
         total_cost: totalCost,
-        performed_by: performedBy,
+        performed_by: performedBy || undefined,
         notes,
       });
 

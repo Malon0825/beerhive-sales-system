@@ -1,5 +1,6 @@
 import { InventoryRepository } from '@/data/repositories/InventoryRepository';
 import { AppError } from '@/lib/errors/AppError';
+import { supabaseAdmin } from '@/data/supabase/server-client';
 
 /**
  * StockDeduction Service
@@ -8,13 +9,15 @@ import { AppError } from '@/lib/errors/AppError';
 export class StockDeduction {
   /**
    * Deduct stock for completed order
+   * 
    * Processes each product independently to ensure all items are attempted
-   * even if one fails
+   * even if one fails. Handles user ID validation to prevent UUID errors.
    * 
    * @param orderId - The order ID for reference
    * @param orderItems - Array of order items to deduct
-   * @param userId - User performing the deduction
+   * @param userId - User performing the deduction (must be valid UUID)
    * @returns Promise that resolves with deduction results
+   * @throws AppError if all deductions fail
    */
   static async deductForOrder(
     orderId: string,
@@ -24,6 +27,13 @@ export class StockDeduction {
     }>,
     userId: string
   ): Promise<void> {
+    // Validate userId is provided and not empty
+    if (!userId || userId.trim() === '') {
+      throw new AppError(
+        'Valid user ID required for stock deduction. Cannot process order without user attribution.',
+        400
+      );
+    }
     console.log(`📦 [StockDeduction.deductForOrder] Processing ${orderItems.length} items for order ${orderId}`);
 
     const deductions: Array<{
@@ -134,13 +144,15 @@ export class StockDeduction {
 
   /**
    * Return stock for voided order
+   * 
    * Processes each product independently to ensure all items are attempted
-   * even if one fails
+   * even if one fails. Handles user ID validation to prevent UUID errors.
    * 
    * @param orderId - The order ID for reference
    * @param orderItems - Array of order items to return
-   * @param userId - User performing the return
+   * @param userId - User performing the return (must be valid UUID)
    * @returns Promise that resolves with return results
+   * @throws AppError if all returns fail
    */
   static async returnForVoidedOrder(
     orderId: string,
@@ -150,6 +162,13 @@ export class StockDeduction {
     }>,
     userId: string
   ): Promise<void> {
+    // Validate userId is provided and not empty
+    if (!userId || userId.trim() === '') {
+      throw new AppError(
+        'Valid user ID required for stock return. Cannot process voided order without user attribution.',
+        400
+      );
+    }
     console.log(`🔄 [StockDeduction.returnForVoidedOrder] Processing ${orderItems.length} items for order ${orderId}`);
 
     const returns: Array<{
@@ -257,6 +276,8 @@ export class StockDeduction {
 
   /**
    * Check if order items have sufficient stock
+   * 
+   * Uses server-side admin client to bypass RLS and get accurate stock levels
    */
   static async checkStockAvailability(
     orderItems: Array<{
@@ -272,6 +293,8 @@ export class StockDeduction {
     }>;
   }> {
     try {
+      console.log(`🔍 [StockDeduction.checkStockAvailability] Checking stock for ${orderItems.length} items...`);
+      
       const insufficientItems: Array<{
         productId: string;
         requested: number;
@@ -279,16 +302,20 @@ export class StockDeduction {
       }> = [];
 
       for (const item of orderItems) {
-        if (!item.product_id) continue;
+        if (!item.product_id) {
+          console.log(`⏭️  [StockDeduction.checkStockAvailability] Skipping item without product_id`);
+          continue;
+        }
 
-        // Get product
-        const { data: product, error } = await (await import('@/data/supabase/client')).supabase
+        // Get product using server-side admin client (bypasses RLS)
+        const { data: product, error } = await supabaseAdmin
           .from('products')
-          .select('id, current_stock')
+          .select('id, name, current_stock')
           .eq('id', item.product_id)
           .single();
 
-        if (error || !product) {
+        if (error) {
+          console.error(`❌ [StockDeduction.checkStockAvailability] Error fetching product ${item.product_id}:`, error);
           insufficientItems.push({
             productId: item.product_id,
             requested: item.quantity,
@@ -297,21 +324,49 @@ export class StockDeduction {
           continue;
         }
 
-        if ((product.current_stock ?? 0) < item.quantity) {
+        if (!product) {
+          console.warn(`⚠️  [StockDeduction.checkStockAvailability] Product not found: ${item.product_id}`);
           insufficientItems.push({
             productId: item.product_id,
             requested: item.quantity,
-            available: product.current_stock ?? 0,
+            available: 0,
           });
+          continue;
+        }
+
+        const currentStock = product.current_stock ?? 0;
+        console.log(
+          `📊 [StockDeduction.checkStockAvailability] Product: ${product.name || item.product_id.substring(0, 8)} ` +
+          `- Current: ${currentStock}, Requested: ${item.quantity}`
+        );
+
+        if (currentStock < item.quantity) {
+          console.warn(
+            `⚠️  [StockDeduction.checkStockAvailability] Insufficient stock for ${product.name || item.product_id}: ` +
+            `Available ${currentStock}, Requested ${item.quantity}`
+          );
+          insufficientItems.push({
+            productId: item.product_id,
+            requested: item.quantity,
+            available: currentStock,
+          });
+        } else {
+          console.log(`✅ [StockDeduction.checkStockAvailability] Sufficient stock available`);
         }
       }
 
+      const allAvailable = insufficientItems.length === 0;
+      console.log(
+        `${allAvailable ? '✅' : '❌'} [StockDeduction.checkStockAvailability] ` +
+        `Result: ${allAvailable ? 'All items available' : `${insufficientItems.length} item(s) insufficient`}`
+      );
+
       return {
-        available: insufficientItems.length === 0,
+        available: allAvailable,
         insufficientItems,
       };
     } catch (error) {
-      console.error('Check stock availability error:', error);
+      console.error('❌ [StockDeduction.checkStockAvailability] Error:', error);
       throw error instanceof AppError
         ? error
         : new AppError('Failed to check stock availability', 500);

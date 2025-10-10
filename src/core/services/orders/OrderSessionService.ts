@@ -176,9 +176,13 @@ export class OrderSessionService {
    * Close a tab and process final payment
    * Marks all orders as completed and closes the session
    * 
+   * Updates order cashier_id to reflect who completed the payment,
+   * ensuring accurate reporting of cashier performance.
+   * 
    * @param sessionId - Session ID
-   * @param paymentData - Payment information
+   * @param paymentData - Payment information including closed_by user ID
    * @returns Closed session with receipt data
+   * @throws AppError if session not found, not open, or payment validation fails
    */
   static async closeTab(sessionId: string, paymentData: CloseOrderSessionDto) {
     try {
@@ -199,69 +203,44 @@ export class OrderSessionService {
         throw new AppError('Payment amount is less than total', 400);
       }
 
+      // Validate closed_by user ID is provided
+      if (!paymentData.closed_by) {
+        throw new AppError('User ID (closed_by) is required to close tab', 400);
+      }
+
       // Calculate change
       const change = paymentData.amount_tendered - session.total_amount;
 
       // Update all orders in session to COMPLETED and deduct inventory
       const orders = session.orders || [];
-      const performedBy = paymentData.closed_by || '';
+      const performedByUserId = paymentData.closed_by;
+      
+      console.log(`👤 [OrderSessionService.closeTab] Closing tab as user: ${performedByUserId}`);
       
       for (const order of orders) {
         if (order.status !== OrderStatus.COMPLETED && order.status !== OrderStatus.VOIDED) {
           await OrderRepository.updateStatus(order.id, OrderStatus.COMPLETED);
           
-          // Update payment details on the order
+          // Update payment details and cashier_id on the order
+          // This ensures the user who closed the tab is credited in reports
           await OrderRepository.update(order.id, {
+            cashier_id: performedByUserId, // This ensures the user who closed the tab is credited in reports
             payment_method: paymentData.payment_method as any,
             amount_tendered: paymentData.amount_tendered,
             change_amount: change,
             completed_at: new Date().toISOString(),
           });
 
-          // Deduct inventory stock for this order
-          if (order.order_items && order.order_items.length > 0) {
-            try {
-              const itemsToDeduct = order.order_items.map((item: any) => ({
-                product_id: item.product_id,
-                quantity: item.quantity,
-                item_name: item.item_name || 'Unknown',
-              }));
-
-              console.log(
-                `📦 [OrderSessionService.closeTab] Deducting stock for order ${order.order_number} ` +
-                `with ${itemsToDeduct.length} items:`,
-                itemsToDeduct.map((i: any) => 
-                  `${i.item_name} (${i.product_id ? 'Product: ' + i.product_id.substring(0, 8) + '...' : 'Package'}) x${i.quantity}`
-                ).join(', ')
-              );
-              
-              await StockDeduction.deductForOrder(
-                order.id,
-                order.order_items.map((item: any) => ({
-                  product_id: item.product_id,
-                  quantity: item.quantity,
-                })),
-                performedBy
-              );
-              
-              console.log(`✅ [OrderSessionService.closeTab] Stock deducted successfully for order ${order.order_number}`);
-            } catch (stockError) {
-              // Log error but don't fail the tab closure (payment already processed)
-              console.error(
-                `⚠️  [OrderSessionService.closeTab] Stock deduction failed for order ${order.order_number}:`, 
-                stockError
-              );
-              console.warn(
-                `⚠️  [OrderSessionService.closeTab] Manual inventory adjustment may be required for order ${order.order_number}`
-              );
-            }
-          }
+          // Stock was already deducted when order was CONFIRMED
+          // No additional stock deduction needed at payment time
+          console.log(
+            `ℹ️  [OrderSessionService.closeTab] Stock for order ${order.order_number} ` +
+            `was already deducted at confirmation time. No additional deduction needed.`
+          );
         }
       }
 
       console.log(`✅ [OrderSessionService.closeTab] ${orders.length} orders marked as completed`);
-
-      // Close the session
       const closedSession = await OrderSessionRepository.close(sessionId, paymentData.closed_by);
 
       // Clear table session reference

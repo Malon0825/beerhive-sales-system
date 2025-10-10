@@ -237,15 +237,72 @@ export function POSInterface() {
   };
 
   /**
+   * Handle adding package to cart with stock validation
+   * Checks stock for all package items before adding
+   * Reserves stock in memory for all items
+   */
+  const handleAddPackage = (pkg: Package & { items?: any[] }) => {
+    if (!pkg.items || pkg.items.length === 0) {
+      alert('This package has no items configured. Please contact management.');
+      return;
+    }
+
+    // Check stock availability for all package items
+    const stockIssues: string[] = [];
+    for (const packageItem of pkg.items) {
+      const product = packageItem.product;
+      if (!product) continue;
+
+      const requiredQuantity = packageItem.quantity;
+      if (!stockTracker.hasStock(product.id, requiredQuantity)) {
+        const availableStock = stockTracker.getCurrentStock(product.id);
+        stockIssues.push(`${product.name}: Need ${requiredQuantity}, Available ${availableStock}`);
+      }
+    }
+
+    // If any items are out of stock, show alert and don't add
+    if (stockIssues.length > 0) {
+      alert(`Cannot add package. Insufficient stock:\n\n${stockIssues.join('\n')}`);
+      return;
+    }
+
+    // All items have sufficient stock - reserve them
+    for (const packageItem of pkg.items) {
+      const product = packageItem.product;
+      if (!product) continue;
+      
+      stockTracker.reserveStock(product.id, packageItem.quantity);
+      console.log(`📦 [POSInterface] Reserved ${packageItem.quantity}x ${product.name} for package`);
+    }
+
+    // Add package to cart
+    cart.addPackage(pkg);
+    
+    console.log('📦 [POSInterface] Package added with all stock reserved:', pkg.name);
+  };
+
+  /**
    * Handle removing item from cart with stock restoration
+   * For products: releases reserved stock
+   * For packages: releases reserved stock for all package items
    */
   const handleRemoveItem = (itemId: string) => {
-    // Find the item to get product ID
+    // Find the item to get product or package ID
     const item = cart.items.find(i => i.id === itemId);
     if (item) {
-      // Release reserved stock
-      stockTracker.releaseStock(item.product.id, item.quantity);
-      console.log('📦 [POSInterface] Stock released for:', item.product.name);
+      if (item.isPackage && item.package?.items) {
+        // Release stock for all items in the package
+        item.package.items.forEach((packageItem: any) => {
+          if (packageItem.product?.id) {
+            stockTracker.releaseStock(packageItem.product.id, packageItem.quantity * item.quantity);
+            console.log('📦 [POSInterface] Stock released for package item:', packageItem.product.name);
+          }
+        });
+      } else if (item.product) {
+        // Release reserved stock for regular product
+        stockTracker.releaseStock(item.product.id, item.quantity);
+        console.log('📦 [POSInterface] Stock released for:', item.product.name);
+      }
     }
     
     // Remove from cart
@@ -254,10 +311,19 @@ export function POSInterface() {
 
   /**
    * Handle updating item quantity with stock adjustment
+   * Only applies to regular products, not packages
    */
   const handleUpdateQuantity = (itemId: string, newQuantity: number) => {
     const item = cart.items.find(i => i.id === itemId);
     if (!item) return;
+    
+    // Packages don't support quantity changes in this implementation
+    if (item.isPackage) {
+      console.log('⚠️ [POSInterface] Package quantity changes not supported');
+      return;
+    }
+    
+    if (!item.product) return;
     
     const quantityDiff = newQuantity - item.quantity;
     
@@ -576,7 +642,7 @@ export function POSInterface() {
                               ? 'cursor-pointer hover:shadow-lg hover:border-amber-400' 
                               : 'opacity-60 cursor-not-allowed'
                           }`}
-                          onClick={() => canPurchase && cart.addPackage(pkg)}
+                          onClick={() => canPurchase && handleAddPackage(pkg)}
                         >
                           {/* Package Header */}
                           <div className="flex items-start justify-between mb-3">

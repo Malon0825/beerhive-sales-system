@@ -12,10 +12,12 @@ import {
   Eye,
   CreditCard,
   ShoppingCart,
-  Shuffle
+  Shuffle,
+  Edit3
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { ChangeTableDialog } from './ChangeTableDialog';
+import SessionItemsManagerModal from '@/views/orders/SessionItemsManagerModal';
 
 /**
  * TableWithTabCard Component
@@ -64,6 +66,7 @@ export default function TableWithTabCard({
   onTableChanged,
 }: TableWithTabCardProps) {
   const [showChangeTableDialog, setShowChangeTableDialog] = useState(false);
+  const [showManageItemsModal, setShowManageItemsModal] = useState(false);
   /**
    * Calculate duration since session opened
    */
@@ -215,6 +218,20 @@ export default function TableWithTabCard({
                 </Button>
               </div>
               
+              {/* Manage Items Button */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full text-xs h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowManageItemsModal(true);
+                }}
+              >
+                <Edit3 className="w-3 h-3 mr-1" />
+                Manage Items
+              </Button>
+              
               {/* Change Table Button */}
               <Button
                 size="sm"
@@ -271,6 +288,22 @@ export default function TableWithTabCard({
           sessionId={session.id}
           currentTableNumber={table.table_number}
           onSuccess={() => {
+            if (onTableChanged) {
+              onTableChanged();
+            }
+          }}
+        />
+      )}
+      
+      {/* Manage Items Modal */}
+      {session && (
+        <SessionItemsManagerModal
+          sessionId={session.id}
+          sessionNumber={session.session_number}
+          isOpen={showManageItemsModal}
+          onClose={() => setShowManageItemsModal(false)}
+          onItemsChanged={() => {
+            // Refresh parent data
             if (onTableChanged) {
               onTableChanged();
             }

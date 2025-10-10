@@ -220,7 +220,9 @@ export function PaymentPanel({
           customer_id: cart?.customer?.id,
           table_id: cart?.table?.id,
           items: cart?.items.map((item) => ({
-            product_id: item.product.id,
+            // For packages, use package_id; for products, use product_id
+            product_id: item.isPackage ? undefined : item.product?.id,
+            package_id: item.isPackage ? item.package?.id : undefined,
             quantity: item.quantity,
             notes: item.notes,
           })) || [],

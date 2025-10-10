@@ -70,6 +70,7 @@ export class OrderRepository {
   /**
    * Get order by ID with items
    * Uses admin client to bypass RLS policies when joining with users table
+   * Loads full package details with products and categories for kitchen routing
    */
   static async getById(id: string): Promise<any | null> {
     try {
@@ -81,7 +82,36 @@ export class OrderRepository {
           customer:customers(*),
           cashier:users!orders_cashier_id_fkey(id, username, full_name),
           table:restaurant_tables(*),
-          order_items(*)
+          order_items(
+            *,
+            product:products(
+              id,
+              name,
+              category:product_categories(
+                id,
+                name,
+                default_destination
+              )
+            ),
+            package:packages(
+              id,
+              name,
+              package_code,
+              items:package_items(
+                id,
+                quantity,
+                product:products(
+                  id,
+                  name,
+                  category:product_categories(
+                    id,
+                    name,
+                    default_destination
+                  )
+                )
+              )
+            )
+          )
         `)
         .eq('id', id)
         .single();
@@ -101,6 +131,7 @@ export class OrderRepository {
   /**
    * Get active orders
    * Uses admin client to bypass RLS policies when joining with users table
+   * Loads full package details with products and categories for kitchen routing
    */
   static async getActive(): Promise<any[]> {
     try {
@@ -112,7 +143,36 @@ export class OrderRepository {
           customer:customers(id, full_name, customer_number, tier),
           cashier:users!orders_cashier_id_fkey(id, username, full_name),
           table:restaurant_tables(id, table_number, area),
-          order_items(*)
+          order_items(
+            *,
+            product:products(
+              id,
+              name,
+              category:product_categories(
+                id,
+                name,
+                default_destination
+              )
+            ),
+            package:packages(
+              id,
+              name,
+              package_code,
+              items:package_items(
+                id,
+                quantity,
+                product:products(
+                  id,
+                  name,
+                  category:product_categories(
+                    id,
+                    name,
+                    default_destination
+                  )
+                )
+              )
+            )
+          )
         `)
         .in('status', [OrderStatus.PENDING, OrderStatus.ON_HOLD])
         .order('created_at', { ascending: false });

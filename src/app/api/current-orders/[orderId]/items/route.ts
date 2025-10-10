@@ -12,10 +12,10 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(
   request: NextRequest,
-  context: any
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const { orderId } = context.params as { orderId: string };
+    const { orderId } = await params;
     const body = await request.json();
     const { cashierId, item } = body;
 
@@ -73,10 +73,10 @@ export async function POST(
  */
 export async function DELETE(
   request: NextRequest,
-  context: any
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const { orderId } = context.params as { orderId: string };
+    const { orderId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const cashierId = searchParams.get('cashierId');
 
