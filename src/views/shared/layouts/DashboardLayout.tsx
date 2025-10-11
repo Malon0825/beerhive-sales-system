@@ -8,7 +8,7 @@ import { AuthService, AuthUser } from '@/core/services/auth/AuthService';
 import { ToastProvider, ToastViewport } from '../ui/toast';
 import { ErrorBoundary } from '../feedback/ErrorBoundary';
 import { NotificationProvider } from '@/lib/contexts/NotificationContext';
-import { NavigationProgress } from '@/components/navigation/NavigationProgress';
+import { NavigationProgressWrapper } from '@/components/navigation/NavigationProgressWrapper';
 
 /**
  * Props for DashboardLayout component
@@ -81,8 +81,8 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   return (
     <ToastProvider>
       <NotificationProvider>
-        {/* Navigation progress indicator */}
-        <NavigationProgress />
+        {/* Navigation progress indicator with Suspense boundary */}
+        <NavigationProgressWrapper />
         
         <div className="flex h-screen overflow-hidden bg-gray-50">
           {/* Sidebar for desktop with collapse functionality */}
