@@ -186,12 +186,9 @@ export default function CurrentOrdersPage() {
               </p>
               
               <p className="text-slate-400 text-lg mb-2">
-                Order will appear here when you start adding items in POS
+                Order will appear here when you start adding items in Cart
               </p>
-              
-              <p className="text-slate-500 text-sm">
-                Supports both dine-in (with table) and takeout orders
-              </p>
+            
               
               <div className="mt-12 inline-flex items-center gap-2 text-emerald-400 bg-emerald-500/10 px-6 py-3 rounded-full border border-emerald-500/20">
                 <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
@@ -200,10 +197,7 @@ export default function CurrentOrdersPage() {
 
               <div className="mt-8 p-4 bg-slate-700/30 border border-slate-600/30 rounded-xl">
                 <p className="text-slate-300 text-sm">
-                  👤 Cashier-bounded display (Authentication required)
-                </p>
-                <p className="text-slate-400 text-xs mt-2">
-                  This display shows YOUR active order only
+                  👤 This display shows YOUR active order only
                 </p>
               </div>
             </div>
