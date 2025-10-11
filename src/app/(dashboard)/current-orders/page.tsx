@@ -10,6 +10,7 @@ import { RouteGuard } from '@/views/shared/guards/RouteGuard';
 import { UserRole } from '@/models/enums/UserRole';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { ShoppingCart } from 'lucide-react';
+import { FullscreenToggleButton } from '@/components/shared/FullscreenToggleButton';
 
 /**
  * Current Orders Page - Cashier-Bounded Customer Display (Authentication Required)
@@ -146,11 +147,24 @@ export default function CurrentOrdersPage() {
 
   /**
    * Render the appropriate UI based on state
-   * Wrapped in RouteGuard for authentication and BrowserCompatibilityCheck
+   * 
+   * FULLSCREEN MODE:
+   * - When ?fullscreen=true is in the URL, the DashboardLayout bypasses sidebar/header
+   * - Renders only the customer display for a clean, customer-facing view
+   * - Fullscreen toggle button allows easy exit back to normal mode
+   * 
+   * NORMAL MODE:
+   * - Wrapped in RouteGuard for authentication
+   * - Includes sidebar and header from DashboardLayout (handled by layout.tsx)
+   * - Fullscreen toggle button allows entering fullscreen mode
+   * - Standard staff-facing view
    */
   return (
     <RouteGuard requiredRoles={[UserRole.ADMIN, UserRole.MANAGER, UserRole.CASHIER]}>
       <BrowserCompatibilityCheck requireIndexedDB={true} requireBroadcastChannel={true}>
+        {/* Fullscreen Toggle Button - Always visible */}
+        <FullscreenToggleButton />
+
         {/* Show loading state */}
         {(loading || isLoadingOrder) && (
           <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">

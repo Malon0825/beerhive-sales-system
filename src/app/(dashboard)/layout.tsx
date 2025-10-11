@@ -2,12 +2,17 @@
 
 import { useAuth } from '@/lib/hooks/useAuth';
 import { DashboardLayout as Layout } from '@/views/shared/layouts/DashboardLayout';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 
 /**
  * Dashboard Layout
  * Wraps all dashboard routes with authentication and layout
+ * 
+ * FULLSCREEN MODE:
+ * - Detects ?fullscreen=true URL parameter
+ * - Bypasses DashboardLayout (no sidebar/header) when in fullscreen mode
+ * - Perfect for customer-facing displays
  */
 export default function DashboardLayout({
   children,
@@ -16,6 +21,10 @@ export default function DashboardLayout({
 }) {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Check if fullscreen mode is enabled via URL parameter
+  const isFullscreen = searchParams.get('fullscreen') === 'true';
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -39,5 +48,12 @@ export default function DashboardLayout({
     return null;
   }
 
+  // Fullscreen mode - bypass DashboardLayout wrapper
+  // Renders only the page content without sidebar/header
+  if (isFullscreen) {
+    return <>{children}</>;
+  }
+
+  // Normal mode - include DashboardLayout with sidebar and header
   return <Layout user={user}>{children}</Layout>;
 }
