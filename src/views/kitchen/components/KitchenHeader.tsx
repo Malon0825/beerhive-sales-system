@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Volume2, VolumeX } from 'lucide-react';
 
 interface KitchenHeaderProps {
   pendingCount: number;
@@ -6,6 +6,8 @@ interface KitchenHeaderProps {
   readyCount: number;
   onRefresh: () => void;
   isRefreshing?: boolean;
+  isMuted?: boolean;
+  onToggleMute?: () => void;
 }
 
 /**
@@ -18,6 +20,8 @@ interface KitchenHeaderProps {
  * @param readyCount - Number of ready orders
  * @param onRefresh - Callback when refresh button is clicked
  * @param isRefreshing - Whether data is currently refreshing
+ * @param isMuted - Whether notifications are muted
+ * @param onToggleMute - Callback when mute button is clicked
  */
 export function KitchenHeader({
   pendingCount,
@@ -25,12 +29,14 @@ export function KitchenHeader({
   readyCount,
   onRefresh,
   isRefreshing = false,
+  isMuted = false,
+  onToggleMute,
 }: KitchenHeaderProps) {
   return (
     <div className="bg-white shadow-md p-2 sm:p-4 sticky top-0 z-10">
       {/* Mobile Layout: Stack vertically */}
       <div className="flex flex-col gap-3 md:hidden">
-        {/* Title and Refresh Button Row */}
+        {/* Title and Action Buttons Row */}
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-lg font-bold text-gray-800">Kitchen Display</h1>
@@ -41,14 +47,29 @@ export function KitchenHeader({
               })}
             </p>
           </div>
-          <button
-            onClick={onRefresh}
-            disabled={isRefreshing}
-            className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1"
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span className="text-sm">Refresh</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {onToggleMute && (
+              <button
+                onClick={onToggleMute}
+                className="bg-gray-200 text-gray-700 px-2 py-2 rounded hover:bg-gray-300 transition flex items-center"
+                title={isMuted ? 'Unmute notifications' : 'Mute notifications'}
+              >
+                {isMuted ? (
+                  <VolumeX className="h-4 w-4" />
+                ) : (
+                  <Volume2 className="h-4 w-4" />
+                )}
+              </button>
+            )}
+            <button
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="text-sm">Refresh</span>
+            </button>
+          </div>
         </div>
         
         {/* Status Summary - Compact Mobile View */}
@@ -100,15 +121,33 @@ export function KitchenHeader({
           </div>
         </div>
 
-        {/* Refresh Button */}
-        <button
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className="bg-blue-600 text-white px-3 lg:px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-2"
-        >
-          <RefreshCw className={`h-4 lg:h-5 w-4 lg:w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-          <span className="text-sm lg:text-base">Refresh</span>
-        </button>
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2">
+          {onToggleMute && (
+            <button
+              onClick={onToggleMute}
+              className="bg-gray-200 text-gray-700 px-3 py-2 rounded hover:bg-gray-300 transition flex items-center gap-2"
+              title={isMuted ? 'Unmute notifications' : 'Mute notifications'}
+            >
+              {isMuted ? (
+                <VolumeX className="h-4 lg:h-5 w-4 lg:w-5" />
+              ) : (
+                <Volume2 className="h-4 lg:h-5 w-4 lg:w-5" />
+              )}
+              <span className="text-sm lg:text-base hidden lg:inline">
+                {isMuted ? 'Muted' : 'Sound On'}
+              </span>
+            </button>
+          )}
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="bg-blue-600 text-white px-3 lg:px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 lg:h-5 w-4 lg:w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span className="text-sm lg:text-base">Refresh</span>
+          </button>
+        </div>
       </div>
     </div>
   );

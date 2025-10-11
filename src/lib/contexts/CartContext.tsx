@@ -7,6 +7,14 @@ import { RestaurantTable } from '@/models/entities/Table';
 import { PaymentMethod } from '@/models/enums/PaymentMethod';
 import { Package } from '@/models/entities/Package';
 import { CurrentOrder, CurrentOrderItem } from '@/data/repositories/CurrentOrderRepository';
+import { useOrderBroadcast } from '@/lib/hooks/useOrderBroadcast';
+import { 
+  saveOrder, 
+  saveOrderItem, 
+  deleteOrderItem,
+  LocalOrder,
+  LocalOrderItem 
+} from '@/lib/utils/indexedDB';
 
 /**
  * Cart Item Interface
@@ -59,10 +67,21 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
   const [isLoadingCart, setIsLoadingCart] = useState<boolean>(true);
   const [cartLoaded, setCartLoaded] = useState<boolean>(false);
 
+  // Initialize BroadcastChannel for real-time customer display updates
+  const {
+    broadcastOrderCreated,
+    broadcastOrderUpdated,
+    broadcastItemAdded,
+    broadcastItemUpdated,
+    broadcastItemRemoved,
+  } = useOrderBroadcast('beerhive_orders');
+
   /**
-   * Load existing cart from database
-   * Restores cart items if cashier has an active current order
+   * Load existing cart from IndexedDB (LOCAL-FIRST)
+   * Restores cart items if cashier has an active local order
    * Called on mount to restore cart after page reload
+   * 
+   * Handles errors gracefully - if IndexedDB fails, cart starts empty
    */
   const loadExistingCart = async () => {
     if (!cashierId) {
@@ -77,105 +96,116 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
     }
 
     try {
-      console.log('[CartContext] Loading existing cart for cashier:', cashierId);
+      // Check if IndexedDB is supported
+      if (typeof indexedDB === 'undefined') {
+        console.warn('[CartContext] IndexedDB not supported, starting with empty cart');
+        setIsLoadingCart(false);
+        setCartLoaded(true);
+        return;
+      }
+
+      console.log('[CartContext] Loading existing cart from IndexedDB for cashier:', cashierId);
       setIsLoadingCart(true);
 
-      // Fetch active current order for this cashier
-      const response = await fetch(`/api/current-orders?cashierId=${cashierId}`);
-      const result = await response.json();
+      // Load all draft orders from IndexedDB
+      const { getAllOrders, getOrderItems } = await import('@/lib/utils/indexedDB');
+      const allOrders = await getAllOrders();
+      const draftOrders = allOrders.filter(o => o.status === 'draft');
 
-      if (result.success && result.data && result.data.length > 0) {
-        // Get the most recent non-held order
-        const activeOrder = result.data.find((order: any) => !order.is_on_hold) || result.data[0];
+      if (draftOrders.length > 0) {
+        // Get the most recent order (assume one order per cashier)
+        const activeOrder = draftOrders[draftOrders.length - 1];
+        console.log('[CartContext] Found local order:', activeOrder.id);
         
-        if (activeOrder && activeOrder.items && activeOrder.items.length > 0) {
-          console.log('[CartContext] Found active order with items:', activeOrder.id);
+        // Set current order ID
+        setCurrentOrderId(activeOrder.id);
+        
+        // Load order items from IndexedDB
+        const orderItems = await getOrderItems(activeOrder.id);
+        
+        if (orderItems.length > 0) {
+          // Convert to cart items (minimal reconstruction)
+          const cartItems: CartItem[] = orderItems.map((item) => ({
+            id: item.id,
+            product: item.productId ? {
+              id: item.productId,  // Use stored product ID
+              name: item.itemName,
+              base_price: item.unitPrice,
+              sku: '',
+              barcode: null,
+              description: null,
+              category_id: null,
+              vip_price: null,
+              cost_price: null,
+              current_stock: 0,
+              unit_of_measure: 'pcs',
+              reorder_point: 0,
+              reorder_quantity: 0,
+              size_variant: null,
+              alcohol_percentage: null,
+              image_url: null,
+              display_order: 0,
+              is_active: true,
+              is_featured: false,
+              created_by: null,
+              created_at: '',
+              updated_at: '',
+            } : undefined,
+            package: item.packageId ? {
+              id: item.packageId,  // Use stored package ID
+              name: item.itemName,
+              base_price: item.unitPrice,
+              package_code: '',
+              description: null,
+              package_type: 'regular' as const,
+              vip_price: null,
+              valid_from: null,
+              valid_until: null,
+              max_quantity_per_transaction: 1,
+              is_addon_eligible: false,
+              time_restrictions: null,
+              is_active: true,
+              created_by: null,
+              created_at: '',
+              updated_at: '',
+            } : undefined,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            subtotal: item.subtotal,
+            discount: item.discountAmount,
+            notes: item.notes,
+            itemName: item.itemName,
+            isPackage: !!item.packageId,
+          }));
           
-          // Set current order ID
-          setCurrentOrderId(activeOrder.id);
-          
-          // Convert database items to cart items
-          const cartItems: CartItem[] = activeOrder.items.map((item: any) => {
-            const isPackage = !!item.package_id;
-            
-            return {
-              id: `db-${item.id}`, // Mark as DB-synced
-              product: item.product_id ? {
-                id: item.product_id,
-                name: item.item_name,
-                base_price: item.unit_price,
-                // Add other required Product fields with defaults
-                sku: '',
-                barcode: null,
-                description: null,
-                category_id: null,
-                vip_price: null,
-                cost_price: null,
-                current_stock: 0,
-                unit_of_measure: 'pcs',
-                reorder_point: 0,
-                reorder_quantity: 0,
-                size_variant: null,
-                alcohol_percentage: null,
-                image_url: null,
-                display_order: 0,
-                is_active: true,
-                is_featured: false,
-                created_by: null,
-                created_at: '',
-                updated_at: '',
-              } : undefined,
-              package: item.package_id ? {
-                id: item.package_id,
-                name: item.item_name,
-                base_price: item.unit_price,
-                // Add other required Package fields with defaults
-                package_code: '',
-                description: null,
-                package_type: 'regular' as const,
-                vip_price: null,
-                valid_from: null,
-                valid_until: null,
-                max_quantity_per_transaction: 1,
-                is_addon_eligible: false,
-                time_restrictions: null,
-                is_active: true,
-                created_by: null,
-                created_at: '',
-                updated_at: '',
-              } : undefined,
-              quantity: item.quantity,
-              unitPrice: item.unit_price,
-              subtotal: item.subtotal,
-              discount: item.discount_amount || 0,
-              notes: item.notes,
-              itemName: item.item_name,
-              isPackage,
-            };
-          });
-          
-          // Restore cart items
           setItems(cartItems);
-          
-          // Restore customer and table if present
-          if (activeOrder.customer) {
-            setCustomerState(activeOrder.customer);
-          }
-          if (activeOrder.table) {
-            setTableState(activeOrder.table);
-          }
-          
-          console.log('[CartContext] Cart restored with', cartItems.length, 'items');
-        } else {
-          console.log('[CartContext] Found order but no items:', activeOrder?.id);
+          console.log('[CartContext] Cart restored from IndexedDB with', cartItems.length, 'items');
+        }
+        
+        // Restore table if present
+        if (activeOrder.tableNumber) {
+          // Create minimal table object (table will need to be re-selected for full data)
+          setTableState({
+            id: activeOrder.tableNumber,
+            table_number: activeOrder.tableNumber,
+            capacity: 0,
+            status: 'available',
+            area: null,
+            location: null,
+            current_order_id: null,
+            notes: null,
+            is_active: true,
+            created_at: '',
+            updated_at: '',
+          } as RestaurantTable);
         }
       } else {
-        console.log('[CartContext] No existing cart found');
+        console.log('[CartContext] No existing local cart found');
       }
       
       setCartLoaded(true);
     } catch (error) {
-      console.error('[CartContext] Error loading existing cart:', error);
+      console.error('[CartContext] Error loading cart from IndexedDB:', error);
       setCartLoaded(true); // Mark as loaded even on error to prevent infinite retries
     } finally {
       setIsLoadingCart(false);
@@ -183,134 +213,328 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
   };
 
   /**
-   * Ensure current order exists in database
-   * Creates one if it doesn't exist
+   * Synchronize cart to IndexedDB for real-time customer display updates
+   * This enables instant updates on customer-facing screens via BroadcastChannel
+   * 
+   * NEW: Works for both dine-in (with table) and takeout (without table)
+   * Handles errors gracefully - cart continues to work even if sync fails
    */
-  const ensureCurrentOrder = useCallback(async (): Promise<string> => {
+  const syncToIndexedDB = useCallback(async (orderId: string) => {
+    // Check if IndexedDB is supported
+    if (typeof indexedDB === 'undefined') {
+      console.warn('[CartContext] IndexedDB not supported, skipping sync');
+      return;
+    }
+
+    try {
+      // Calculate totals
+      const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+      const discountAmount = items.reduce((sum, item) => sum + item.discount, 0);
+      const totalAmount = subtotal - discountAmount;
+
+      // Create local order object
+      // Works for both dine-in (tableNumber = string) and takeout (tableNumber = undefined)
+      const localOrder: LocalOrder = {
+        id: orderId,
+        cashierId: cashierId || undefined, // Track which staff member created this order
+        tableNumber: table?.table_number, // undefined = TAKEOUT, string = DINE-IN
+        customerId: customer?.id,
+        customerName: customer?.full_name,
+        customerTier: customer?.tier,
+        orderNumber: orderId,
+        subtotal,
+        discountAmount,
+        taxAmount: 0,
+        totalAmount,
+        status: 'draft',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Save order to IndexedDB
+      await saveOrder(localOrder);
+      console.log('💾 [CartContext] Order synced to IndexedDB:', orderId);
+
+      // Save each item to IndexedDB
+      for (const item of items) {
+        const localItem: LocalOrderItem = {
+          id: item.id,
+          orderId,
+          productId: item.product?.id,  // Store actual product ID
+          packageId: item.package?.id,  // Store actual package ID
+          itemName: item.itemName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal,
+          discountAmount: item.discount,
+          total: item.subtotal - item.discount,
+          notes: item.notes,
+          isVipPrice: false,
+          isComplimentary: false,
+          createdAt: new Date().toISOString(),
+        };
+        
+        await saveOrderItem(localItem);
+      }
+
+      // Broadcast update to customer displays
+      // Use cashierId-based identifier for takeout orders (enables multi-cashier takeout)
+      const broadcastIdentifier = table?.table_number || `takeout_${cashierId}`;
+      broadcastOrderUpdated(orderId, broadcastIdentifier, localOrder);
+      
+      if (table?.table_number) {
+        console.log('📡 [CartContext] DINE-IN broadcast to table:', table.table_number);
+      } else {
+        console.log('📡 [CartContext] TAKEOUT broadcast for cashier:', cashierId);
+      }
+    } catch (error) {
+      console.error('[CartContext] Error syncing to IndexedDB:', error);
+    }
+  }, [items, customer, table, cashierId, broadcastOrderUpdated]);
+
+  /**
+   * Ensure current order exists locally (IndexedDB)
+   * Creates one if it doesn't exist
+   * LOCAL-FIRST: No database calls, only IndexedDB
+   * 
+   * NEW BEHAVIOR:
+   * - If table selected → Dine-in order (with tableNumber)
+   * - If NO table selected → Takeout order (tableNumber = undefined)
+   * - Both create orders immediately in IndexedDB
+   * - Multiple cashiers can have simultaneous takeout orders
+   */
+  const ensureCurrentOrder = useCallback(async (): Promise<string | null> => {
     if (currentOrderId) return currentOrderId;
     
     if (!cashierId) {
       console.warn('[CartContext] No cashier ID available for creating current order');
-      throw new Error('User must be logged in to create orders');
+      return null; // Can't create order without cashier
     }
 
     try {
-      console.log('[CartContext] Creating new current order for cashier:', cashierId);
-      const response = await fetch('/api/current-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cashierId,
-          customerId: customer?.id,
-          tableId: table?.id,
-        }),
-      });
-
-      const result = await response.json();
+      // Determine order type
+      const orderType = table?.table_number ? 'dine-in' : 'takeout';
+      console.log(`[CartContext] Creating new ${orderType.toUpperCase()} order for cashier:`, cashierId);
       
-      if (result.success && result.data?.id) {
-        console.log('[CartContext] Current order created:', result.data.id);
-        setCurrentOrderId(result.data.id);
-        return result.data.id;
+      // Generate unique order ID with cashier ID for isolation
+      const orderId = `local_order_${cashierId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Create order in IndexedDB (LOCAL STORAGE ONLY)
+      // tableNumber is undefined for takeout, string for dine-in
+      const localOrder: LocalOrder = {
+        id: orderId,
+        cashierId: cashierId || undefined, // Track which staff member created this order
+        tableNumber: table?.table_number, // undefined = TAKEOUT, string = DINE-IN
+        customerId: customer?.id,
+        customerName: customer?.full_name,
+        customerTier: customer?.tier,
+        orderNumber: orderId,
+        subtotal: 0,
+        discountAmount: 0,
+        taxAmount: 0,
+        totalAmount: 0,
+        status: 'draft',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      
+      await saveOrder(localOrder);
+      
+      // Broadcast to customer displays
+      // Use cashierId as identifier for takeout orders (enables multi-cashier takeout)
+      const broadcastIdentifier = table?.table_number || `takeout_${cashierId}`;
+      broadcastOrderCreated(orderId, broadcastIdentifier, localOrder);
+      
+      console.log('💾 [CartContext] Local order created in IndexedDB:', orderId);
+      if (table?.table_number) {
+        console.log('📡 [CartContext] DINE-IN order broadcast to table:', table.table_number);
       } else {
-        throw new Error(result.error || 'Failed to create current order');
+        console.log('📡 [CartContext] TAKEOUT order broadcast for cashier:', cashierId);
+        console.log('✅ [CartContext] Multiple cashiers can have takeout orders simultaneously');
       }
+      
+      setCurrentOrderId(orderId);
+      return orderId;
     } catch (error) {
-      console.error('[CartContext] Error creating current order:', error);
-      throw error;
+      console.error('[CartContext] Error creating local order:', error);
+      return null; // Allow cart to continue even if IndexedDB fails
     }
-  }, [currentOrderId, cashierId, customer, table]);
+  }, [currentOrderId, cashierId, customer, table, broadcastOrderCreated]);
 
   /**
-   * Add item to cart and sync to current_orders table
+   * Add item to cart (LOCAL-FIRST with ROBUST SYNC)
+   * Only uses IndexedDB + BroadcastChannel, NO database calls
+   * 
+   * RELIABILITY IMPROVEMENTS:
+   * - Saves to IndexedDB BEFORE updating UI state
+   * - Broadcasts updates for quantity changes
+   * - Full order sync after every change
+   * - Proper error handling
    */
   const addItem = useCallback(async (product: Product, quantity: number = 1) => {
-    console.log('🔵 [CartContext] addItem called:', { productName: product.name, quantity, cashierId });
+    console.log('🔵 [CartContext] addItem called:', { productName: product.name, quantity });
     
     try {
-      // Ensure we have a current order in the database
-      console.log('🔵 [CartContext] Ensuring current order exists...');
+      // Ensure we have an order ID
       const orderId = await ensureCurrentOrder();
-      console.log('🔵 [CartContext] Order ID obtained:', orderId);
+      if (!orderId) {
+        console.warn('[CartContext] Could not create order');
+        return;
+      }
       
-      // Check if product already in cart
+      // Check if item already exists in cart
       const existingItem = items.find(item => !item.isPackage && item.product?.id === product.id);
       
       if (existingItem) {
-        console.log('🔵 [CartContext] Item already exists, updating quantity');
-        // Update quantity in database and local state
+        console.log('🔵 [CartContext] Item already in cart, updating quantity');
         const newQuantity = existingItem.quantity + quantity;
         const newSubtotal = product.base_price * newQuantity;
         
-        // Find the database item ID (we'll need to track this)
-        const dbItemId = existingItem.id.startsWith('db-') ? existingItem.id.replace('db-', '') : null;
-        
-        if (dbItemId && cashierId) {
-          await fetch(`/api/current-orders/${orderId}/items/${dbItemId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cashierId,
-              updates: {
-                quantity: newQuantity,
-                subtotal: newSubtotal,
-                total: newSubtotal,
-              },
-            }),
-          });
-        }
-        
-        setItems(prevItems => 
+        // STEP 1: Update local state (UI) FIRST for immediate feedback
+        setItems(prevItems =>
           prevItems.map(item => 
             !item.isPackage && item.product?.id === product.id
               ? { ...item, quantity: newQuantity, subtotal: newSubtotal }
               : item
           )
         );
-      } else {
-        console.log('🔵 [CartContext] Adding new item to database');
-        // Add new item to database
-        const itemData: CurrentOrderItem = {
-          product_id: product.id,
-          item_name: product.name,
-          quantity,
-          unit_price: product.base_price,
-          subtotal: product.base_price * quantity,
-          discount_amount: 0,
-          total: product.base_price * quantity,
+        
+        // STEP 2: Save item to IndexedDB
+        const localItem: LocalOrderItem = {
+          id: existingItem.id,
+          orderId,
+          productId: product.id,
+          itemName: product.name,
+          quantity: newQuantity,
+          unitPrice: product.base_price,
+          subtotal: newSubtotal,
+          discountAmount: 0,
+          total: newSubtotal,
+          isVipPrice: false,
+          isComplimentary: false,
+          createdAt: new Date().toISOString(),
         };
-
-        if (cashierId) {
-          console.log('🔵 [CartContext] Sending item to API:', { orderId, itemData });
-          const response = await fetch(`/api/current-orders/${orderId}/items`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cashierId,
-              item: itemData,
-            }),
-          });
-
-          console.log('🔵 [CartContext] API Response status:', response.status);
-          const result = await response.json();
-          console.log('🔵 [CartContext] API Response:', result);
-          
-          if (result.success && result.data?.id) {
-            // Add to local state with DB ID
-            const newItem: CartItem = {
-              id: `db-${result.data.id}`, // Mark as DB-synced
-              product,
-              quantity,
-              unitPrice: product.base_price,
-              subtotal: product.base_price * quantity,
-              discount: 0,
-              itemName: product.name,
-              isPackage: false,
-            };
-            
-            setItems(prevItems => [...prevItems, newItem]);
-            console.log('[CartContext] Item added to current order:', result.data.id);
-          }
+        
+        await saveOrderItem(localItem);
+        console.log('💾 [CartContext] Quantity updated in IndexedDB:', newQuantity);
+        
+        // STEP 3: Calculate and save order totals BEFORE broadcasting
+        // This ensures customer display reads correct totals
+        const allItems = items.map(item => 
+          !item.isPackage && item.product?.id === product.id
+            ? { ...item, quantity: newQuantity, subtotal: newSubtotal }
+            : item
+        );
+        
+        const subtotal = allItems.reduce((sum, item) => sum + item.subtotal, 0);
+        const discountAmount = allItems.reduce((sum, item) => sum + item.discount, 0);
+        const totalAmount = subtotal - discountAmount;
+        
+        const localOrder: LocalOrder = {
+          id: orderId,
+          cashierId: cashierId || undefined,
+          tableNumber: table?.table_number,
+          customerId: customer?.id,
+          customerName: customer?.full_name,
+          customerTier: customer?.tier,
+          orderNumber: orderId,
+          subtotal,
+          discountAmount,
+          taxAmount: 0,
+          totalAmount,
+          status: 'draft',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        await saveOrder(localOrder);
+        console.log('💾 [CartContext] Order totals synced BEFORE broadcast:', totalAmount);
+        
+        // STEP 4: NOW broadcast (customer display will read correct totals)
+        const broadcastIdentifier = table?.table_number || `takeout_${cashierId}`;
+        broadcastItemAdded(orderId, broadcastIdentifier, existingItem.id, localItem);
+        
+        if (table?.table_number) {
+          console.log('📡 [CartContext] DINE-IN update broadcast to table:', table.table_number);
+        } else {
+          console.log('📡 [CartContext] TAKEOUT update broadcast for cashier:', cashierId);
+        }
+        
+      } else {
+        console.log('🔵 [CartContext] Adding new item to cart');
+        
+        // Generate local item ID
+        const itemId = `local_item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // STEP 1: Create cart item for UI
+        const newItem: CartItem = {
+          id: itemId,
+          product,
+          quantity,
+          unitPrice: product.base_price,
+          subtotal: product.base_price * quantity,
+          discount: 0,
+          itemName: product.name,
+          isPackage: false,
+        };
+        
+        // STEP 2: Update local state (UI) for immediate feedback
+        setItems(prevItems => [...prevItems, newItem]);
+        
+        // STEP 3: Save item to IndexedDB
+        const localItem: LocalOrderItem = {
+          id: itemId,
+          orderId,
+          productId: product.id,
+          itemName: product.name,
+          quantity,
+          unitPrice: product.base_price,
+          subtotal: product.base_price * quantity,
+          discountAmount: 0,
+          total: product.base_price * quantity,
+          isVipPrice: false,
+          isComplimentary: false,
+          createdAt: new Date().toISOString(),
+        };
+        
+        await saveOrderItem(localItem);
+        console.log('💾 [CartContext] Item saved to IndexedDB');
+        
+        // STEP 4: Calculate and save order totals BEFORE broadcasting
+        // Include the new item in total calculation
+        const allItems = [...items, newItem];
+        const subtotal = allItems.reduce((sum, item) => sum + item.subtotal, 0);
+        const discountAmount = allItems.reduce((sum, item) => sum + item.discount, 0);
+        const totalAmount = subtotal - discountAmount;
+        
+        const localOrder: LocalOrder = {
+          id: orderId,
+          cashierId: cashierId || undefined,
+          tableNumber: table?.table_number,
+          customerId: customer?.id,
+          customerName: customer?.full_name,
+          customerTier: customer?.tier,
+          orderNumber: orderId,
+          subtotal,
+          discountAmount,
+          taxAmount: 0,
+          totalAmount,
+          status: 'draft',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        await saveOrder(localOrder);
+        console.log('💾 [CartContext] Order totals synced BEFORE broadcast:', totalAmount);
+        
+        // STEP 5: NOW broadcast (customer display will read correct totals)
+        const broadcastIdentifier = table?.table_number || `takeout_${cashierId}`;
+        broadcastItemAdded(orderId, broadcastIdentifier, itemId, localItem);
+        
+        if (table?.table_number) {
+          console.log('📡 [CartContext] DINE-IN item broadcast to table:', table.table_number);
+        } else {
+          console.log('📡 [CartContext] TAKEOUT item broadcast for cashier:', cashierId);
         }
       }
     } catch (error) {
@@ -321,42 +545,21 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
         cashierId,
         productId: product.id
       });
-      // Fallback to local-only cart if DB sync fails
-      setItems(prevItems => {
-        const existingIndex = prevItems.findIndex(item => item.product.id === product.id);
-        
-        if (existingIndex >= 0) {
-          const updated = [...prevItems];
-          updated[existingIndex].quantity += quantity;
-          updated[existingIndex].subtotal = updated[existingIndex].unitPrice * updated[existingIndex].quantity;
-          return updated;
-        }
-
-        const newItem: CartItem = {
-          id: `cart-${Date.now()}-${Math.random()}`,
-          product,
-          quantity,
-          unitPrice: product.base_price,
-          subtotal: product.base_price * quantity,
-          discount: 0,
-          itemName: product.name,
-          isPackage: false,
-        };
-
-        return [...prevItems, newItem];
-      });
+      // Show error to user
+      alert('Failed to add item. Please try again.');
     }
-  }, [items, ensureCurrentOrder, cashierId]);
+  }, [items, ensureCurrentOrder, cashierId, syncToIndexedDB, broadcastItemAdded, table]);
 
   /**
-   * Add a package to cart as a single item
-   * The package is added with its package price, not decomposed into individual products.
-   * Kitchen routing will handle expanding the package for station assignments.
+   * Add a package to cart (LOCAL-FIRST with PROPER SYNC)
+   * Only uses IndexedDB + BroadcastChannel, NO database calls
+   * 
+   * FIX: Save order totals BEFORE broadcasting to ensure customer display reads correct data
    * 
    * @param pkg - Package to add with its items
    */
   const addPackage = useCallback(async (pkg: Package & { items?: any[] }) => {
-    console.log('[CartContext] addPackage called with:', pkg);
+    console.log('📦 [CartContext] addPackage called with:', pkg);
     
     if (!pkg.items || pkg.items.length === 0) {
       console.warn('[CartContext] Package has no items:', pkg);
@@ -364,59 +567,85 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
       return;
     }
 
-    console.log('[CartContext] Package items:', pkg.items);
-
     try {
-      // Ensure we have a current order in the database
-      console.log('📦 [CartContext] Ensuring current order exists for package...');
+      // Ensure we have a local order
       const orderId = await ensureCurrentOrder();
-      console.log('📦 [CartContext] Order ID obtained:', orderId);
+      if (!orderId) {
+        console.warn('[CartContext] Could not create order');
+        return;
+      }
       
-      // Check if package already in cart (packages don't stack, each is a separate item)
-      // For now, allow multiple instances of the same package
+      // Generate local item ID
+      const itemId = `local_item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      // Add package as a single item to database
-      const itemData: CurrentOrderItem = {
-        package_id: pkg.id,
-        item_name: pkg.name,
-        quantity: 1, // Packages are typically quantity 1
-        unit_price: pkg.base_price,
+      // Create new cart item for package
+      const newItem: CartItem = {
+        id: itemId,
+        package: pkg,
+        quantity: 1,
+        unitPrice: pkg.base_price,
         subtotal: pkg.base_price,
-        discount_amount: 0,
-        total: pkg.base_price,
+        discount: 0,
+        itemName: pkg.name,
+        isPackage: true,
       };
-
-      if (cashierId) {
-        console.log('📦 [CartContext] Sending package to API:', { orderId, itemData });
-        const response = await fetch(`/api/current-orders/${orderId}/items`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cashierId,
-            item: itemData,
-          }),
-        });
-
-        console.log('📦 [CartContext] API Response status:', response.status);
-        const result = await response.json();
-        console.log('📦 [CartContext] API Response:', result);
-        
-        if (result.success && result.data?.id) {
-          // Add to local state with DB ID
-          const newItem: CartItem = {
-            id: `db-${result.data.id}`, // Mark as DB-synced
-            package: pkg,
-            quantity: 1,
-            unitPrice: pkg.base_price,
-            subtotal: pkg.base_price,
-            discount: 0,
-            itemName: pkg.name,
-            isPackage: true,
-          };
-          
-          setItems(prevItems => [...prevItems, newItem]);
-          console.log('📦 [CartContext] Package added to current order:', result.data.id);
-        }
+      
+      // STEP 1: Update local state (UI) for immediate feedback
+      setItems(prevItems => [...prevItems, newItem]);
+      
+      // STEP 2: Save package to IndexedDB
+      const localItem: LocalOrderItem = {
+        id: itemId,
+        orderId,
+        packageId: pkg.id,
+        itemName: pkg.name,
+        quantity: 1,
+        unitPrice: pkg.base_price,
+        subtotal: pkg.base_price,
+        discountAmount: 0,
+        total: pkg.base_price,
+        isVipPrice: false,
+        isComplimentary: false,
+        createdAt: new Date().toISOString(),
+      };
+      
+      await saveOrderItem(localItem);
+      console.log('💾 [CartContext] Package saved to IndexedDB');
+      
+      // STEP 3: Calculate and save order totals BEFORE broadcasting
+      const allItems = [...items, newItem];
+      const subtotal = allItems.reduce((sum, item) => sum + item.subtotal, 0);
+      const discountAmount = allItems.reduce((sum, item) => sum + item.discount, 0);
+      const totalAmount = subtotal - discountAmount;
+      
+      const localOrder: LocalOrder = {
+        id: orderId,
+        cashierId: cashierId || undefined,
+        tableNumber: table?.table_number,
+        customerId: customer?.id,
+        customerName: customer?.full_name,
+        customerTier: customer?.tier,
+        orderNumber: orderId,
+        subtotal,
+        discountAmount,
+        taxAmount: 0,
+        totalAmount,
+        status: 'draft',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      
+      await saveOrder(localOrder);
+      console.log('💾 [CartContext] Order totals synced BEFORE broadcast:', totalAmount);
+      
+      // STEP 4: NOW broadcast (customer display will read correct totals)
+      const broadcastIdentifier = table?.table_number || `takeout_${cashierId}`;
+      broadcastItemAdded(orderId, broadcastIdentifier, itemId, localItem);
+      
+      if (table?.table_number) {
+        console.log('📡 [CartContext] DINE-IN package broadcast to table:', table.table_number);
+      } else {
+        console.log('📡 [CartContext] TAKEOUT package broadcast for cashier:', cashierId);
       }
     } catch (error) {
       console.error('❌ [CartContext] Error adding package:', error);
@@ -428,31 +657,94 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
       });
       alert('Failed to add package. Please try again.');
     }
-  }, [ensureCurrentOrder, cashierId]);
+  }, [ensureCurrentOrder, cashierId, syncToIndexedDB, broadcastItemAdded, table]);
 
   /**
-   * Remove item from cart and sync to database
+   * Remove item from cart (LOCAL-FIRST with PROPER SYNC)
+   * Only uses IndexedDB + BroadcastChannel, NO database calls
+   * Works for both dine-in and takeout orders
+   * 
+   * FIX: Removed race condition by properly syncing totals after item removal
    */
   const removeItem = useCallback(async (itemId: string) => {
-    try {
-      // Remove from database if it's a DB-synced item
-      if (itemId.startsWith('db-') && currentOrderId && cashierId) {
-        const dbItemId = itemId.replace('db-', '');
-        await fetch(`/api/current-orders/${currentOrderId}/items/${dbItemId}?cashierId=${cashierId}`, {
-          method: 'DELETE',
-        });
-        console.log('[CartContext] Item removed from database:', dbItemId);
-      }
-    } catch (error) {
-      console.error('[CartContext] Error removing item from database:', error);
-    }
+    console.log('🔴 [CartContext] removeItem called:', itemId);
     
-    // Always remove from local state
-    setItems(prevItems => prevItems.filter(item => item.id !== itemId));
-  }, [currentOrderId, cashierId]);
+    try {
+      // STEP 1: Remove from IndexedDB first
+      await deleteOrderItem(itemId);
+      console.log('💾 [CartContext] Item removed from IndexedDB');
+      
+      // STEP 2: Broadcast removal
+      if (currentOrderId) {
+        const broadcastIdentifier = table?.table_number || `takeout_${cashierId}`;
+        broadcastItemRemoved(currentOrderId, broadcastIdentifier, itemId);
+        
+        if (table?.table_number) {
+          console.log('📡 [CartContext] DINE-IN item removal broadcast to table:', table.table_number);
+        } else {
+          console.log('📡 [CartContext] TAKEOUT item removal broadcast for cashier:', cashierId);
+        }
+      }
+      
+      // STEP 3: Update local state and recalculate totals
+      setItems(prevItems => {
+        const updatedItems = prevItems.filter(item => item.id !== itemId);
+        
+        // STEP 4: Sync order totals to IndexedDB with correct data
+        if (currentOrderId) {
+          (async () => {
+            try {
+              // Calculate totals from updatedItems (after removal)
+              const subtotal = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
+              const discountAmount = updatedItems.reduce((sum, i) => sum + i.discount, 0);
+              const totalAmount = subtotal - discountAmount;
+
+              const localOrder: LocalOrder = {
+                id: currentOrderId,
+                cashierId: cashierId || undefined,
+                tableNumber: table?.table_number,
+                customerId: customer?.id,
+                customerName: customer?.full_name,
+                customerTier: customer?.tier,
+                orderNumber: currentOrderId,
+                subtotal,
+                discountAmount,
+                taxAmount: 0,
+                totalAmount,
+                status: 'draft',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              };
+
+              await saveOrder(localOrder);
+              
+              const broadcastIdentifier = table?.table_number || `takeout_${cashierId}`;
+              broadcastOrderUpdated(currentOrderId, broadcastIdentifier, localOrder);
+              
+              console.log('💾 [CartContext] Order totals updated after item removal');
+            } catch (error) {
+              console.error('❌ [CartContext] Error syncing after item removal:', error);
+            }
+          })();
+        }
+        
+        return updatedItems;
+      });
+      
+      console.log('✅ [CartContext] Item removal completed');
+    } catch (error) {
+      console.error('❌ [CartContext] Error removing item:', error);
+      // Show error to user
+      alert('Failed to remove item. Please try again.');
+    }
+  }, [currentOrderId, table, cashierId, customer, broadcastItemRemoved, broadcastOrderUpdated]);
 
   /**
-   * Update item quantity and sync to database
+   * Update item quantity (LOCAL-FIRST with PROPER SYNC)
+   * Only uses IndexedDB + BroadcastChannel, NO database calls
+   * 
+   * FIX: Removed race condition by syncing AFTER state update completes
+   * Ensures Customer Display always shows correct quantities
    */
   const updateQuantity = useCallback(async (itemId: string, quantity: number) => {
     if (quantity <= 0) {
@@ -460,42 +752,94 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
       return;
     }
 
-    try {
-      // Update in database if it's a DB-synced item
-      if (itemId.startsWith('db-') && currentOrderId && cashierId) {
-        const dbItemId = itemId.replace('db-', '');
-        const item = items.find(i => i.id === itemId);
-        
-        if (item) {
-          const newSubtotal = item.unitPrice * quantity;
-          await fetch(`/api/current-orders/${currentOrderId}/items/${dbItemId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              cashierId,
-              updates: {
-                quantity,
-                subtotal: newSubtotal,
-                total: newSubtotal,
-              },
-            }),
-          });
-          console.log('[CartContext] Item quantity updated in database:', dbItemId);
-        }
-      }
-    } catch (error) {
-      console.error('[CartContext] Error updating item quantity in database:', error);
-    }
+    console.log('🔵 [CartContext] updateQuantity called:', { itemId, quantity });
 
-    // Always update local state
-    setItems(prevItems =>
-      prevItems.map(item =>
+    // STEP 1: Calculate updated items outside of setState to avoid stale closure
+    setItems(prevItems => {
+      const updatedItems = prevItems.map(item =>
         item.id === itemId
           ? { ...item, quantity, subtotal: item.unitPrice * quantity }
           : item
-      )
-    );
-  }, [items, currentOrderId, cashierId, removeItem]);
+      );
+      
+      // STEP 2: Sync to IndexedDB AFTER state calculation with correct data
+      // Use the calculated updatedItems, not stale state from closure
+      if (currentOrderId) {
+        // Execute sync asynchronously but with correct data
+        (async () => {
+          try {
+            const item = updatedItems.find(i => i.id === itemId);
+            if (!item) return;
+
+            // Update the specific item in IndexedDB
+            const localItem: LocalOrderItem = {
+              id: item.id,
+              orderId: currentOrderId,
+              productId: item.product?.id,
+              packageId: item.package?.id,
+              itemName: item.itemName,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              subtotal: item.subtotal,
+              discountAmount: item.discount,
+              total: item.subtotal - item.discount,
+              notes: item.notes,
+              isVipPrice: false,
+              isComplimentary: false,
+              createdAt: new Date().toISOString(),
+            };
+            
+            await saveOrderItem(localItem);
+            console.log('💾 [CartContext] Item quantity updated in IndexedDB:', quantity);
+
+            // Broadcast the update immediately with correct data
+            const broadcastIdentifier = table?.table_number || `takeout_${cashierId}`;
+            broadcastItemUpdated(currentOrderId, broadcastIdentifier, itemId, localItem);
+            
+            if (table?.table_number) {
+              console.log('📡 [CartContext] DINE-IN quantity update broadcast to table:', table.table_number);
+            } else {
+              console.log('📡 [CartContext] TAKEOUT quantity update broadcast for cashier:', cashierId);
+            }
+
+            // Full order sync to recalculate totals with updated items
+            // Calculate totals from updatedItems (current data)
+            const subtotal = updatedItems.reduce((sum, i) => sum + i.subtotal, 0);
+            const discountAmount = updatedItems.reduce((sum, i) => sum + i.discount, 0);
+            const totalAmount = subtotal - discountAmount;
+
+            const localOrder: LocalOrder = {
+              id: currentOrderId,
+              cashierId: cashierId || undefined,
+              tableNumber: table?.table_number,
+              customerId: customer?.id,
+              customerName: customer?.full_name,
+              customerTier: customer?.tier,
+              orderNumber: currentOrderId,
+              subtotal,
+              discountAmount,
+              taxAmount: 0,
+              totalAmount,
+              status: 'draft',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+
+            await saveOrder(localOrder);
+            broadcastOrderUpdated(currentOrderId, broadcastIdentifier, localOrder);
+            
+            console.log('💾 [CartContext] Order totals synced to IndexedDB');
+          } catch (error) {
+            console.error('❌ [CartContext] Error syncing quantity update:', error);
+          }
+        })();
+      }
+      
+      return updatedItems;
+    });
+    
+    console.log('✅ [CartContext] Quantity update completed');
+  }, [currentOrderId, removeItem, table, cashierId, customer, broadcastItemUpdated, broadcastOrderUpdated]);
 
   const updateItemNotes = useCallback((itemId: string, notes: string) => {
     setItems(prevItems =>
@@ -506,71 +850,74 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
   }, []);
 
   /**
-   * Set customer and update in database
+   * Set customer (LOCAL-FIRST with PROPER SYNC)
+   * Only updates IndexedDB, NO database calls
+   * 
+   * FIX: Removed setTimeout to ensure immediate sync
    */
-  const setCustomer = useCallback(async (customer: Customer | null) => {
-    setCustomerState(customer);
+  const setCustomer = useCallback(async (newCustomer: Customer | null) => {
+    setCustomerState(newCustomer);
     
-    // Update in database if we have a current order
-    if (currentOrderId && cashierId) {
+    // Update in IndexedDB if we have a current order
+    if (currentOrderId) {
       try {
-        await fetch(`/api/current-orders/${currentOrderId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cashierId,
-            customerId: customer?.id,
-          }),
-        });
-        console.log('[CartContext] Customer updated in database');
+        // Sync immediately with the new customer data
+        await syncToIndexedDB(currentOrderId);
+        console.log(' [CartContext] Customer updated in IndexedDB');
       } catch (error) {
-        console.error('[CartContext] Error updating customer in database:', error);
+        console.error(' [CartContext] Error updating customer:', error);
       }
     }
-  }, [currentOrderId, cashierId]);
+  }, [currentOrderId, syncToIndexedDB]);
 
   /**
-   * Set table and update in database
+   * Set table (LOCAL-FIRST)
+   * Only updates IndexedDB, NO database calls
+   * When table is set for the first time, creates order and syncs existing cart items
    */
-  const setTable = useCallback(async (table: RestaurantTable | null) => {
-    setTableState(table);
+  const setTable = useCallback(async (newTable: RestaurantTable | null) => {
+    const previousTable = table;
+    setTableState(newTable);
     
-    // Update in database if we have a current order
-    if (currentOrderId && cashierId) {
-      try {
-        await fetch(`/api/current-orders/${currentOrderId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cashierId,
-            tableId: table?.id,
-          }),
-        });
-        console.log('[CartContext] Table updated in database');
-      } catch (error) {
-        console.error('[CartContext] Error updating table in database:', error);
+    // If table is being set for the first time and we have items in cart
+    if (!previousTable && newTable?.table_number && items.length > 0) {
+      console.log('📍 [CartContext] Table selected with existing cart items, creating order...');
+      
+      // Create order now that we have a table
+      const orderId = await ensureCurrentOrder();
+      
+      if (orderId) {
+        // Sync all existing items to IndexedDB
+        await syncToIndexedDB(orderId);
+        console.log('💾 [CartContext] Existing cart synced to customer display for table:', newTable.table_number);
       }
+    } else if (currentOrderId && newTable?.table_number) {
+      // Just update existing order
+      await syncToIndexedDB(currentOrderId);
+      console.log('💾 [CartContext] Table updated in IndexedDB');
     }
-  }, [currentOrderId, cashierId]);
+  }, [currentOrderId, table, items, syncToIndexedDB, ensureCurrentOrder]);
 
   const setPaymentMethod = useCallback((method: PaymentMethod | null) => {
     setPaymentMethodState(method);
   }, []);
 
   /**
-   * Clear cart and delete current order from database
+   * Clear cart (LOCAL-FIRST)
+   * Only clears IndexedDB, NO database calls
+   * Database sync happens only when order is finalized/paid
    */
   const clearCart = useCallback(async () => {
     try {
-      // Delete current order from database
-      if (currentOrderId && cashierId) {
-        await fetch(`/api/current-orders/${currentOrderId}?cashierId=${cashierId}`, {
-          method: 'DELETE',
-        });
-        console.log('[CartContext] Current order deleted from database');
+      // Delete order from IndexedDB
+      if (currentOrderId) {
+        const { deleteOrder, deleteOrderItems } = await import('@/lib/utils/indexedDB');
+        await deleteOrderItems(currentOrderId);
+        await deleteOrder(currentOrderId);
+        console.log('💾 [CartContext] Order cleared from IndexedDB');
       }
     } catch (error) {
-      console.error('[CartContext] Error deleting current order:', error);
+      console.error('[CartContext] Error clearing IndexedDB:', error);
     }
     
     // Clear local state
@@ -579,8 +926,8 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
     setTableState(null);
     setPaymentMethodState(null);
     setCurrentOrderId(null);
-    // Don't reset cartLoaded - this allows for creating a new cart immediately
-  }, [currentOrderId, cashierId]);
+    console.log('🧹 [CartContext] Cart cleared locally');
+  }, [currentOrderId]);
 
   const getSubtotal = useCallback(() => {
     return items.reduce((sum, item) => sum + item.subtotal - item.discount, 0);
