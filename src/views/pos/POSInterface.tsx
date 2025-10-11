@@ -7,6 +7,7 @@ import { Customer } from '@/models/entities/Customer';
 import { RestaurantTable } from '@/models/entities/Table';
 import { useCart } from '@/lib/contexts/CartContext';
 import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
+import { useLocalOrder } from '@/lib/hooks/useLocalOrder';
 import { Card } from '../shared/ui/card';
 import { Button } from '../shared/ui/button';
 import { Search, Package as PackageIcon, Grid as GridIcon, CheckCircle2 } from 'lucide-react';
@@ -63,6 +64,7 @@ export function POSInterface() {
   // Context hooks
   const cart = useCart();
   const stockTracker = useStockTracker();
+  const { markOrderAsPaid } = useLocalOrder();
   
   // Show loading message if cart items were restored
   useEffect(() => {
@@ -371,16 +373,15 @@ export function POSInterface() {
 
   /**
    * Handle payment completion
-   * Marks the order as completed, fetches order details, and displays receipt for printing
-   */
-  /**
-   * Handle payment completion
+   * Called after successful payment processing
    * If previewReceipt is true → show receipt dialog for manual print.
    * If previewReceipt is false (default) → auto-print via receipt API (HTML) without showing dialog.
+   * 
+   * NEW: Also marks order as paid in IndexedDB to clear customer display
    */
   const handlePaymentComplete = async (orderId: string, options?: { previewReceipt?: boolean }) => {
     try {
-      // Mark order as completed
+      // Mark order as completed in database
       const response = await fetch(`/api/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -389,6 +390,19 @@ export function POSInterface() {
 
       if (!response.ok) {
         throw new Error('Failed to complete order');
+      }
+
+      // IMPORTANT: Mark order as paid in IndexedDB
+      // This will automatically clear the customer display
+      if (cart.currentOrderId) {
+        try {
+          await markOrderAsPaid(cart.currentOrderId);
+          console.log('💰 [POSInterface] Order marked as PAID in IndexedDB');
+          console.log('🧹 [POSInterface] Customer display will clear automatically');
+        } catch (err) {
+          console.error('⚠️ [POSInterface] Failed to mark order as paid in IndexedDB:', err);
+          // Don't block the flow, order is still completed in database
+        }
       }
 
       const wantsPreview = options?.previewReceipt === true;

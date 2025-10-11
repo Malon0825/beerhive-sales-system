@@ -22,7 +22,8 @@ const ORDER_ITEMS_STORE = 'order_items';
  */
 export interface LocalOrder {
   id: string;
-  tableNumber: string;
+  cashierId?: string; // NEW: Track which cashier/manager/admin created the order
+  tableNumber?: string; // UPDATED: Optional for takeout orders
   customerId?: string;
   customerName?: string;
   customerTier?: string;
@@ -31,7 +32,7 @@ export interface LocalOrder {
   discountAmount: number;
   taxAmount: number;
   totalAmount: number;
-  status: 'draft' | 'confirmed';
+  status: 'draft' | 'confirmed' | 'paid'; // NEW: Added 'paid' status for completed orders
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +43,8 @@ export interface LocalOrder {
 export interface LocalOrderItem {
   id: string;
   orderId: string;
+  productId?: string;  // Actual product ID from database
+  packageId?: string;  // Actual package ID from database
   itemName: string;
   quantity: number;
   unitPrice: number;
