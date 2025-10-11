@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useLocalOrder } from '@/lib/hooks/useLocalOrder';
 import { LoadingSpinner } from '@/views/shared/feedback/LoadingSpinner';
-import { Maximize2, Minimize2, Check, CheckCircle2, PartyPopper } from 'lucide-react';
+import { Check, CheckCircle2, PartyPopper } from 'lucide-react';
 
 interface CurrentOrderMonitorProps {
   tableNumber?: string;
@@ -19,13 +19,12 @@ interface CurrentOrderMonitorProps {
  * 
  * Features:
  * - Clean, minimal design focused on readability
- * - Fullscreen mode for better visibility
  * - Large fonts and clear visual hierarchy
  * - Real-time updates (<10ms via BroadcastChannel)
  * - Mobile-responsive layout
  * - Smooth animations and transitions
- * - NEW: Item addition animations with slide-in effect
- * - NEW: Payment completion celebration animation
+ * - Item addition animations with slide-in effect
+ * - Payment completion celebration animation
  * 
  * Architecture:
  * - Uses IndexedDB for local storage (no network latency)
@@ -33,13 +32,12 @@ interface CurrentOrderMonitorProps {
  * - Updates in <10ms instead of 200-500ms
  * - Works offline - perfect for local network POS systems
  * 
- * NEW: Supports both dine-in (tableNumber) and takeout (cashierId) orders
+ * Supports both dine-in (tableNumber) and takeout (cashierId) orders
  */
 export function CurrentOrderMonitor({
   tableNumber,
   cashierId,
 }: CurrentOrderMonitorProps) {
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [showUpdatePing, setShowUpdatePing] = useState(false);
   const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
@@ -114,31 +112,6 @@ export function CurrentOrderMonitor({
       return () => clearTimeout(timer);
     }
   }, [order]);
-
-  /**
-   * Toggle fullscreen mode
-   */
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
-  };
-
-  /**
-   * Handle fullscreen change events
-   */
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
 
   /**
    * Format currency for display
@@ -233,16 +206,7 @@ export function CurrentOrderMonitor({
   return (
     <>
       <div className="h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
-        {/* Fullscreen Toggle Button */}
-        <button
-        onClick={toggleFullscreen}
-        className="fixed top-4 right-4 z-50 bg-slate-700/50 hover:bg-slate-700 backdrop-blur-sm text-white p-3 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
-        title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-      >
-        {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-      </button>
-
-      {/* Update Indicator */}
+        {/* Update Indicator */}
       {showUpdatePing && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-fade-in">
           <div className="bg-emerald-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2">
