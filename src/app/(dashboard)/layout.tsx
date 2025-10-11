@@ -1,18 +1,18 @@
 'use client';
 
 import { useAuth } from '@/lib/hooks/useAuth';
-import { DashboardLayout as Layout } from '@/views/shared/layouts/DashboardLayout';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, Suspense } from 'react';
+import { DashboardLayoutWrapper } from '@/components/layouts/DashboardLayoutWrapper';
 
 /**
  * Dashboard Layout
  * Wraps all dashboard routes with authentication and layout
  * 
- * FULLSCREEN MODE:
- * - Detects ?fullscreen=true URL parameter
- * - Bypasses DashboardLayout (no sidebar/header) when in fullscreen mode
- * - Perfect for customer-facing displays
+ * Features:
+ * - Authentication check and redirect
+ * - Fullscreen mode support via URL parameter
+ * - Suspense boundary for useSearchParams compliance
  */
 export default function DashboardLayout({
   children,
@@ -21,18 +21,17 @@ export default function DashboardLayout({
 }) {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  
-  // Check if fullscreen mode is enabled via URL parameter
-  const isFullscreen = searchParams.get('fullscreen') === 'true';
 
-  // Redirect to login if not authenticated
+  /**
+   * Redirect to login if not authenticated
+   */
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       router.push('/login');
     }
   }, [isAuthenticated, loading, router]);
 
+  // Show loading state while checking authentication
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -44,16 +43,28 @@ export default function DashboardLayout({
     );
   }
 
+  // Don't render anything if not authenticated (will redirect)
   if (!isAuthenticated) {
     return null;
   }
 
-  // Fullscreen mode - bypass DashboardLayout wrapper
-  // Renders only the page content without sidebar/header
-  if (isFullscreen) {
-    return <>{children}</>;
-  }
-
-  // Normal mode - include DashboardLayout with sidebar and header
-  return <Layout user={user}>{children}</Layout>;
+  /**
+   * Wrap DashboardLayoutWrapper in Suspense to support useSearchParams
+   * This is required by Next.js for static rendering compatibility
+   * Fallback shows loading state during initial parameter read
+   */
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="text-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-amber-500 border-t-transparent"></div>
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <DashboardLayoutWrapper user={user}>{children}</DashboardLayoutWrapper>
+    </Suspense>
+  );
 }
