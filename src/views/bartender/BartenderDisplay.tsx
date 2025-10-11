@@ -6,7 +6,8 @@ import { KitchenOrderStatus } from '@/models/enums/KitchenOrderStatus';
 import { KitchenOrderWithRelations } from '@/models/types/KitchenOrderWithRelations';
 import { OrderCard } from '../kitchen/OrderCard';
 import { useToast } from '@/lib/hooks/useToast';
-import { Clock } from 'lucide-react';
+import { useStationNotification } from '@/lib/hooks/useStationNotification';
+import { Clock, Volume2, VolumeX } from 'lucide-react';
 
 /**
  * BartenderDisplay Component
@@ -27,6 +28,12 @@ export function BartenderDisplay() {
   const [filter, setFilter] = useState<'all' | KitchenOrderStatus>('all');
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  // Station notification hook for sound and vibration
+  const { playNotification, showBrowserNotification, isMuted, toggleMute } = useStationNotification({
+    soundFile: '/sounds/notification.mp3',
+    vibrationPattern: [250, 100, 250], // Slightly different pattern for bartender
+  });
 
   /**
    * Fetch bartender orders from API
@@ -107,6 +114,16 @@ export function BartenderDisplay() {
           
           // Show notification for new orders
           if (payload.eventType === 'INSERT') {
+            // Play sound and vibration for new beverage order
+            playNotification('newOrder');
+            
+            // Show browser notification (works even when tab is not focused)
+            await showBrowserNotification(
+              'New Beverage Order! 🍹',
+              'A new drink order has been received at the bartender station'
+            );
+            
+            // Show toast notification
             toast({ 
               title: 'New Order!', 
               description: 'New beverage order received' 
@@ -197,16 +214,29 @@ export function BartenderDisplay() {
                 })}
               </p>
             </div>
-            <button
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="bg-purple-600 text-white px-3 py-2 rounded hover:bg-purple-700 transition disabled:opacity-50 flex items-center gap-1"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-              </svg>
-              <span className="text-sm">Refresh</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleMute}
+                className="bg-gray-200 text-gray-700 px-2 py-2 rounded hover:bg-gray-300 transition flex items-center"
+                title={isMuted ? 'Unmute notifications' : 'Mute notifications'}
+              >
+                {isMuted ? (
+                  <VolumeX className="h-4 w-4" />
+                ) : (
+                  <Volume2 className="h-4 w-4" />
+                )}
+              </button>
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="bg-purple-600 text-white px-3 py-2 rounded hover:bg-purple-700 transition disabled:opacity-50 flex items-center gap-1"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                </svg>
+                <span className="text-sm">Refresh</span>
+              </button>
+            </div>
           </div>
           
           {/* Status Summary - Compact Mobile */}
@@ -258,17 +288,33 @@ export function BartenderDisplay() {
             </div>
           </div>
 
-          {/* Refresh Button */}
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="bg-purple-600 text-white px-3 lg:px-4 py-2 rounded hover:bg-purple-700 transition disabled:opacity-50 flex items-center gap-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 lg:h-5 w-4 lg:w-5 ${isRefreshing ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-            </svg>
-            <span className="text-sm lg:text-base">Refresh</span>
-          </button>
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleMute}
+              className="bg-gray-200 text-gray-700 px-3 py-2 rounded hover:bg-gray-300 transition flex items-center gap-2"
+              title={isMuted ? 'Unmute notifications' : 'Mute notifications'}
+            >
+              {isMuted ? (
+                <VolumeX className="h-4 lg:h-5 w-4 lg:w-5" />
+              ) : (
+                <Volume2 className="h-4 lg:h-5 w-4 lg:w-5" />
+              )}
+              <span className="text-sm lg:text-base hidden lg:inline">
+                {isMuted ? 'Muted' : 'Sound On'}
+              </span>
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="bg-purple-600 text-white px-3 lg:px-4 py-2 rounded hover:bg-purple-700 transition disabled:opacity-50 flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 lg:h-5 w-4 lg:w-5 ${isRefreshing ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+              </svg>
+              <span className="text-sm lg:text-base">Refresh</span>
+            </button>
+          </div>
         </div>
 
         {/* Filter Tabs - Responsive with horizontal scroll */}

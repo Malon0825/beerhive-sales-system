@@ -8,6 +8,7 @@ import { OrderCard } from './OrderCard';
 import { KitchenHeader } from './components/KitchenHeader';
 import { FilterTabs } from './components/FilterTabs';
 import { useToast } from '@/lib/hooks/useToast';
+import { useStationNotification } from '@/lib/hooks/useStationNotification';
 import { Clock } from 'lucide-react';
 
 /**
@@ -29,6 +30,12 @@ export function KitchenDisplay() {
   const [filter, setFilter] = useState<'all' | KitchenOrderStatus>('all');
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  // Station notification hook for sound and vibration
+  const { playNotification, showBrowserNotification, isMuted, toggleMute } = useStationNotification({
+    soundFile: '/sounds/notification.mp3',
+    vibrationPattern: [200, 100, 200], // Short pattern for new orders
+  });
 
   /**
    * Fetch kitchen orders from API
@@ -109,6 +116,16 @@ export function KitchenDisplay() {
           
           // Show notification for new orders
           if (payload.eventType === 'INSERT') {
+            // Play sound and vibration for new order
+            playNotification('newOrder');
+            
+            // Show browser notification (works even when tab is not focused)
+            await showBrowserNotification(
+              'New Kitchen Order! 🍳',
+              'A new order has been received at the kitchen station'
+            );
+            
+            // Show toast notification
             toast({ title: 'New Order', description: 'New order received!' });
           }
         }
@@ -196,6 +213,8 @@ export function KitchenDisplay() {
         readyCount={orderCounts.ready}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
+        isMuted={isMuted}
+        onToggleMute={toggleMute}
       />
 
       {/* Filter Tabs */}

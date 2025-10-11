@@ -5,8 +5,9 @@ import { supabase } from '@/data/supabase/client';
 import { KitchenOrderStatus } from '@/models/enums/KitchenOrderStatus';
 import { KitchenOrderWithRelations } from '@/models/types/KitchenOrderWithRelations';
 import { ReadyOrderCard } from './ReadyOrderCard';
-import { RefreshCw, CheckCircle, Clock } from 'lucide-react';
+import { RefreshCw, CheckCircle, Clock, Volume2, VolumeX } from 'lucide-react';
 import { useToast } from '@/lib/hooks/useToast';
+import { useStationNotification } from '@/lib/hooks/useStationNotification';
 
 /**
  * WaiterDisplay Component
@@ -26,6 +27,12 @@ export function WaiterDisplay() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  // Station notification hook for sound and vibration
+  const { playNotification, showBrowserNotification, isMuted, toggleMute } = useStationNotification({
+    soundFile: '/sounds/notification.mp3',
+    vibrationPattern: [150, 100, 150, 100, 150], // Triple vibration for ready orders
+  });
 
   /**
    * Fetch ready orders from API
@@ -122,6 +129,16 @@ export function WaiterDisplay() {
           
           // Show notification for newly ready orders
           if (payload.eventType === 'UPDATE' && payload.new?.status === 'ready') {
+            // Play sound and vibration for ready order
+            playNotification('ready');
+            
+            // Show browser notification (works even when tab is not focused)
+            await showBrowserNotification(
+              'Order Ready for Delivery! ✅',
+              'A new order is ready to be served to the customer'
+            );
+            
+            // Show toast notification
             toast({ 
               title: 'Order Ready!', 
               description: 'New order ready for delivery' 
@@ -205,14 +222,27 @@ export function WaiterDisplay() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-1"
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span className="text-sm">Refresh</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleMute}
+                className="bg-gray-200 text-gray-700 px-2 py-2 rounded hover:bg-gray-300 transition flex items-center"
+                title={isMuted ? 'Unmute notifications' : 'Mute notifications'}
+              >
+                {isMuted ? (
+                  <VolumeX className="h-4 w-4" />
+                ) : (
+                  <Volume2 className="h-4 w-4" />
+                )}
+              </button>
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-1"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span className="text-sm">Refresh</span>
+              </button>
+            </div>
           </div>
           
           {/* Summary - Compact Mobile */}
@@ -263,15 +293,31 @@ export function WaiterDisplay() {
             </div>
           </div>
 
-          {/* Refresh Button */}
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="bg-green-600 text-white px-3 lg:px-4 py-2 rounded hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-2"
-          >
-            <RefreshCw className={`h-4 lg:h-5 w-4 lg:w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span className="text-sm lg:text-base">Refresh</span>
-          </button>
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleMute}
+              className="bg-gray-200 text-gray-700 px-3 py-2 rounded hover:bg-gray-300 transition flex items-center gap-2"
+              title={isMuted ? 'Unmute notifications' : 'Mute notifications'}
+            >
+              {isMuted ? (
+                <VolumeX className="h-4 lg:h-5 w-4 lg:w-5" />
+              ) : (
+                <Volume2 className="h-4 lg:h-5 w-4 lg:w-5" />
+              )}
+              <span className="text-sm lg:text-base hidden lg:inline">
+                {isMuted ? 'Muted' : 'Sound On'}
+              </span>
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="bg-green-600 text-white px-3 lg:px-4 py-2 rounded hover:bg-green-700 transition disabled:opacity-50 flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 lg:h-5 w-4 lg:w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="text-sm lg:text-base">Refresh</span>
+            </button>
+          </div>
         </div>
       </div>
 
