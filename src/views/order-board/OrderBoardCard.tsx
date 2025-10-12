@@ -8,11 +8,13 @@ import { formatCurrency } from '@/core/utils/formatters/currency';
 import { formatDate } from '@/core/utils/formatters/date';
 import { Clock, User, Table as TableIcon, DollarSign, RotateCcw } from 'lucide-react';
 import ReturnOrderDialog from './ReturnOrderDialog';
+import { PrintReceiptButton } from '@/views/pos/PrintReceiptButton';
 
 /**
  * OrderBoardCard Component
  * Displays individual order information on the order board
  * Shows order details including items, customer, table, and total amount
+ * Supports printing a receipt for standalone orders using the existing receipt API
  */
 
 interface OrderItem {
@@ -154,6 +156,16 @@ export default function OrderBoardCard({ order, onOrderUpdated }: OrderBoardCard
         <p className="text-2xl font-bold text-green-600">
           {formatCurrency(order.total_amount)}
         </p>
+      </div>
+
+      {/* Actions */}
+      <div className="mt-4 grid grid-cols-1 gap-2">
+        {/* Print Receipt Button - opens printable receipt in new window and triggers print */}
+        <PrintReceiptButton
+          orderId={order.id}
+          orderNumber={order.order_number}
+          className="w-full"
+        />
       </div>
 
       {/* Return/Void Button for Completed Orders */}
