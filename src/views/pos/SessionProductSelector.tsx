@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/views/shared/ui/card
 import { Input } from '@/views/shared/ui/input';
 import { Button } from '@/views/shared/ui/button';
 import { Badge } from '@/views/shared/ui/badge';
-import { Search, Package, Loader2, Grid as GridIcon } from 'lucide-react';
+import { Search, Package, Loader2, Grid as GridIcon, Star } from 'lucide-react';
 import CategoryFilter from './components/CategoryFilter';
 import { TabProductCard } from './components/TabProductCard';
 import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
@@ -40,6 +40,7 @@ interface Product {
   category_id?: string;
   image_url?: string;
   is_active: boolean;
+  is_featured?: boolean;
   category?: {
     name: string;
     color_code?: string;
@@ -80,7 +81,8 @@ export default function SessionProductSelector({
   const [packagesLoading, setPackagesLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<'all' | 'packages'>('all');
+  const [activeView, setActiveView] = useState<'all' | 'featured' | 'packages'>('all');
+  const [topSellingMap, setTopSellingMap] = useState<Record<string, number>>({});
   
   // Access stock tracker context
   const stockTracker = useStockTracker();
@@ -91,6 +93,7 @@ export default function SessionProductSelector({
   useEffect(() => {
     fetchProducts();
     fetchPackages();
+    fetchTopSelling();
   }, []);
 
   /**
@@ -115,6 +118,25 @@ export default function SessionProductSelector({
       console.error('❌ [SessionProductSelector] Error fetching products:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTopSelling = async () => {
+    try {
+      const response = await fetch('/api/reports/sales?type=top-products&period=month&limit=500');
+      const result = await response.json();
+      if (result?.success && Array.isArray(result.data)) {
+        const map: Record<string, number> = {};
+        for (const item of result.data) {
+          const id = item.product_id || item.id;
+          if (!id) continue;
+          const qty = Number(item.total_quantity ?? item.total_quantity_sold ?? 0);
+          map[id] = qty;
+        }
+        setTopSellingMap(map);
+      }
+    } catch (error) {
+      console.error('Error fetching top products:', error);
     }
   };
 
@@ -177,7 +199,7 @@ export default function SessionProductSelector({
    * Filter products by search query, category, and stock availability
    */
   const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
+    const list = products.filter((product) => {
       const matchesSearch =
         searchQuery === '' ||
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -190,7 +212,55 @@ export default function SessionProductSelector({
 
       return matchesSearch && matchesCategory && isAvailable;
     });
-  }, [products, searchQuery, selectedCategory, stockTracker]);
+
+    return list.sort((a, b) => {
+      const qa = topSellingMap[a.id] || 0;
+      const qb = topSellingMap[b.id] || 0;
+      if (qa !== qb) return qb - qa;
+      return a.name.localeCompare(b.name);
+    });
+  }, [products, searchQuery, selectedCategory, stockTracker, topSellingMap]);
+
+  /**
+   * Featured products for the 'Featured' view
+   */
+  const filteredFeaturedProducts = useMemo(() => {
+    const list = products.filter((product) => {
+      const isFeatured = !!product.is_featured;
+      if (!isFeatured) return false;
+
+      const matchesSearch =
+        searchQuery === '' ||
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.sku.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const isAvailable = isProductAvailable(product);
+      return matchesSearch && isAvailable;
+    });
+
+    return list.sort((a, b) => {
+      const qa = topSellingMap[a.id] || 0;
+      const qb = topSellingMap[b.id] || 0;
+      if (qa !== qb) return qb - qa;
+      return a.name.localeCompare(b.name);
+    });
+  }, [products, searchQuery, stockTracker, topSellingMap]);
+
+  /**
+   * Filter packages by search query (used in the 'All Products' view to include packages in search results)
+   */
+  const filteredPackagesForAll = useMemo(() => {
+    // Only surface packages in the combined view when a search is active
+    if (!searchQuery) return [] as Package[];
+
+    const q = searchQuery.toLowerCase();
+    return packages.filter((pkg) => {
+      if (!pkg.is_active) return false;
+      const matchesName = pkg.name.toLowerCase().includes(q);
+      const matchesDesc = (pkg.description || '').toLowerCase().includes(q);
+      return matchesName || matchesDesc;
+    });
+  }, [packages, searchQuery]);
 
   /**
    * Calculate product count per category for display
@@ -227,6 +297,7 @@ export default function SessionProductSelector({
     
     // Pass to parent handler
     onProductSelect(product, price);
+    setSearchQuery('');
   };
 
   /**
@@ -252,6 +323,7 @@ export default function SessionProductSelector({
     
     console.log('📦 [SessionProductSelector] Package selected:', pkg.name);
     onPackageSelect(pkg, price);
+    setSearchQuery('');
   };
 
   /**
@@ -285,7 +357,8 @@ export default function SessionProductSelector({
       </CardHeader>
       
       <CardContent className="flex-1 overflow-hidden flex flex-col p-4 space-y-4 min-h-0">
-        {/* View Switcher */}
+        {/* View Switcher */
+        }
         <div className="flex gap-2 flex-shrink-0">
           <Button
             variant={activeView === 'all' ? 'default' : 'outline'}
@@ -295,6 +368,15 @@ export default function SessionProductSelector({
           >
             <GridIcon className="w-4 h-4 mr-2" />
             All Products
+          </Button>
+          <Button
+            variant={activeView === 'featured' ? 'default' : 'outline'}
+            onClick={() => setActiveView('featured')}
+            size="sm"
+            className={activeView === 'featured' ? 'bg-yellow-600 hover:bg-yellow-700' : ''}
+          >
+            <Star className="w-4 h-4 mr-2" />
+            Featured
           </Button>
           <Button
             variant={activeView === 'packages' ? 'default' : 'outline'}
@@ -311,15 +393,15 @@ export default function SessionProductSelector({
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <Input
             type="text"
-            placeholder="Search products by name or SKU..."
+            placeholder="Search products or packages by name or SKU..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 text-base"
           />
         </div>
 
-        {/* Category Filter - Only show for product views */}
-        {activeView !== 'packages' && (
+        {/* Category Filter - Only show for 'All Products' view */}
+        {activeView === 'all' && (
           <div className="flex-shrink-0">
             <CategoryFilter
               selectedCategoryId={selectedCategory}
@@ -335,15 +417,103 @@ export default function SessionProductSelector({
           {/* Products View */}
           {activeView === 'all' && (
             <>
-              {filteredProducts.length === 0 ? (
+              {filteredProducts.length === 0 && filteredPackagesForAll.length === 0 ? (
                 <div className="text-center py-16 text-gray-400">
                   <GridIcon className="h-20 w-20 mx-auto mb-4 opacity-30" />
-                  <p className="text-lg font-medium">No products found</p>
+                  <p className="text-lg font-medium">No results found</p>
                   <p className="text-sm mt-2">Try adjusting your search or filters</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 pb-6">
+                  {/* Render package matches (only when searching) */}
+                  {filteredPackagesForAll.map((pkg) => {
+                    const isVIPOnly = pkg.package_type === 'vip_only';
+                    const customerIsVIP = isVIPCustomer();
+                    const canPurchase = !isVIPOnly || customerIsVIP;
+                    const price = customerIsVIP && pkg.vip_price ? pkg.vip_price : pkg.base_price;
+
+                    return (
+                      <Card
+                        key={`pkg-${pkg.id}`}
+                        className={`p-4 border-2 transition-all ${
+                          canPurchase
+                            ? 'cursor-pointer hover:shadow-lg hover:border-amber-400'
+                            : 'opacity-60 cursor-not-allowed'
+                        }`}
+                        onClick={() => canPurchase && handlePackageClick(pkg)}
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <h3 className="font-bold text-base mb-1">{pkg.name}</h3>
+                            <div className="flex gap-1 mt-1">
+                              <Badge className="bg-amber-500 text-white text-xs">PKG</Badge>
+                              {pkg.package_type === 'vip_only' && (
+                                <Badge className="bg-purple-600 text-white text-xs">VIP Only</Badge>
+                              )}
+                              {pkg.package_type === 'promotional' && (
+                                <Badge className="bg-orange-600 text-white text-xs">Promo</Badge>
+                              )}
+                            </div>
+                          </div>
+                          <Package className="w-6 h-6 text-amber-600" />
+                        </div>
+
+                        {pkg.description && (
+                          <p className="text-sm text-gray-600 mb-3">{pkg.description}</p>
+                        )}
+
+                        <div className="flex items-center justify-between pt-3 border-t">
+                          <div>
+                            {customerIsVIP && pkg.vip_price && pkg.vip_price < pkg.base_price ? (
+                              <div>
+                                <div className="text-lg font-bold text-purple-600">
+                                  {formatCurrency(price)}
+                                </div>
+                                <div className="text-xs text-gray-400 line-through">
+                                  {formatCurrency(pkg.base_price)}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-lg font-bold text-amber-600">
+                                {formatCurrency(price)}
+                              </div>
+                            )}
+                          </div>
+                          {!canPurchase && (
+                            <Badge className="bg-gray-600 text-white text-xs">VIP Required</Badge>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })}
+
+                  {/* Render product matches */}
                   {filteredProducts.map((product) => (
+                    <TabProductCard
+                      key={product.id}
+                      product={product}
+                      displayStock={stockTracker.getCurrentStock(product.id)}
+                      customerTier={customerTier}
+                      onClick={handleProductClick}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Featured Products View */}
+          {activeView === 'featured' && (
+            <>
+              {filteredFeaturedProducts.length === 0 ? (
+                <div className="text-center py-16 text-gray-400">
+                  <Star className="h-20 w-20 mx-auto mb-4 opacity-30" />
+                  <p className="text-lg font-medium">No featured products</p>
+                  <p className="text-sm mt-2">Mark products as featured in product settings</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 pb-6">
+                  {filteredFeaturedProducts.map((product) => (
                     <TabProductCard
                       key={product.id}
                       product={product}

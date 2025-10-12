@@ -7,6 +7,7 @@ import SessionBoardCard from './SessionBoardCard';
 import { Button } from '@/views/shared/ui/button';
 import { RefreshCw, Filter, Layers, FileText } from 'lucide-react';
 import { LoadingSpinner } from '@/views/shared/feedback/LoadingSpinner';
+import { DateRangeFilter, DatePeriod } from '@/views/reports/DateRangeFilter';
 
 /**
  * OrderBoard Component
@@ -59,6 +60,9 @@ export default function OrderBoard() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [dateStart, setDateStart] = useState<string | null>(null);
+  const [dateEnd, setDateEnd] = useState<string | null>(null);
+  const [datePeriod, setDatePeriod] = useState<DatePeriod>('week');
 
   /**
    * Fetch all orders and sessions from the API
@@ -128,20 +132,46 @@ export default function OrderBoard() {
   }, [fetchOrders]);
 
   /**
+   * Check if a timestamp falls within the selected date range (inclusive)
+   */
+  const isWithinDateRange = (isoDate: string): boolean => {
+    if (!dateStart || !dateEnd) return true;
+    const ts = new Date(isoDate).getTime();
+    const startTs = new Date(dateStart).getTime();
+    const endTs = new Date(dateEnd).getTime();
+    return ts >= startTs && ts <= endTs;
+  };
+
+  /**
+   * Handle date range change from the DateRangeFilter component
+   */
+  const handleDateRangeChange = (start: string, end: string, period: DatePeriod) => {
+    setDateStart(start);
+    setDateEnd(end);
+    setDatePeriod(period);
+  };
+
+  /**
    * Filter sessions based on order status
    */
   const filteredSessions = sessions.filter((session) => {
-    if (filterStatus === 'all') return true;
-    // Session matches if any of its orders match the filter
-    return session.orders.some(order => order.status === filterStatus);
+    // Apply status filter (session matches if any order matches the status)
+    const statusOk =
+      filterStatus === 'all' || session.orders.some((order) => order.status === filterStatus);
+
+    // Apply date range filter (session matches if any order is within range)
+    const dateOk = session.orders.some((order) => isWithinDateRange(order.created_at));
+
+    return statusOk && dateOk;
   });
 
   /**
    * Filter standalone orders based on selected status
    */
   const filteredStandaloneOrders = standaloneOrders.filter((order) => {
-    if (filterStatus === 'all') return true;
-    return order.status === filterStatus;
+    const statusOk = filterStatus === 'all' || order.status === filterStatus;
+    const dateOk = isWithinDateRange(order.created_at);
+    return statusOk && dateOk;
   });
 
   /**
@@ -152,7 +182,10 @@ export default function OrderBoard() {
   /**
    * Get count for each status across all orders (session + standalone)
    */
-  const allOrders = [...allSessionOrders, ...standaloneOrders];
+  // Apply date range to aggregated counts to reflect current filter
+  const allOrders = [...allSessionOrders, ...standaloneOrders].filter((o) =>
+    isWithinDateRange(o.created_at)
+  );
   const statusCounts = {
     all: allOrders.length,
     pending: allOrders.filter(o => o.status === 'pending').length,
@@ -184,22 +217,30 @@ export default function OrderBoard() {
 
       {/* Filters */}
       <div className="mb-6">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">Filter:</span>
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+          {/* Status filter buttons */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-gray-500" />
+              <span className="text-sm font-medium text-gray-700">Status:</span>
+            </div>
+            <div className="flex gap-2">
+              {(['all', 'pending', 'completed', 'voided'] as FilterStatus[]).map((status) => (
+                <Button
+                  key={status}
+                  variant={filterStatus === status ? 'default' : 'outline'}
+                  onClick={() => setFilterStatus(status)}
+                  className="capitalize"
+                >
+                  {status} ({statusCounts[status]})
+                </Button>
+              ))}
+            </div>
           </div>
-          <div className="flex gap-2">
-            {(['all', 'pending', 'completed', 'voided'] as FilterStatus[]).map((status) => (
-              <Button
-                key={status}
-                variant={filterStatus === status ? 'default' : 'outline'}
-                onClick={() => setFilterStatus(status)}
-                className="capitalize"
-              >
-                {status} ({statusCounts[status]})
-              </Button>
-            ))}
+
+          {/* Date range filter */}
+          <div className="flex-1">
+            <DateRangeFilter onDateRangeChange={handleDateRangeChange} defaultPeriod={datePeriod} />
           </div>
         </div>
       </div>
@@ -208,7 +249,7 @@ export default function OrderBoard() {
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
           <p className="text-sm text-purple-600 font-medium">Tab Sessions</p>
-          <p className="text-3xl font-bold text-purple-700">{sessions.length}</p>
+          <p className="text-3xl font-bold text-purple-700">{filteredSessions.length}</p>
         </div>
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-sm text-blue-600 font-medium">Total Orders</p>

@@ -111,15 +111,21 @@ export class OrderSessionService {
         throw new AppError('Session not found', 404);
       }
 
-      if (session.status !== SessionStatus.OPEN) {
+      // Allow bill preview for OPEN sessions and CLOSED sessions (for reprinting)
+      // Block only states that should never expose a bill (e.g., ABANDONED)
+      if (session.status !== SessionStatus.OPEN && session.status !== SessionStatus.CLOSED) {
         throw new AppError('Session is not open', 400);
       }
 
       // Calculate duration
+      // When CLOSED, use closed_at as the end time for accurate duration on reprints
       const openedAt = new Date(session.opened_at);
-      const now = new Date();
-      const durationMs = now.getTime() - openedAt.getTime();
-      const durationMinutes = Math.floor(durationMs / 60000);
+      const endTime =
+        session.status === SessionStatus.CLOSED && session.closed_at
+          ? new Date(session.closed_at)
+          : new Date();
+      const durationMs = endTime.getTime() - openedAt.getTime();
+      const durationMinutes = Math.max(0, Math.floor(durationMs / 60000));
 
       // Get all orders in the session
       const orders = session.orders || [];
