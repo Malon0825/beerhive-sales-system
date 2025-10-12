@@ -166,6 +166,13 @@ export default function TabManagementDashboard() {
   };
 
   /**
+   * Quick toggle derived state
+   * Controls button active styles and ARIA pressed state
+   */
+  const isActiveQuick = statusFilter === 'with_tab';
+  const isVacantQuick = statusFilter === 'without_tab';
+
+  /**
    * Handle open tab
    */
   const handleOpenTab = (tableId: string) => {
@@ -255,14 +262,36 @@ export default function TabManagementDashboard() {
             Manage all tables and customer tabs in one place
           </p>
         </div>
-        <Button
-          onClick={fetchAllData}
-          variant="outline"
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </Button>
+        {/* Quick Toggle for Active vs Vacant tables (cashier-friendly) */}
+        <div className="flex items-center gap-2" role="group" aria-label="Quick table filter">
+          <Button
+            size="sm"
+            variant={isActiveQuick ? 'default' : 'outline'}
+            aria-pressed={isActiveQuick}
+            aria-label="Show tables with active tabs"
+            onClick={() => setStatusFilter(isActiveQuick ? 'all' : 'with_tab')}
+          >
+            Active
+          </Button>
+          <Button
+            size="sm"
+            variant={isVacantQuick ? 'default' : 'outline'}
+            aria-pressed={isVacantQuick}
+            aria-label="Show vacant tables"
+            onClick={() => setStatusFilter(isVacantQuick ? 'all' : 'without_tab')}
+          >
+            Vacant
+          </Button>
+          <Button
+            onClick={fetchAllData}
+            variant="outline"
+            className="flex items-center gap-2"
+            aria-label="Refresh tables and tabs"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Statistics Cards */}

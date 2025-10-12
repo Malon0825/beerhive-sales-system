@@ -60,6 +60,7 @@ export function POSInterface() {
   const [categories, setCategories] = useState<Array<{id: string; name: string; color_code?: string}>>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [cartRestored, setCartRestored] = useState(false);
+  const [topSellingMap, setTopSellingMap] = useState<Record<string, number>>({});
   
   // Context hooks
   const cart = useCart();
@@ -94,6 +95,30 @@ export function POSInterface() {
   }, []);
 
   /**
+   * Fetch top selling products (last 30 days by default via 'month' period)
+   * Used to sort product lists by popularity
+   */
+  const fetchTopSelling = async () => {
+    try {
+      const response = await fetch('/api/reports/sales?type=top-products&period=month&limit=500');
+      const result = await response.json();
+      if (result?.success && Array.isArray(result.data)) {
+        const map: Record<string, number> = {};
+        for (const item of result.data) {
+          const id = item.product_id || item.id;
+          if (!id) continue;
+          const qty = Number(item.total_quantity ?? item.total_quantity_sold ?? 0);
+          map[id] = qty;
+        }
+        setTopSellingMap(map);
+        console.log('📈 [POSInterface] Top-selling map loaded with', Object.keys(map).length, 'items');
+      }
+    } catch (error) {
+      console.error('❌ [POSInterface] Error fetching top products:', error);
+    }
+  };
+
+  /**
    * Fetch products and packages from API on mount only
    * Using refs to prevent duplicate calls during React strict mode double-mounting
    */
@@ -108,6 +133,7 @@ export function POSInterface() {
     fetchProducts();
     fetchPackages();
     fetchCategories();
+    fetchTopSelling();
   }, []);
 
   /**
@@ -234,6 +260,8 @@ export function POSInterface() {
     
     // Add to cart
     cart.addItem(product, 1);
+    // Clear search to speed up subsequent typing
+    setSearchQuery('');
     
     console.log('📦 [POSInterface] Product added with stock reservation:', product.name);
   };
@@ -274,13 +302,15 @@ export function POSInterface() {
       if (!product) continue;
       
       stockTracker.reserveStock(product.id, packageItem.quantity);
-      console.log(`📦 [POSInterface] Reserved ${packageItem.quantity}x ${product.name} for package`);
+      console.log(` [POSInterface] Reserved ${packageItem.quantity}x ${product.name} for package`);
     }
 
     // Add package to cart
     cart.addPackage(pkg);
+    // Clear search to speed up subsequent typing
+    setSearchQuery('');
     
-    console.log('📦 [POSInterface] Package added with all stock reserved:', pkg.name);
+    console.log(' [POSInterface] Package added with all stock reserved:', pkg.name);
   };
 
   /**
@@ -515,8 +545,28 @@ export function POSInterface() {
     // Apply stock availability filter (using realtime stock)
     filtered = filtered.filter(p => isProductAvailable(p));
 
-    return filtered;
-  }, [products, activeView, searchQuery, selectedCategory, stockTracker]);
+    // Sort by popularity (desc), then by name
+    return filtered.sort((a, b) => {
+      const qa = topSellingMap[a.id] || 0;
+      const qb = topSellingMap[b.id] || 0;
+      if (qa !== qb) return qb - qa;
+      return a.name.localeCompare(b.name);
+    });
+  }, [products, activeView, searchQuery, selectedCategory, stockTracker, topSellingMap]);
+
+  /**
+   * Filter packages by search query for inclusion in 'All Products' view
+   */
+  const filteredPackagesForAll = useMemo(() => {
+    if (!searchQuery) return [] as (Package & { items?: any[] })[];
+    const q = searchQuery.toLowerCase();
+    return packages.filter((pkg) => {
+      if (!pkg.is_active) return false;
+      const nameMatch = (pkg.name || '').toLowerCase().includes(q);
+      const descMatch = (pkg.description || '').toLowerCase().includes(q);
+      return nameMatch || descMatch;
+    });
+  }, [packages, searchQuery]);
 
   /**
    * Calculate product count per category for CategoryFilter
@@ -545,7 +595,7 @@ export function POSInterface() {
             <Search className="h-5 w-5 text-gray-400 flex-shrink-0" />
             <Input
               type="text"
-              placeholder="Search products by name or SKU..."
+              placeholder="Search products or packages by name or SKU..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 text-base"
@@ -599,21 +649,64 @@ export function POSInterface() {
 
           {/* Products Grid */}
           <div className="flex-1 overflow-auto p-4">
-            {activeView !== 'packages' && (
+            {activeView !== 'packages' ? (
               <>
                 {loading ? (
                   <div className="text-center py-16 text-gray-500">
                     <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-amber-600 mx-auto mb-4"></div>
                     <p className="text-lg">Loading products...</p>
                   </div>
-                ) : filteredProducts.length === 0 ? (
+                ) : filteredProducts.length === 0 && filteredPackagesForAll.length === 0 ? (
                   <div className="text-center py-16 text-gray-400">
                     <GridIcon className="h-20 w-20 mx-auto mb-4 opacity-30" />
-                    <p className="text-lg font-medium">No products found</p>
+                    <p className="text-lg font-medium">No results found</p>
                     <p className="text-sm mt-2">Try adjusting your search or filters</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                    {/* Package matches (only shown when searching in 'All Products' view) */}
+                    {filteredPackagesForAll.map(pkg => {
+                      const isVIPOnly = pkg.package_type === 'vip_only';
+                      const customerIsVIP = cart.customer && cart.customer.tier !== 'regular';
+                      const canPurchase = !isVIPOnly || !!customerIsVIP;
+                      return (
+                        <Card
+                          key={`pkg-${pkg.id}`}
+                          className={`p-4 transition-all ${
+                            canPurchase ? 'cursor-pointer hover:shadow-lg hover:border-amber-400' : 'opacity-60 cursor-not-allowed'
+                          }`}
+                          onClick={() => canPurchase && handleAddPackage(pkg)}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <h3 className="font-bold text-base mb-1">{pkg.name}</h3>
+                              <div className="flex gap-1 mt-1">
+                                <span className="inline-block px-2 py-1 text-xs font-medium bg-amber-500 text-white rounded">PKG</span>
+                                {pkg.package_type === 'vip_only' && (
+                                  <span className="inline-block px-2 py-1 text-xs font-medium bg-purple-600 text-white rounded">VIP Only</span>
+                                )}
+                                {pkg.package_type === 'promotional' && (
+                                  <span className="inline-block px-2 py-1 text-xs font-medium bg-orange-600 text-white rounded">Promo</span>
+                                )}
+                              </div>
+                            </div>
+                            <PackageIcon className="w-6 h-6 text-amber-600" />
+                          </div>
+                          {pkg.description && (
+                            <p className="text-xs text-gray-600 mb-3 line-clamp-2">{pkg.description}</p>
+                          )}
+                          <div className="border-t pt-3">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium text-gray-700">Price:</span>
+                              <span className="text-lg font-bold text-amber-600">
+                                ₱{(customerIsVIP && pkg.vip_price ? pkg.vip_price : pkg.base_price).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        </Card>
+                      );
+                    })}
+
                     {filteredProducts.map(product => (
                       <ProductCard
                         key={product.id}
@@ -626,10 +719,10 @@ export function POSInterface() {
                   </div>
                 )}
               </>
-            )}
+            ) : null}
 
             {/* Packages View */}
-            {activeView === 'packages' && (
+            {activeView === 'packages' ? (
               <>
                 {packagesLoading ? (
                   <div className="text-center py-16 text-gray-500">
@@ -647,18 +740,14 @@ export function POSInterface() {
                       const isVIPOnly = pkg.package_type === 'vip_only';
                       const customerIsVIP = cart.customer && cart.customer.tier !== 'regular';
                       const canPurchase = !isVIPOnly || customerIsVIP;
-
                       return (
                         <Card
                           key={pkg.id}
                           className={`p-4 transition-all ${
-                            canPurchase 
-                              ? 'cursor-pointer hover:shadow-lg hover:border-amber-400' 
-                              : 'opacity-60 cursor-not-allowed'
+                            canPurchase ? 'cursor-pointer hover:shadow-lg hover:border-amber-400' : 'opacity-60 cursor-not-allowed'
                           }`}
                           onClick={() => canPurchase && handleAddPackage(pkg)}
                         >
-                          {/* Package Header */}
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex-1">
                               <h3 className="font-bold text-base mb-1">{pkg.name}</h3>
@@ -673,28 +762,9 @@ export function POSInterface() {
                             </div>
                             <PackageIcon className="w-6 h-6 text-amber-600" />
                           </div>
-
-                          {/* Package Description */}
                           {pkg.description && (
                             <p className="text-xs text-gray-600 mb-3 line-clamp-2">{pkg.description}</p>
                           )}
-
-                          {/* Package Items */}
-                          <div className="mb-3 space-y-1">
-                            <p className="text-xs font-semibold text-gray-700 mb-1">Includes:</p>
-                            {pkg.items && pkg.items.slice(0, 3).map((item: any, idx: number) => (
-                              <p key={idx} className="text-xs text-gray-600">
-                                • {item.quantity}x {item.product?.name || 'Product'}
-                              </p>
-                            ))}
-                            {pkg.items && pkg.items.length > 3 && (
-                              <p className="text-xs text-gray-500 italic">
-                                +{pkg.items.length - 3} more items
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Package Price */}
                           <div className="border-t pt-3">
                             <div className="flex justify-between items-center">
                               <span className="text-sm font-medium text-gray-700">Price:</span>
@@ -703,27 +773,16 @@ export function POSInterface() {
                               </span>
                             </div>
                             {customerIsVIP && pkg.vip_price && (
-                              <p className="text-xs text-purple-600 text-right mt-1">
-                                VIP Price Applied!
-                              </p>
+                              <p className="text-xs text-purple-600 text-right mt-1">VIP Price Applied!</p>
                             )}
                           </div>
-
-                          {/* Restriction Notice */}
-                          {!canPurchase && (
-                            <div className="mt-2 bg-purple-50 border border-purple-200 rounded p-2">
-                              <p className="text-xs text-purple-800 font-medium">
-                                🔒 VIP Membership Required
-                              </p>
-                            </div>
-                          )}
                         </Card>
                       );
                     })}
                   </div>
                 )}
               </>
-            )}
+            ) : null}
           </div>
         </Card>
       </div>
@@ -747,32 +806,17 @@ export function POSInterface() {
       </div>
 
       {/* Customer Search Dialog */}
-      <CustomerSearch
-        open={showCustomerSearch}
-        onOpenChange={setShowCustomerSearch}
-        onSelectCustomer={handleSelectCustomer}
-      />
+      <CustomerSearch open={showCustomerSearch} onOpenChange={setShowCustomerSearch} onSelectCustomer={handleSelectCustomer} />
 
       {/* Table Selector Dialog */}
-      <TableSelector
-        open={showTableSelector}
-        onOpenChange={setShowTableSelector}
-        onSelectTable={handleSelectTable}
-      />
+      <TableSelector open={showTableSelector} onOpenChange={setShowTableSelector} onSelectTable={handleSelectTable} />
 
       {/* Payment Panel Dialog */}
-      <PaymentPanel
-        open={showPaymentPanel}
-        onOpenChange={setShowPaymentPanel}
-        onPaymentComplete={handlePaymentComplete}
-      />
+      <PaymentPanel open={showPaymentPanel} onOpenChange={setShowPaymentPanel} onPaymentComplete={handlePaymentComplete} />
 
       {/* Sales Receipt Dialog */}
       {showReceipt && receiptData && (
-        <SalesReceipt
-          orderData={receiptData}
-          onClose={handleCloseReceipt}
-        />
+        <SalesReceipt orderData={receiptData} onClose={handleCloseReceipt} />
       )}
 
       {/* Success Message */}
