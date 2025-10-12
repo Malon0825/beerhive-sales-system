@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { UserRole } from '@/models/enums/UserRole';
+import { VersionBadge } from '@/components/shared/VersionBadge';
 
 /**
  * Props for the Sidebar component
@@ -318,11 +319,18 @@ export function Sidebar({
           </button>
         </div>
       )}
-      {/* Copyright footer - hide text when collapsed */}
+      {/* Footer: version + copyright */}
       <div className={cn(
         "border-t",
         isCollapsed ? "p-2 py-3" : "p-4"
       )}>
+        {/* Version shown on sidebar as requested */}
+        <div className={cn(
+          "flex items-center justify-center",
+          isCollapsed ? "mb-1" : "mb-2"
+        )}>
+          <VersionBadge size={isCollapsed ? 'sm' : 'sm'} />
+        </div>
         <p className={cn(
           "text-xs text-muted-foreground",
           isCollapsed ? "text-center" : "text-center"

@@ -9,6 +9,8 @@ import { Button } from '../shared/ui/button';
 import { Input } from '../shared/ui/input';
 import { Label } from '../shared/ui/label';
 import { Card } from '../shared/ui/card';
+import Image from 'next/image';
+import { VersionBadge } from '@/components/shared/VersionBadge';
 
 const loginSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters'),
@@ -21,6 +23,10 @@ interface LoginFormProps {
   onSubmit: (username: string, password: string) => Promise<void>;
 }
 
+/**
+ * LoginForm Component
+ * Renders the login UI and now shows the application version using `VersionBadge`.
+ */
 export function LoginForm({ onSubmit }: LoginFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,16 +58,23 @@ export function LoginForm({ onSubmit }: LoginFormProps) {
         <div className="mb-8 text-center">
           <div className="mb-4 flex justify-center">
             <div className="relative h-24 w-24">
-              <img
+              <Image
                 src="/beerhive-logo.png"
                 alt="BeerHive Logo"
-                className="h-24 w-24 object-contain"
+                width={96}
+                height={96}
+                className="object-contain"
+                priority
+                unoptimized
               />
             </div>
           </div>
           <h1 className="mb-2 text-3xl font-bold text-gray-900">
             BeerHive POS
           </h1>
+          <div className="mb-2 flex justify-center">
+            <VersionBadge />
+          </div>
           <p className="text-gray-600">
             Sign in to access the point of sale system
           </p>

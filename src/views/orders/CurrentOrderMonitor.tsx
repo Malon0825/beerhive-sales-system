@@ -228,6 +228,7 @@ export function CurrentOrderMonitor({
                 height={80}
                 className="object-contain"
                 priority
+                unoptimized
               />
             </div>
             <div className="text-left">

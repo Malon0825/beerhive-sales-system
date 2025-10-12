@@ -9,6 +9,7 @@ import { BrowserCompatibilityCheck } from '@/components/shared/BrowserCompatibil
 import { useAuth } from '@/lib/hooks/useAuth';
 import { ShoppingCart } from 'lucide-react';
 import { FullscreenToggleButton } from '@/components/shared/FullscreenToggleButton';
+import Image from 'next/image'; // Import next/image for rendering logo
 
 /**
  * CurrentOrdersContent Component
@@ -149,8 +150,19 @@ export function CurrentOrdersContent() {
       {!loading && !isLoadingOrder && !tableNumber && orderType !== 'takeout' && (
         <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
           <div className="text-center max-w-2xl">
-            <div className="mb-8">
-              <ShoppingCart className="h-24 w-24 text-amber-400 mx-auto mb-6 animate-pulse" />
+            {/* Brand logo to ensure visibility on the current orders page even while waiting */}
+            <div className="mb-8 flex justify-center">
+              <div className="relative h-20 w-20 md:h-24 md:w-24 bg-white/10 backdrop-blur-sm rounded-2xl p-3 border border-white/20">
+                <Image
+                  src="/beerhive-logo.png"
+                  alt="BeerHive Logo"
+                  width={96}
+                  height={96}
+                  className="object-contain"
+                  priority
+                  unoptimized
+                />
+              </div>
             </div>
             
             <h1 className="text-5xl font-bold text-white mb-6">
