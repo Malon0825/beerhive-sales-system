@@ -76,7 +76,7 @@ export default function ManageOrderItemsModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editQuantity, setEditQuantity] = useState<number>(1);
+  const [editQuantity, setEditQuantity] = useState<string>('1');
   const [processingItemId, setProcessingItemId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
@@ -181,7 +181,7 @@ export default function ManageOrderItemsModal({
    */
   const startEditingQuantity = (item: OrderItem) => {
     setEditingItemId(item.id);
-    setEditQuantity(item.quantity);
+    setEditQuantity(String(item.quantity));
     setError(null);
   };
 
@@ -190,7 +190,7 @@ export default function ManageOrderItemsModal({
    */
   const cancelEditing = () => {
     setEditingItemId(null);
-    setEditQuantity(1);
+    setEditQuantity('1');
     setError(null);
   };
 
@@ -312,14 +312,29 @@ export default function ManageOrderItemsModal({
                               type="number"
                               min="1"
                               value={editQuantity}
-                              onChange={(e) => setEditQuantity(parseInt(e.target.value) || 1)}
+                              onChange={(e) => setEditQuantity(e.target.value)}
+                              onBlur={() => {
+                                if (!editQuantity || isNaN(parseInt(editQuantity, 10)) || parseInt(editQuantity, 10) < 1) {
+                                  setEditQuantity('1');
+                                }
+                              }}
                               className="w-20"
                               disabled={processingItemId === item.id}
                             />
                             <Button
                               size="sm"
-                              onClick={() => handleUpdateQuantity(item.id, editQuantity)}
-                              disabled={processingItemId === item.id || editQuantity === item.quantity}
+                              onClick={() => {
+                                const parsed = parseInt(editQuantity, 10);
+                                const safeValue = !parsed || parsed < 1 ? 1 : parsed;
+                                handleUpdateQuantity(item.id, safeValue);
+                              }}
+                              disabled={
+                                processingItemId === item.id ||
+                                !editQuantity ||
+                                isNaN(parseInt(editQuantity, 10)) ||
+                                parseInt(editQuantity, 10) < 1 ||
+                                parseInt(editQuantity, 10) === item.quantity
+                              }
                             >
                               {processingItemId === item.id ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
