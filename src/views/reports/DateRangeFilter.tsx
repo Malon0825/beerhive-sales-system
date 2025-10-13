@@ -8,7 +8,6 @@
 
 import { useState } from 'react';
 import { Calendar } from 'lucide-react';
-import { format } from 'date-fns';
 
 export type DatePeriod = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 
@@ -21,6 +20,11 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
   const [period, setPeriod] = useState<DatePeriod>(defaultPeriod);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  // Time-aware custom range states: keep raw date-only + time for precise filtering across midnight
+  const [startDateOnly, setStartDateOnly] = useState('');
+  const [endDateOnly, setEndDateOnly] = useState('');
+  const [startTime, setStartTime] = useState('00:00');
+  const [endTime, setEndTime] = useState('23:59');
 
   const handlePeriodChange = (newPeriod: DatePeriod) => {
     setPeriod(newPeriod);
@@ -69,9 +73,14 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
     onDateRangeChange(startStr, endStr, newPeriod);
   };
 
+  // Combine date-only and time into ISO strings and propagate to parent
   const handleCustomDateChange = () => {
-    if (startDate && endDate) {
-      onDateRangeChange(startDate, endDate, 'custom');
+    if (startDateOnly && endDateOnly) {
+      const startStr = new Date(`${startDateOnly}T${(startTime || '00:00')}:00`).toISOString();
+      const endStr = new Date(`${endDateOnly}T${(endTime || '23:59')}:59`).toISOString();
+      setStartDate(startStr);
+      setEndDate(endStr);
+      onDateRangeChange(startStr, endStr, 'custom');
     }
   };
 
@@ -145,11 +154,19 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
             </label>
             <input
               type="date"
-              value={startDate ? format(new Date(startDate), 'yyyy-MM-dd') : ''}
+              value={startDateOnly}
               onChange={(e) => {
-                const newStartDate = new Date(e.target.value).toISOString();
-                setStartDate(newStartDate);
+                setStartDateOnly(e.target.value);
               }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <label className="block text-sm font-medium text-gray-700 mt-3 mb-1">
+              Start Time
+            </label>
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -159,18 +176,26 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
             </label>
             <input
               type="date"
-              value={endDate ? format(new Date(endDate), 'yyyy-MM-dd') : ''}
+              value={endDateOnly}
               onChange={(e) => {
-                const newEndDate = new Date(e.target.value).toISOString();
-                setEndDate(newEndDate);
+                setEndDateOnly(e.target.value);
               }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <label className="block text-sm font-medium text-gray-700 mt-3 mb-1">
+              End Time
+            </label>
+            <input
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
           <div className="md:col-span-2">
             <button
               onClick={handleCustomDateChange}
-              disabled={!startDate || !endDate}
+              disabled={!startDateOnly || !endDateOnly}
               className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Apply Custom Range
