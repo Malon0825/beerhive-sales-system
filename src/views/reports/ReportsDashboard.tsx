@@ -122,6 +122,13 @@ export function ReportsDashboard() {
     { key: 'total_revenue', label: 'Revenue', width: 15, format: 'currency' },
   ];
 
+  const allProductsHeaders: ExcelHeader[] = [
+    { key: 'product_name', label: 'Product Name', width: 25 },
+    { key: 'total_quantity', label: 'Quantity Sold', width: 15, format: 'number' },
+    { key: 'total_revenue', label: 'Revenue', width: 15, format: 'currency' },
+    { key: 'order_count', label: 'Orders', width: 12, format: 'number' },
+  ];
+
   /**
    * Define Excel headers for categories export
    */
@@ -200,6 +207,11 @@ export function ReportsDashboard() {
                   name: 'Top Products',
                   data: dashboardData?.sales.top_products || [],
                   headers: productsHeaders
+                },
+                {
+                  name: 'All Products Sold',
+                  data: dashboardData?.sales.all_products_sold || [],
+                  headers: allProductsHeaders
                 },
                 {
                   name: 'Categories',

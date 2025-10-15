@@ -155,6 +155,53 @@ export async function getTopProducts(startDate: string, endDate: string, limit =
 }
 
 /**
+ * Get all products sold within a date range
+ * Returns full aggregation without limiting results
+ */
+export async function getAllProductsSold(startDate: string, endDate: string) {
+  const supabase = supabaseAdmin;
+
+  const { data, error } = await supabase
+    .from('order_items')
+    .select(`
+      product_id,
+      item_name,
+      quantity,
+      total,
+      order:order_id(completed_at, status)
+    `)
+    .gte('order.completed_at', startDate)
+    .lte('order.completed_at', endDate)
+    .eq('order.status', 'completed')
+    .not('product_id', 'is', null);
+
+  if (error) throw error;
+
+  const productMap = new Map();
+  data.forEach((item: any) => {
+    if (!item.order) return;
+
+    const key = item.product_id;
+    if (!productMap.has(key)) {
+      productMap.set(key, {
+        product_id: item.product_id,
+        product_name: item.item_name,
+        total_quantity: 0,
+        total_revenue: 0,
+        order_count: 0,
+      });
+    }
+    const product = productMap.get(key);
+    product.total_quantity += parseFloat(item.quantity);
+    product.total_revenue += parseFloat(item.total);
+    product.order_count += 1;
+  });
+
+  return Array.from(productMap.values())
+    .sort((a, b) => b.total_revenue - a.total_revenue);
+}
+
+/**
  * Get sales by payment method
  */
 export async function getSalesByPaymentMethod(startDate: string, endDate: string) {
