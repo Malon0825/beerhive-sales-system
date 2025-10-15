@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Printer } from 'lucide-react';
 import { Button } from '@/views/shared/ui/button';
-import TabBillReceipt from './TabBillReceipt';
+import { PrintableReceipt } from '@/views/pos/PrintableReceipt';
 
 /**
  * BillPreviewModal Component
@@ -248,7 +248,47 @@ export default function BillPreviewModal({
                 </Button>
               </div>
             ) : billData ? (
-              <TabBillReceipt billData={billData} isPrintMode={false} />
+              <div className="p-4">
+                {billData.orders.map((order, idx) => {
+                  const orderData = {
+                    order: {
+                      id: order.id,
+                      order_number: order.order_number,
+                      created_at: order.created_at,
+                      customer: billData.session.customer
+                        ? { full_name: billData.session.customer.full_name, customer_number: '' }
+                        : undefined,
+                      cashier: undefined,
+                      table: billData.session.table
+                        ? { table_number: billData.session.table.table_number }
+                        : undefined,
+                      order_items: (order.items || []).map((it: any) => ({
+                        id: it.id || undefined,
+                        item_name: it.item_name,
+                        quantity: it.quantity,
+                        unit_price: it.unit_price,
+                        total: it.total,
+                        notes: it.notes,
+                        is_vip_price: it.is_vip_price,
+                        is_complimentary: it.is_complimentary,
+                      })),
+                      subtotal: order.subtotal,
+                      discount_amount: order.discount_amount || 0,
+                      tax_amount: billData.totals?.tax_amount || 0,
+                      total_amount: order.total_amount,
+                      payment_method: undefined,
+                      amount_tendered: undefined,
+                      change_amount: undefined,
+                    },
+                  } as any;
+
+                  return (
+                    <div key={order.id} className={idx < billData.orders.length - 1 ? 'page-break' : ''}>
+                      <PrintableReceipt orderData={orderData} isPrintMode={false} />
+                    </div>
+                  );
+                })}
+              </div>
             ) : null}
           </div>
 
@@ -294,7 +334,45 @@ export default function BillPreviewModal({
             visibility: 'hidden'
           }}
         >
-          <TabBillReceipt billData={billData} isPrintMode={true} />
+          {billData.orders.map((order, idx) => {
+            const orderData = {
+              order: {
+                id: order.id,
+                order_number: order.order_number,
+                created_at: order.created_at,
+                customer: billData.session.customer
+                  ? { full_name: billData.session.customer.full_name, customer_number: '' }
+                  : undefined,
+                cashier: undefined,
+                table: billData.session.table
+                  ? { table_number: billData.session.table.table_number }
+                  : undefined,
+                order_items: (order.items || []).map((it: any) => ({
+                  id: it.id || undefined,
+                  item_name: it.item_name,
+                  quantity: it.quantity,
+                  unit_price: it.unit_price,
+                  total: it.total,
+                  notes: it.notes,
+                  is_vip_price: it.is_vip_price,
+                  is_complimentary: it.is_complimentary,
+                })),
+                subtotal: order.subtotal,
+                discount_amount: order.discount_amount || 0,
+                tax_amount: billData.totals?.tax_amount || 0,
+                total_amount: order.total_amount,
+                payment_method: undefined,
+                amount_tendered: undefined,
+                change_amount: undefined,
+              },
+            } as any;
+
+            return (
+              <div key={order.id} className={idx < billData.orders.length - 1 ? 'page-break' : ''}>
+                <PrintableReceipt orderData={orderData} isPrintMode={true} />
+              </div>
+            );
+          })}
         </div>,
         document.body
       )}

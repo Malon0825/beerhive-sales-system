@@ -346,6 +346,7 @@ export class ReceiptGenerator {
       max-width: 80mm;
       margin: 0 auto;
       padding: 8mm;
+      padding-bottom: 14mm;
       background: white;
       color: #000;
     }
@@ -361,6 +362,7 @@ export class ReceiptGenerator {
       height: 100px;
       margin: 0 auto 10px;
       display: block;
+      filter: grayscale(100%) contrast(200%);
     }
     
     /* Header styles */
@@ -378,7 +380,7 @@ export class ReceiptGenerator {
     
     .business-info {
       font-size: 10px;
-      color: #333;
+      color: #000;
       line-height: 1.4;
     }
     
@@ -458,7 +460,7 @@ export class ReceiptGenerator {
     
     .item-note {
       font-size: 9px;
-      color: #555;
+      color: #000;
       font-style: italic;
       margin-left: 15px;
       margin-top: 2px;
@@ -469,10 +471,7 @@ export class ReceiptGenerator {
       font-weight: bold;
       margin-left: 15px;
       margin-top: 2px;
-    }
-    
-    .complimentary {
-      color: #2d7a2d;
+      color: #000;
     }
     
     /* Totals section */
@@ -496,7 +495,8 @@ export class ReceiptGenerator {
     }
     
     .discount-row {
-      color: #2d7a2d;
+      color: #000;
+      font-weight: 600;
     }
     
     .grand-total {
@@ -510,8 +510,8 @@ export class ReceiptGenerator {
     /* Payment section */
     .payment-section {
       margin: 15px 0;
-      background: #f5f5f5;
       padding: 10px;
+      border: 1px solid #000;
       border-radius: 3px;
     }
     
@@ -537,10 +537,10 @@ export class ReceiptGenerator {
     
     .change-row {
       font-weight: bold;
-      color: #2d7a2d;
+      color: #000;
       padding-top: 6px;
       margin-top: 6px;
-      border-top: 1px solid #ccc;
+      border-top: 1px solid #000;
     }
     
     /* Footer section */
@@ -558,22 +558,22 @@ export class ReceiptGenerator {
     .footer-submessage {
       font-size: 10px;
       font-weight: 600;
-      color: #b8860b;
+      color: #000;
       margin-bottom: 10px;
     }
     
     .footer-info {
       font-size: 9px;
-      color: #666;
+      color: #000;
       font-style: italic;
       margin-top: 10px;
       padding-top: 10px;
-      border-top: 1px solid #ddd;
+      border-top: 1px solid #000;
     }
     
     .powered-by {
       font-size: 8px;
-      color: #999;
+      color: #000;
       margin-top: 5px;
     }
     
@@ -581,17 +581,17 @@ export class ReceiptGenerator {
     .print-timestamp {
       text-align: center;
       font-size: 8px;
-      color: #999;
+      color: #000;
       margin-top: 10px;
       padding-top: 10px;
-      border-top: 1px solid #ddd;
+      border-top: 1px solid #000;
     }
   </style>
 </head>
 <body>
   <!-- Logo -->
   <div class="logo-container">
-    <img src="/beerhive-logo.png" alt="BeerHive Logo" class="logo" onerror="this.style.display='none'">
+    <img src="/receipt-logo.png" alt="Receipt Logo" class="logo" onerror="this.style.display='none'">
   </div>
   
   <!-- Business Header -->
@@ -705,7 +705,6 @@ export class ReceiptGenerator {
     <div class="footer-submessage">Please Come Again!</div>
     <div class="footer-info">
       ${data.footerMessage || 'This serves as your official receipt'}<br>
-      Visit us at www.beerhivepub.com
     </div>
     <div class="powered-by">Powered by BeerHive POS</div>
   </div>

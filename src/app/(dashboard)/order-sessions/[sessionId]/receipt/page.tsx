@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
 import { LoadingSpinner } from '@/views/shared/feedback/LoadingSpinner';
-import TabBillReceipt from '@/views/orders/TabBillReceipt';
+import { PrintableReceipt } from '@/views/pos/PrintableReceipt';
 import { Button } from '@/views/shared/ui/button';
 import { Printer, X } from 'lucide-react';
 
@@ -20,10 +21,17 @@ export default function SessionReceiptPage() {
   const [billData, setBillData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const printContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
   /**
    * Fetch bill preview data for the session
    */
+  useEffect(() => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
+
   useEffect(() => {
     const fetchBillData = async () => {
       try {
@@ -58,10 +66,82 @@ export default function SessionReceiptPage() {
   }, [sessionId]);
 
   /**
+   * Collect active styles (<link rel="stylesheet"> and inline <style>) so the
+   * print window matches the app's Tailwind/global styles.
+   */
+  const collectActiveStyles = () => {
+    const parts: string[] = [];
+    document.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
+      const href = (link as HTMLLinkElement).href;
+      if (href) parts.push(`<link rel="stylesheet" href="${href}" />`);
+    });
+    document.querySelectorAll('style').forEach((styleEl) => {
+      parts.push(`<style>${(styleEl as HTMLStyleElement).innerHTML}</style>`);
+    });
+    return parts.join('\n');
+  };
+
+  /**
    * Handle print action
    */
   const handlePrint = () => {
-    window.print();
+    const printContent = printContainerRef.current;
+    if (!printContent) return;
+
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (!printWindow) {
+      alert('Please allow popups to print the receipt');
+      return;
+    }
+
+    const activeStyles = collectActiveStyles();
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Session Receipt - ${billData?.session?.session_number || ''}</title>
+        ${activeStyles}
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: monospace; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+          @media print {
+            @page { size: 80mm auto; margin: 0; }
+            body { margin: 0; padding: 0; }
+            .page-break { page-break-after: always; break-after: page; }
+          }
+          /* Ensure receipt content uses optimal padding similar to POS */
+          .print-receipt {
+            max-width: 80mm !important;
+            margin: 0 auto !important;
+            /* Reduce lateral padding to avoid cramping; keep bottom padding for cutter */
+            padding: 6mm 6mm 14mm 6mm !important;
+            font-family: monospace !important;
+          }
+          img { max-width: 100%; height: auto; display: block; }
+        </style>
+      </head>
+      <body>
+        ${printContent.innerHTML}
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      setTimeout(() => {
+        printWindow.close();
+      }, 100);
+    }, 250);
+
+    // Close this (opener) window shortly after triggering print to mimic quick print
+    setTimeout(() => {
+      try { window.close(); } catch (_) {}
+    }, 800);
   };
 
   /**
@@ -70,6 +150,16 @@ export default function SessionReceiptPage() {
   const handleClose = () => {
     window.close();
   };
+
+  useEffect(() => {
+    if (!billData || !isMounted) return;
+    const t = setTimeout(() => {
+      if (printContainerRef.current) {
+        handlePrint();
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [billData, isMounted]);
 
   // Loading state
   if (loading) {
@@ -128,10 +218,10 @@ export default function SessionReceiptPage() {
         </div>
       </div>
 
-      {/* Receipt Content */}
+      {/* Receipt Content - Keep a simple preview container (non-critical) */}
       <div className="container mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden max-w-2xl mx-auto">
-          <TabBillReceipt billData={billData} isPrintMode={false} />
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden max-w-2xl mx-auto p-4">
+          <div className="text-sm text-gray-600">Preparing receipt for printing...</div>
         </div>
       </div>
 
@@ -154,6 +244,55 @@ export default function SessionReceiptPage() {
           }
         }
       `}</style>
+
+      {/* Hidden print container rendered to body; used to feed the popup */}
+      {isMounted && billData && createPortal(
+        <div
+          ref={printContainerRef}
+          style={{ position: 'fixed', left: '-9999px', top: '0', width: '80mm', visibility: 'hidden' }}
+        >
+          {billData.orders.map((order: any, idx: number) => {
+            const orderData = {
+              order: {
+                id: order.id,
+                order_number: order.order_number,
+                created_at: order.created_at,
+                customer: billData.session.customer
+                  ? { full_name: billData.session.customer.full_name, customer_number: '' }
+                  : undefined,
+                cashier: undefined,
+                table: billData.session.table
+                  ? { table_number: billData.session.table.table_number }
+                  : undefined,
+                order_items: (order.items || []).map((it: any) => ({
+                  id: it.id || undefined,
+                  item_name: it.item_name,
+                  quantity: it.quantity,
+                  unit_price: it.unit_price,
+                  total: it.total,
+                  notes: it.notes,
+                  is_vip_price: it.is_vip_price,
+                  is_complimentary: it.is_complimentary,
+                })),
+                subtotal: order.subtotal,
+                discount_amount: order.discount_amount || 0,
+                tax_amount: (billData.totals && billData.totals.tax_amount) || 0,
+                total_amount: order.total_amount,
+                payment_method: undefined,
+                amount_tendered: undefined,
+                change_amount: undefined,
+              },
+            } as any;
+
+            return (
+              <div key={order.id} className={idx < billData.orders.length - 1 ? 'page-break' : ''}>
+                <PrintableReceipt orderData={orderData} isPrintMode={true} />
+              </div>
+            );
+          })}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
