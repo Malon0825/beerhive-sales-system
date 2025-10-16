@@ -218,15 +218,58 @@ export default function SessionReceiptPage() {
         </div>
       </div>
 
-      {/* Receipt Content - Keep a simple preview container (non-critical) */}
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden max-w-2xl mx-auto p-4">
-          <div className="text-sm text-gray-600">Preparing receipt for printing...</div>
+      {/* Receipt Preview (hidden when printing) */}
+      <div className="print:hidden flex justify-center px-6 py-8">
+        <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-4 w-full max-w-[360px] h-[calc(100vh-180px)] overflow-y-auto">
+          {billData.orders.map((order: any, idx: number) => {
+            const orderData = {
+              order: {
+                id: order.id,
+                order_number: order.order_number,
+                created_at: order.created_at,
+                customer: billData.session.customer
+                  ? { full_name: billData.session.customer.full_name, customer_number: '' }
+                  : undefined,
+                cashier: undefined,
+                table: billData.session.table
+                  ? { table_number: billData.session.table.table_number }
+                  : undefined,
+                order_items: (order.items || []).map((it: any) => ({
+                  id: it.id || undefined,
+                  item_name: it.item_name,
+                  quantity: it.quantity,
+                  unit_price: it.unit_price,
+                  total: it.total,
+                  notes: it.notes,
+                  is_vip_price: it.is_vip_price,
+                  is_complimentary: it.is_complimentary,
+                })),
+                subtotal: order.subtotal,
+                discount_amount: order.discount_amount || 0,
+                tax_amount: (billData.totals && billData.totals.tax_amount) || 0,
+                total_amount: order.total_amount,
+                payment_method: undefined,
+                amount_tendered: undefined,
+                change_amount: undefined,
+              },
+            } as any;
+
+            return (
+              <div key={order.id} className={idx < billData.orders.length - 1 ? 'pb-6 mb-6 border-b border-dashed border-gray-300' : ''}>
+                <PrintableReceipt orderData={orderData} isPrintMode={false} />
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Print-specific styles */}
       <style jsx global>{`
+        html, body {
+          height: 100%;
+          overflow: hidden;
+          background: #f3f4f6;
+        }
         @media print {
           body {
             margin: 0;

@@ -55,11 +55,14 @@ export function PrintableReceipt({ orderData, isPrintMode = false }: PrintableRe
 
   /**
    * Format currency for display
+   * Safe against undefined/null and non-finite numbers.
    * @param amount - Amount to format
    * @returns Formatted currency string
    */
-  const formatCurrency = (amount: number) => {
-    return `₱${amount.toFixed(2)}`;
+  const formatCurrency = (amount: number | null | undefined) => {
+    const n = Number(amount);
+    if (!Number.isFinite(n)) return '₱0.00';
+    return `₱${n.toFixed(2)}`;
   };
 
   return (
