@@ -6,7 +6,16 @@ import { supabaseAdmin } from '@/data/supabase/server-client';
 
 /**
  * POST /api/inventory/adjust
- * Adjust product stock
+ * Adjust product stock with proper movement type enforcement
+ * 
+ * Movement Types:
+ * - stock_in: Increase inventory (quantity_change must be positive)
+ * - stock_out: Decrease inventory (quantity_change must be negative)
+ * - physical_count: Set to exact count (quantity_change is the difference)
+ * - sale: Auto-deduction from sales (quantity_change must be negative)
+ * - void_return: Return from voided order (quantity_change must be positive)
+ * 
+ * Note: 'transfer' is not supported as system doesn't have multi-location infrastructure
  */
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +34,32 @@ export async function POST(request: NextRequest) {
     if (isNaN(quantityChange)) {
       return NextResponse.json(
         { success: false, error: 'Invalid quantity change' },
+        { status: 400 }
+      );
+    }
+
+    // Validate movement type is supported (removed 'transfer' as system doesn't support multi-location)
+    const validMovementTypes = ['stock_in', 'stock_out', 'physical_count', 'sale', 'void_return'];
+    if (!validMovementTypes.includes(body.movement_type)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid movement type. Supported types: ${validMovementTypes.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    // Validate movement type consistency with quantity direction
+    // Stock In should have positive quantity_change
+    // Stock Out should have negative quantity_change
+    // Physical Count can be any value (represents difference)
+    if (body.movement_type === 'stock_in' && quantityChange < 0) {
+      return NextResponse.json(
+        { success: false, error: 'Stock In movement must have positive quantity change' },
+        { status: 400 }
+      );
+    }
+    if (body.movement_type === 'stock_out' && quantityChange > 0) {
+      return NextResponse.json(
+        { success: false, error: 'Stock Out movement must have negative quantity change' },
         { status: 400 }
       );
     }
