@@ -227,13 +227,13 @@ export class OrderSessionService {
         if (order.status !== OrderStatus.COMPLETED && order.status !== OrderStatus.VOIDED) {
           await OrderRepository.updateStatus(order.id, OrderStatus.COMPLETED);
           
-          // Update payment details and cashier_id on the order
-          // This ensures the user who closed the tab is credited in reports
+          // Update cashier and completion timestamp
+          // Payment details (amount_tendered, change_amount) are NOT set on individual orders
+          // because payment is handled at the SESSION level for tabs
+          // This prevents duplication of payment amounts across multiple orders in a session
           await OrderRepository.update(order.id, {
             cashier_id: performedByUserId, // This ensures the user who closed the tab is credited in reports
             payment_method: paymentData.payment_method as any,
-            amount_tendered: paymentData.amount_tendered,
-            change_amount: change,
             completed_at: new Date().toISOString(),
           });
 

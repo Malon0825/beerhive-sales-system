@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Printer } from 'lucide-react';
 import { Button } from '@/views/shared/ui/button';
-import TabBillReceipt from './TabBillReceipt';
+import { PrintableReceipt } from '@/views/pos/PrintableReceipt';
+import {
+  createSessionReceiptOrderData,
+  SessionBillData,
+} from '@/views/orders/sessionReceiptMapper';
 
 /**
  * BillPreviewModal Component
@@ -23,45 +27,7 @@ interface BillPreviewModalProps {
   onProceedToPayment?: () => void;
 }
 
-interface BillData {
-  session: {
-    id: string;
-    session_number: string;
-    opened_at: string;
-    duration_minutes: number;
-    table?: {
-      table_number: string;
-      area?: string;
-    };
-    customer?: {
-      full_name: string;
-      tier?: string;
-    };
-  };
-  orders: Array<{
-    id: string;
-    order_number: string;
-    status: string;
-    created_at: string;
-    items: Array<{
-      item_name: string;
-      quantity: number;
-      unit_price: number;
-      total: number;
-      is_complimentary: boolean;
-      is_vip_price: boolean;
-    }>;
-    subtotal: number;
-    discount_amount: number;
-    total_amount: number;
-  }>;
-  totals: {
-    subtotal: number;
-    discount_amount: number;
-    tax_amount: number;
-    total_amount: number;
-  };
-}
+type BillData = SessionBillData;
 
 export default function BillPreviewModal({ 
   sessionId, 
@@ -175,7 +141,7 @@ export default function BillPreviewModal({
           @media print {
             @page {
               size: 80mm auto;
-              margin: 5mm;
+              margin: 0;
             }
             
             body {
@@ -210,6 +176,11 @@ export default function BillPreviewModal({
 
 
   if (!isOpen) return null;
+
+  const receiptData = useMemo(
+    () => (billData ? createSessionReceiptOrderData(billData) : null),
+    [billData]
+  );
 
   return (
     <>
@@ -247,8 +218,10 @@ export default function BillPreviewModal({
                   Retry
                 </Button>
               </div>
-            ) : billData ? (
-              <TabBillReceipt billData={billData} isPrintMode={false} />
+            ) : billData && receiptData ? (
+              <div className="p-4">
+                <PrintableReceipt orderData={receiptData} isPrintMode={false} />
+              </div>
             ) : null}
           </div>
 
@@ -283,7 +256,7 @@ export default function BillPreviewModal({
       </div>
 
       {/* Hidden print container */}
-      {isMounted && billData && createPortal(
+      {isMounted && billData && receiptData && createPortal(
         <div 
           ref={printContainerRef} 
           style={{ 
@@ -294,7 +267,7 @@ export default function BillPreviewModal({
             visibility: 'hidden'
           }}
         >
-          <TabBillReceipt billData={billData} isPrintMode={true} />
+          <PrintableReceipt orderData={receiptData} isPrintMode={true} />
         </div>,
         document.body
       )}

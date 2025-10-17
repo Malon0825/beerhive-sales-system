@@ -11,6 +11,7 @@ import {
   getSalesByPaymentMethod,
   getSalesByCategory,
   getSalesByCashier,
+  getAllProductsSold as queryGetAllProductsSold,
 } from '@/data/queries/reports.queries';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 
@@ -152,6 +153,14 @@ export class SalesReportService {
   }
 
   /**
+   * Get all products sold within the range (no limit)
+   */
+  static async getAllProductsSold(params: SalesReportParams = {}) {
+    const { startDate, endDate } = this.getDateRange(params);
+    return await queryGetAllProductsSold(startDate, endDate);
+  }
+
+  /**
    * Get hourly sales for a specific date
    */
   static async getHourlySales(date: string) {
@@ -200,7 +209,7 @@ export class SalesReportService {
    * Get comprehensive sales report
    */
   static async getComprehensiveReport(params: SalesReportParams = {}) {
-    const [summary, dailySales, topProducts, paymentMethods, categories, cashiers] =
+    const [summary, dailySales, topProducts, paymentMethods, categories, cashiers, allProductsSold] =
       await Promise.all([
         this.getSalesSummary(params),
         this.getDailySales(params),
@@ -208,6 +217,7 @@ export class SalesReportService {
         this.getSalesByPaymentMethod(params),
         this.getSalesByCategory(params),
         this.getSalesByCashier(params),
+        this.getAllProductsSold(params),
       ]);
 
     return {
@@ -217,6 +227,7 @@ export class SalesReportService {
       payment_methods: paymentMethods,
       categories,
       cashiers,
+      all_products_sold: allProductsSold,
     };
   }
 }

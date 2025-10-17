@@ -26,58 +26,133 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
   const [startTime, setStartTime] = useState('00:00');
   const [endTime, setEndTime] = useState('23:59');
 
+  /**
+   * Handle period quick filter changes (Today, Yesterday, Week, Month)
+   * 
+   * Business Hours Alignment (v1.0.2): 
+   * Operations run from 5pm to 5pm next day.
+   * All date ranges adjusted to match actual business day cycles.
+   * 
+   * - Today: 5pm yesterday → 5pm today (current business day)
+   * - Yesterday: 5pm 2 days ago → 5pm yesterday (previous business day)
+   * - Last 7 Days: 5pm 8 days ago → 5pm today (7 complete business days)
+   * - Last 30 Days: 5pm 31 days ago → 5pm today (30 complete business days)
+   */
   const handlePeriodChange = (newPeriod: DatePeriod) => {
     setPeriod(newPeriod);
     
     let start: Date;
     let end: Date;
 
+    // Format as local datetime string (YYYY-MM-DDTHH:mm:ss)
+    // Do NOT use .toISOString() as it converts to UTC, causing 8-hour shift
+    const formatLocalDateTime = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    };
+
     switch (newPeriod) {
       case 'today':
-        start = new Date();
-        start.setHours(0, 0, 0, 0);
-        end = new Date();
-        end.setHours(23, 59, 59, 999);
-        break;
-      case 'yesterday':
+        // Current business day: 5pm yesterday to 5pm today
         start = new Date();
         start.setDate(start.getDate() - 1);
-        start.setHours(0, 0, 0, 0);
+        start.setHours(17, 0, 0, 0); // 5pm yesterday
+        end = new Date();
+        end.setHours(17, 0, 0, 0); // 5pm today
+        break;
+      case 'yesterday':
+        // Previous business day: 5pm 2 days ago to 5pm yesterday
+        start = new Date();
+        start.setDate(start.getDate() - 2);
+        start.setHours(17, 0, 0, 0); // 5pm 2 days ago
         end = new Date();
         end.setDate(end.getDate() - 1);
-        end.setHours(23, 59, 59, 999);
+        end.setHours(17, 0, 0, 0); // 5pm yesterday
         break;
       case 'week':
+        // Last 7 business days: 5pm 8 days ago to 5pm today
         start = new Date();
-        start.setDate(start.getDate() - 7);
+        start.setDate(start.getDate() - 8);
+        start.setHours(17, 0, 0, 0); // 5pm 8 days ago
         end = new Date();
+        end.setHours(17, 0, 0, 0); // 5pm today
         break;
       case 'month':
+        // Last 30 business days: 5pm 31 days ago to 5pm today
         start = new Date();
-        start.setDate(start.getDate() - 30);
+        start.setDate(start.getDate() - 31);
+        start.setHours(17, 0, 0, 0); // 5pm 31 days ago
         end = new Date();
+        end.setHours(17, 0, 0, 0); // 5pm today
         break;
       case 'custom':
-        return; // Wait for user to select dates
+        // Default custom range: 5pm yesterday to 5pm today (current business day)
+        start = new Date();
+        start.setDate(start.getDate() - 1);
+        start.setHours(17, 0, 0, 0); // 5pm yesterday
+        end = new Date();
+        end.setHours(17, 0, 0, 0); // 5pm today
+        
+        // Pre-populate the date and time fields
+        const formatDateOnly = (date: Date): string => {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+        
+        const formatTimeOnly = (date: Date): string => {
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          return `${hours}:${minutes}`;
+        };
+        
+        setStartDateOnly(formatDateOnly(start));
+        setEndDateOnly(formatDateOnly(end));
+        setStartTime(formatTimeOnly(start));
+        setEndTime(formatTimeOnly(end));
+        
+        // Auto-apply the custom range immediately
+        const startStrCustom = formatLocalDateTime(start);
+        const endStrCustom = formatLocalDateTime(end);
+        setStartDate(startStrCustom);
+        setEndDate(endStrCustom);
+        onDateRangeChange(startStrCustom, endStrCustom, newPeriod);
+        return; // Exit early for custom range
       default:
         start = new Date();
         start.setDate(start.getDate() - 7);
+        start.setHours(0, 0, 0, 0);
         end = new Date();
+        end.setHours(23, 59, 59, 999);
     }
 
-    // Convert to ISO strings and trigger the callback
-    const startStr = start.toISOString();
-    const endStr = end.toISOString();
+    const startStr = formatLocalDateTime(start);
+    const endStr = formatLocalDateTime(end);
     setStartDate(startStr);
     setEndDate(endStr);
     onDateRangeChange(startStr, endStr, newPeriod);
   };
 
-  // Combine date-only and time into ISO strings and propagate to parent
+  /**
+   * Combine date-only and time into datetime strings and propagate to parent
+   * 
+   * IMPORTANT: We pass local datetime strings directly without timezone conversion.
+   * Database is configured in Philippines timezone (UTC+8), so local times are preserved.
+   * 
+   * Bug Fix (v1.0.2): Previously used .toISOString() which converted local time to UTC,
+   * causing an 8-hour shift in query results (e.g., 8pm became 12pm UTC).
+   */
   const handleCustomDateChange = () => {
     if (startDateOnly && endDateOnly) {
-      const startStr = new Date(`${startDateOnly}T${(startTime || '00:00')}:00`).toISOString();
-      const endStr = new Date(`${endDateOnly}T${(endTime || '23:59')}:59`).toISOString();
+      // Format: "YYYY-MM-DDTHH:mm:ss" in local time
+      const startStr = `${startDateOnly}T${(startTime || '00:00')}:00`;
+      const endStr = `${endDateOnly}T${(endTime || '23:59')}:59`;
       setStartDate(startStr);
       setEndDate(endStr);
       onDateRangeChange(startStr, endStr, 'custom');

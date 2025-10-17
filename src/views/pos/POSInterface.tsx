@@ -404,12 +404,11 @@ export function POSInterface() {
   /**
    * Handle payment completion
    * Called after successful payment processing
-   * If previewReceipt is true → show receipt dialog for manual print.
-   * If previewReceipt is false (default) → auto-print via receipt API (HTML) without showing dialog.
+   * Automatically prints receipt upon order completion
    * 
-   * NEW: Also marks order as paid in IndexedDB to clear customer display
+   * Also marks order as paid in IndexedDB to clear customer display
    */
-  const handlePaymentComplete = async (orderId: string, options?: { previewReceipt?: boolean }) => {
+  const handlePaymentComplete = async (orderId: string) => {
     try {
       // Mark order as completed in database
       const response = await fetch(`/api/orders/${orderId}`, {
@@ -435,29 +434,19 @@ export function POSInterface() {
         }
       }
 
-      const wantsPreview = options?.previewReceipt === true;
-      if (wantsPreview) {
-        // Preview: open legacy HTML receipt without auto-print
-        window.open(
-          `/api/orders/${orderId}/receipt?format=html`,
-          '_blank',
-          'width=400,height=600'
-        );
-      } else {
-        // Auto-print without showing the dialog (department store flow)
-        const printWindow = window.open(
-          `/api/orders/${orderId}/receipt?format=html`,
-          '_blank',
-          'width=400,height=600'
-        );
-        if (printWindow) {
-          printWindow.addEventListener('load', () => {
-            printWindow.print();
-            printWindow.addEventListener('afterprint', () => {
-              try { printWindow.close(); } catch {}
-            });
+      // Auto-print receipt immediately
+      const printWindow = window.open(
+        `/api/orders/${orderId}/receipt?format=html`,
+        '_blank',
+        'width=400,height=600'
+      );
+      if (printWindow) {
+        printWindow.addEventListener('load', () => {
+          printWindow.print();
+          printWindow.addEventListener('afterprint', () => {
+            try { printWindow.close(); } catch {}
           });
-        }
+        });
       }
       
       // Show success message

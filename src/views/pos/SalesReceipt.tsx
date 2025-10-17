@@ -46,7 +46,7 @@ interface SalesReceiptProps {
  * - Payment details
  * - Print-optimized styling
  */
-export function SalesReceipt({ orderData, onClose, matchDialogStyles = false }: SalesReceiptProps) {
+export function SalesReceipt({ orderData, onClose, matchDialogStyles = true }: SalesReceiptProps) {
   const { order } = orderData;
 
   /**

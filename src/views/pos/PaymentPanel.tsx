@@ -38,11 +38,11 @@ interface PaymentPanelProps {
   onOpenChange: (open: boolean) => void;
   /**
    * Called when payment completes successfully.
-   * For POS mode: receives orderId and options
+   * For POS mode: receives orderId
    * For close-tab mode: receives sessionId and result data containing order information
-   * options.previewReceipt: if true, show receipt dialog for user to print; if false, auto-print immediately.
+   * Receipts are automatically printed upon completion.
    */
-  onPaymentComplete: (idOrResult: string | any, options?: { previewReceipt?: boolean; resultData?: any }) => void;
+  onPaymentComplete: (idOrResult: string | any, options?: { resultData?: any }) => void;
   
   // Close-tab mode specific props
   mode?: PaymentMode;
@@ -92,8 +92,6 @@ export function PaymentPanel({
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [referenceNumber, setReferenceNumber] = useState('');
-  // Preview toggle: when unchecked (default), Confirm Payment will auto-print without manual click
-  const [previewReceipt, setPreviewReceipt] = useState(false);
 
   // Get total from cart (POS mode) or session (close-tab mode)
   const total = mode === 'pos' ? (cart?.getTotal() || 0) : (sessionTotal || 0);
@@ -267,12 +265,13 @@ export function PaymentPanel({
       // Call completion handler with appropriate data
       // For POS mode: pass orderId from newly created order
       // For close-tab mode: pass sessionId and full result data containing orders
+      // Receipts are automatically printed upon completion
       if (mode === 'pos') {
         const orderId = result.data.id;
-        onPaymentComplete(orderId, { previewReceipt });
+        onPaymentComplete(orderId);
       } else {
         // Close-tab mode: pass sessionId and result data for receipt printing
-        onPaymentComplete(sessionId!, { previewReceipt, resultData: result.data });
+        onPaymentComplete(sessionId!, { resultData: result.data });
       }
       
       // Reset form and close modal
@@ -483,20 +482,6 @@ export function PaymentPanel({
         )}
 
         {/* Action Buttons */}
-        {/* Print Preview Toggle */}
-        <div className="flex items-center justify-between mt-2">
-          <label className="flex items-center gap-2 select-none text-sm">
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              checked={previewReceipt}
-              onChange={(e) => setPreviewReceipt(e.target.checked)}
-              disabled={processing}
-            />
-            <span>Preview receipt before printing</span>
-          </label>
-        </div>
-
         <DialogFooter className="flex gap-2">
           <Button
             type="button"

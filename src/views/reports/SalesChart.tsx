@@ -83,22 +83,24 @@ export function SalesChart({ data, chartType = 'line', title = 'Sales Overview',
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-        {trend && (
-          <div className={`flex items-center gap-1 text-sm font-medium ${
-            trend.isPositive ? 'text-green-600' : 'text-red-600'
-          }`}>
-            {trend.isPositive ? (
-              <TrendingUp className="w-4 h-4" />
-            ) : (
-              <TrendingDown className="w-4 h-4" />
-            )}
-            <span>{trend.value}%</span>
-          </div>
-        )}
-      </div>
+    <div className={title ? "bg-white p-6 rounded-lg shadow-sm border" : ""}>
+      {title && (
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          {trend && (
+            <div className={`flex items-center gap-1 text-sm font-medium ${
+              trend.isPositive ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {trend.isPositive ? (
+                <TrendingUp className="w-4 h-4" />
+              ) : (
+                <TrendingDown className="w-4 h-4" />
+              )}
+              <span>{trend.value}%</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <ResponsiveContainer width="100%" height={300}>
         {chartType === 'line' ? (
@@ -138,7 +140,7 @@ export function SalesChart({ data, chartType = 'line', title = 'Sales Overview',
             )}
           </LineChart>
         ) : (
-          <BarChart data={formattedData}>
+          <BarChart data={formattedData} barGap={8} barCategoryGap={20}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis
               dataKey="date"
@@ -157,6 +159,7 @@ export function SalesChart({ data, chartType = 'line', title = 'Sales Overview',
               name="Revenue"
               fill="#3b82f6"
               radius={[4, 4, 0, 0]}
+              maxBarSize={60}
             />
             {formattedData[0]?.transactions !== undefined && (
               <Bar
@@ -164,6 +167,7 @@ export function SalesChart({ data, chartType = 'line', title = 'Sales Overview',
                 name="Transactions"
                 fill="#10b981"
                 radius={[4, 4, 0, 0]}
+                maxBarSize={60}
                 yAxisId="right"
               />
             )}
