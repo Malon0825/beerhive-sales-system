@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Printer } from 'lucide-react';
 import { Button } from '@/views/shared/ui/button';
 import { PrintableReceipt } from '@/views/pos/PrintableReceipt';
+import {
+  createSessionReceiptOrderData,
+  SessionBillData,
+} from '@/views/orders/sessionReceiptMapper';
 
 /**
  * BillPreviewModal Component
@@ -23,45 +27,7 @@ interface BillPreviewModalProps {
   onProceedToPayment?: () => void;
 }
 
-interface BillData {
-  session: {
-    id: string;
-    session_number: string;
-    opened_at: string;
-    duration_minutes: number;
-    table?: {
-      table_number: string;
-      area?: string;
-    };
-    customer?: {
-      full_name: string;
-      tier?: string;
-    };
-  };
-  orders: Array<{
-    id: string;
-    order_number: string;
-    status: string;
-    created_at: string;
-    items: Array<{
-      item_name: string;
-      quantity: number;
-      unit_price: number;
-      total: number;
-      is_complimentary: boolean;
-      is_vip_price: boolean;
-    }>;
-    subtotal: number;
-    discount_amount: number;
-    total_amount: number;
-  }>;
-  totals: {
-    subtotal: number;
-    discount_amount: number;
-    tax_amount: number;
-    total_amount: number;
-  };
-}
+type BillData = SessionBillData;
 
 export default function BillPreviewModal({ 
   sessionId, 
@@ -174,8 +140,8 @@ export default function BillPreviewModal({
           
           @media print {
             @page {
-              size: 80mm auto;
-              margin: 5mm;
+              size: 72mm auto;
+              margin: 3mm;
             }
             
             body {
@@ -210,6 +176,11 @@ export default function BillPreviewModal({
 
 
   if (!isOpen) return null;
+
+  const receiptData = useMemo(
+    () => (billData ? createSessionReceiptOrderData(billData) : null),
+    [billData]
+  );
 
   return (
     <>
@@ -247,47 +218,9 @@ export default function BillPreviewModal({
                   Retry
                 </Button>
               </div>
-            ) : billData ? (
+            ) : billData && receiptData ? (
               <div className="p-4">
-                {billData.orders.map((order, idx) => {
-                  const orderData = {
-                    order: {
-                      id: order.id,
-                      order_number: order.order_number,
-                      created_at: order.created_at,
-                      customer: billData.session.customer
-                        ? { full_name: billData.session.customer.full_name, customer_number: '' }
-                        : undefined,
-                      cashier: undefined,
-                      table: billData.session.table
-                        ? { table_number: billData.session.table.table_number }
-                        : undefined,
-                      order_items: (order.items || []).map((it: any) => ({
-                        id: it.id || undefined,
-                        item_name: it.item_name,
-                        quantity: it.quantity,
-                        unit_price: it.unit_price,
-                        total: it.total,
-                        notes: it.notes,
-                        is_vip_price: it.is_vip_price,
-                        is_complimentary: it.is_complimentary,
-                      })),
-                      subtotal: order.subtotal,
-                      discount_amount: order.discount_amount || 0,
-                      tax_amount: billData.totals?.tax_amount || 0,
-                      total_amount: order.total_amount,
-                      payment_method: undefined,
-                      amount_tendered: undefined,
-                      change_amount: undefined,
-                    },
-                  } as any;
-
-                  return (
-                    <div key={order.id} className={idx < billData.orders.length - 1 ? 'page-break' : ''}>
-                      <PrintableReceipt orderData={orderData} isPrintMode={false} />
-                    </div>
-                  );
-                })}
+                <PrintableReceipt orderData={receiptData} isPrintMode={false} />
               </div>
             ) : null}
           </div>
@@ -323,56 +256,18 @@ export default function BillPreviewModal({
       </div>
 
       {/* Hidden print container */}
-      {isMounted && billData && createPortal(
+      {isMounted && billData && receiptData && createPortal(
         <div 
           ref={printContainerRef} 
           style={{ 
             position: 'fixed',
             left: '-9999px',
             top: '0',
-            width: '80mm',
+            width: '72mm',
             visibility: 'hidden'
           }}
         >
-          {billData.orders.map((order, idx) => {
-            const orderData = {
-              order: {
-                id: order.id,
-                order_number: order.order_number,
-                created_at: order.created_at,
-                customer: billData.session.customer
-                  ? { full_name: billData.session.customer.full_name, customer_number: '' }
-                  : undefined,
-                cashier: undefined,
-                table: billData.session.table
-                  ? { table_number: billData.session.table.table_number }
-                  : undefined,
-                order_items: (order.items || []).map((it: any) => ({
-                  id: it.id || undefined,
-                  item_name: it.item_name,
-                  quantity: it.quantity,
-                  unit_price: it.unit_price,
-                  total: it.total,
-                  notes: it.notes,
-                  is_vip_price: it.is_vip_price,
-                  is_complimentary: it.is_complimentary,
-                })),
-                subtotal: order.subtotal,
-                discount_amount: order.discount_amount || 0,
-                tax_amount: billData.totals?.tax_amount || 0,
-                total_amount: order.total_amount,
-                payment_method: undefined,
-                amount_tendered: undefined,
-                change_amount: undefined,
-              },
-            } as any;
-
-            return (
-              <div key={order.id} className={idx < billData.orders.length - 1 ? 'page-break' : ''}>
-                <PrintableReceipt orderData={orderData} isPrintMode={true} />
-              </div>
-            );
-          })}
+          <PrintableReceipt orderData={receiptData} isPrintMode={true} />
         </div>,
         document.body
       )}
