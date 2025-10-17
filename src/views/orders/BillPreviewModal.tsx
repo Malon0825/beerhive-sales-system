@@ -140,8 +140,8 @@ export default function BillPreviewModal({
           
           @media print {
             @page {
-              size: 72mm auto;
-              margin: 3mm;
+              size: 80mm auto;
+              margin: 0;
             }
             
             body {
@@ -263,7 +263,7 @@ export default function BillPreviewModal({
             position: 'fixed',
             left: '-9999px',
             top: '0',
-            width: '72mm',
+            width: '80mm',
             visibility: 'hidden'
           }}
         >

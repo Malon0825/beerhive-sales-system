@@ -50,24 +50,23 @@ export default function CloseTabPage() {
   };
 
   /**
-   * Handle successful payment and trigger receipt printing
+   * Handle successful payment and trigger automatic receipt printing
    * @param sessionId - The ID of the closed session
-   * @param options - Options containing result data and preview preference
+   * @param options - Options containing result data
    */
-  const handleSuccess = (sessionId: string, options?: { previewReceipt?: boolean; resultData?: any }) => {
+  const handleSuccess = (sessionId: string, options?: { resultData?: any }) => {
     console.log('✅ Payment successful, session closed:', sessionId);
     
     // Extract result data containing orders
     const resultData = options?.resultData;
-    const wantsPreview = options?.previewReceipt === true;
     
     if (resultData) {
       // Get the session's orders for receipt printing
       const orders = resultData.receipt?.orders || [];
       
-      console.log('📄 Printing receipts for', orders.length, 'orders');
+      console.log('📄 Auto-printing receipts for', orders.length, 'orders');
       
-      // Print receipt for each order in the session
+      // Auto-print receipt for each order in the session
       // Note: In a tab/session, multiple orders might exist, we print the main consolidated receipt
       // For now, we'll print receipts for all orders in the session
       orders.forEach((order: any, index: number) => {
@@ -78,30 +77,21 @@ export default function CloseTabPage() {
         
         if (sessionOrder?.id) {
           setTimeout(() => {
-            if (wantsPreview) {
-              // Preview mode: open receipt without auto-print
-              window.open(
-                `/api/orders/${sessionOrder.id}/receipt?format=html`,
-                '_blank',
-                'width=400,height=600'
-              );
-            } else {
-              // Auto-print mode (default): open and trigger print immediately
-              const printWindow = window.open(
-                `/api/orders/${sessionOrder.id}/receipt?format=html`,
-                '_blank',
-                'width=400,height=600'
-              );
-              
-              if (printWindow) {
-                printWindow.addEventListener('load', () => {
-                  printWindow.print();
-                  // Auto-close after printing (optional)
-                  printWindow.addEventListener('afterprint', () => {
-                    try { printWindow.close(); } catch {}
-                  });
+            // Auto-print mode: open and trigger print immediately
+            const printWindow = window.open(
+              `/api/orders/${sessionOrder.id}/receipt?format=html`,
+              '_blank',
+              'width=400,height=600'
+            );
+            
+            if (printWindow) {
+              printWindow.addEventListener('load', () => {
+                printWindow.print();
+                // Auto-close after printing
+                printWindow.addEventListener('afterprint', () => {
+                  try { printWindow.close(); } catch {}
                 });
-              }
+              });
             }
           }, index * 500); // Stagger multiple receipts by 500ms
         }
