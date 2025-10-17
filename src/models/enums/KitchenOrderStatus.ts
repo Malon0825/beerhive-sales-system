@@ -7,6 +7,7 @@ export enum KitchenOrderStatus {
   PREPARING = 'preparing',
   READY = 'ready',
   SERVED = 'served',
+  CANCELLED = 'cancelled',
 }
 
 export type KitchenOrderStatusType = `${KitchenOrderStatus}`;

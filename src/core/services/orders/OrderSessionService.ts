@@ -217,14 +217,79 @@ export class OrderSessionService {
       // Calculate change
       const change = paymentData.amount_tendered - session.total_amount;
 
-      // Update all orders in session to COMPLETED and deduct inventory
+      // Update all orders in session to COMPLETED and ensure inventory is deducted
       const orders = session.orders || [];
       const performedByUserId = paymentData.closed_by;
       
       console.log(`👤 [OrderSessionService.closeTab] Closing tab as user: ${performedByUserId}`);
+      console.log(`📋 [OrderSessionService.closeTab] Processing ${orders.length} orders in session`);
       
       for (const order of orders) {
         if (order.status !== OrderStatus.COMPLETED && order.status !== OrderStatus.VOIDED) {
+          console.log(
+            `🔍 [OrderSessionService.closeTab] Processing order ${order.order_number} ` +
+            `(current status: ${order.status})`
+          );
+
+          // CRITICAL FIX: Check if stock was already deducted (order was CONFIRMED)
+          // If order is still DRAFT/PENDING, stock was NEVER deducted - we must deduct now!
+          const wasConfirmed = order.status === OrderStatus.CONFIRMED || 
+                              order.status === OrderStatus.PREPARING ||
+                              order.status === OrderStatus.READY ||
+                              order.status === OrderStatus.SERVED;
+
+          if (!wasConfirmed) {
+            // Order was never confirmed - stock was NEVER deducted!
+            // Deduct stock now before completing the order
+            console.warn(
+              `⚠️  [OrderSessionService.closeTab] Order ${order.order_number} was never confirmed! ` +
+              `Stock was NOT deducted yet. Deducting now...`
+            );
+
+            try {
+              // Get order items for stock deduction
+              const orderItems = order.order_items || [];
+              
+              if (orderItems.length > 0) {
+                await StockDeduction.deductForOrder(
+                  order.id,
+                  orderItems.map((item: any) => ({
+                    product_id: item.product_id,
+                    package_id: item.package_id,
+                    quantity: item.quantity,
+                  })),
+                  performedByUserId
+                );
+                console.log(
+                  `✅ [OrderSessionService.closeTab] Stock successfully deducted for order ${order.order_number}`
+                );
+              } else {
+                console.warn(
+                  `⚠️  [OrderSessionService.closeTab] Order ${order.order_number} has no items - nothing to deduct`
+                );
+              }
+            } catch (stockError) {
+              // Stock deduction failed - this is CRITICAL
+              // Log error but continue (payment already collected)
+              console.error(
+                `❌ [OrderSessionService.closeTab] CRITICAL: Stock deduction failed for order ${order.order_number}:`,
+                stockError
+              );
+              console.error(
+                `⚠️  [OrderSessionService.closeTab] Manual inventory adjustment required for order ${order.order_number}`
+              );
+              // Don't throw - we'll still mark order as completed
+              // Admin should review inventory movements and adjust manually
+            }
+          } else {
+            // Stock was already deducted when order was CONFIRMED
+            console.log(
+              `ℹ️  [OrderSessionService.closeTab] Stock for order ${order.order_number} ` +
+              `was already deducted at confirmation time (status: ${order.status}). No additional deduction needed.`
+            );
+          }
+
+          // Update order status to COMPLETED
           await OrderRepository.updateStatus(order.id, OrderStatus.COMPLETED);
           
           // Update cashier and completion timestamp
@@ -236,13 +301,6 @@ export class OrderSessionService {
             payment_method: paymentData.payment_method as any,
             completed_at: new Date().toISOString(),
           });
-
-          // Stock was already deducted when order was CONFIRMED
-          // No additional stock deduction needed at payment time
-          console.log(
-            `ℹ️  [OrderSessionService.closeTab] Stock for order ${order.order_number} ` +
-            `was already deducted at confirmation time. No additional deduction needed.`
-          );
         }
       }
 
