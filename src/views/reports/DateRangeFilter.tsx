@@ -29,8 +29,14 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
   /**
    * Handle period quick filter changes (Today, Yesterday, Week, Month)
    * 
-   * Bug Fix (v1.0.2): Changed to use local datetime strings instead of UTC.
-   * This ensures queries match user's intended local time (Philippines UTC+8).
+   * Business Hours Alignment (v1.0.2): 
+   * Operations run from 5pm to 5pm next day.
+   * All date ranges adjusted to match actual business day cycles.
+   * 
+   * - Today: 5pm yesterday → 5pm today (current business day)
+   * - Yesterday: 5pm 2 days ago → 5pm yesterday (previous business day)
+   * - Last 7 Days: 5pm 8 days ago → 5pm today (7 complete business days)
+   * - Last 30 Days: 5pm 31 days ago → 5pm today (30 complete business days)
    */
   const handlePeriodChange = (newPeriod: DatePeriod) => {
     setPeriod(newPeriod);
@@ -52,40 +58,45 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
 
     switch (newPeriod) {
       case 'today':
+        // Current business day: 5pm yesterday to 5pm today
         start = new Date();
-        start.setHours(0, 0, 0, 0);
+        start.setDate(start.getDate() - 1);
+        start.setHours(17, 0, 0, 0); // 5pm yesterday
         end = new Date();
-        end.setHours(23, 59, 59, 999);
+        end.setHours(17, 0, 0, 0); // 5pm today
         break;
       case 'yesterday':
+        // Previous business day: 5pm 2 days ago to 5pm yesterday
         start = new Date();
-        start.setDate(start.getDate() - 1);
-        start.setHours(0, 0, 0, 0);
+        start.setDate(start.getDate() - 2);
+        start.setHours(17, 0, 0, 0); // 5pm 2 days ago
         end = new Date();
         end.setDate(end.getDate() - 1);
-        end.setHours(23, 59, 59, 999);
+        end.setHours(17, 0, 0, 0); // 5pm yesterday
         break;
       case 'week':
+        // Last 7 business days: 5pm 8 days ago to 5pm today
         start = new Date();
-        start.setDate(start.getDate() - 7);
-        start.setHours(0, 0, 0, 0);
+        start.setDate(start.getDate() - 8);
+        start.setHours(17, 0, 0, 0); // 5pm 8 days ago
         end = new Date();
-        end.setHours(23, 59, 59, 999);
+        end.setHours(17, 0, 0, 0); // 5pm today
         break;
       case 'month':
+        // Last 30 business days: 5pm 31 days ago to 5pm today
         start = new Date();
-        start.setDate(start.getDate() - 30);
-        start.setHours(0, 0, 0, 0);
+        start.setDate(start.getDate() - 31);
+        start.setHours(17, 0, 0, 0); // 5pm 31 days ago
         end = new Date();
-        end.setHours(23, 59, 59, 999);
+        end.setHours(17, 0, 0, 0); // 5pm today
         break;
       case 'custom':
-        // Default custom range: 6pm yesterday to 5am today
+        // Default custom range: 5pm yesterday to 5pm today (current business day)
         start = new Date();
         start.setDate(start.getDate() - 1);
-        start.setHours(18, 0, 0, 0); // 6pm yesterday
+        start.setHours(17, 0, 0, 0); // 5pm yesterday
         end = new Date();
-        end.setHours(5, 0, 0, 0); // 5am today
+        end.setHours(17, 0, 0, 0); // 5pm today
         
         // Pre-populate the date and time fields
         const formatDateOnly = (date: Date): string => {

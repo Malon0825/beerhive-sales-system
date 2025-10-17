@@ -13,7 +13,7 @@ import { TopProductsTable } from './TopProductsTable';
 import { ExportReportButton } from './ExportReportButton';
 import { ExcelExportButton, ExcelExportMultiSheet } from './ExcelExportButton';
 import { ExcelHeader } from '@/core/services/export/ExcelExportService';
-import { DollarSign, ShoppingCart, Users, TrendingUp, Package, AlertTriangle } from 'lucide-react';
+import { DollarSign, ShoppingCart, Users, TrendingUp, Package, AlertTriangle, BarChart3, LineChart } from 'lucide-react';
 import { LoadingSkeleton } from '@/components/loading/LoadingSkeleton';
 
 /**
@@ -33,6 +33,9 @@ const SalesChart = dynamic(
   }
 );
 
+// Chart type for toggling between line and bar
+type ChartType = 'line' | 'bar';
+
 interface DashboardData {
   sales: any;
   inventory: any;
@@ -44,6 +47,7 @@ export function ReportsDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState({ startDate: '', endDate: '', period: 'week' as DatePeriod });
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [chartType, setChartType] = useState<ChartType>('bar');
 
   const fetchReports = async (startDate: string, endDate: string, period: DatePeriod) => {
     setLoading(true);
@@ -85,8 +89,9 @@ export function ReportsDashboard() {
   };
 
   useEffect(() => {
-    // Initialize with default week period
-    // Use local datetime format to preserve Philippines timezone (UTC+8)
+    // Initialize with default week period aligned to business hours
+    // Business operates 5pm to 5pm next day
+    // Last 7 Days = 5pm 8 days ago to 5pm today
     const formatLocalDateTime = (date: Date): string => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -97,12 +102,14 @@ export function ReportsDashboard() {
       return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
     };
     
-    const now = new Date();
-    now.setHours(23, 59, 59, 999);
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    weekAgo.setHours(0, 0, 0, 0);
+    const endDate = new Date();
+    endDate.setHours(17, 0, 0, 0); // 5pm today
     
-    handleDateRangeChange(formatLocalDateTime(weekAgo), formatLocalDateTime(now), 'week');
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 8);
+    startDate.setHours(17, 0, 0, 0); // 5pm 8 days ago
+    
+    handleDateRangeChange(formatLocalDateTime(startDate), formatLocalDateTime(endDate), 'week');
   }, []);
 
   const formatCurrency = (value: number) => {
@@ -338,12 +345,46 @@ export function ReportsDashboard() {
           </div>
 
           {/* Sales Chart */}
-          <SalesChart
-            data={dashboardData.sales.daily_sales || []}
-            chartType="line"
-            title="Sales Trend"
-            showTrend={true}
-          />
+          <div className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Sales Trend</h3>
+              
+              {/* Chart Type Toggle */}
+              <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setChartType('bar')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    chartType === 'bar'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="Bar Chart - Easier to compare values"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  Bar
+                </button>
+                <button
+                  onClick={() => setChartType('line')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                    chartType === 'line'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="Line Chart - Shows trends over time"
+                >
+                  <LineChart className="w-4 h-4" />
+                  Line
+                </button>
+              </div>
+            </div>
+            
+            <SalesChart
+              data={dashboardData.sales.daily_sales || []}
+              chartType={chartType}
+              title=""
+              showTrend={false}
+            />
+          </div>
 
           {/* Grid: Top Products and Categories */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
