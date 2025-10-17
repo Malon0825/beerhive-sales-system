@@ -86,9 +86,23 @@ export function ReportsDashboard() {
 
   useEffect(() => {
     // Initialize with default week period
+    // Use local datetime format to preserve Philippines timezone (UTC+8)
+    const formatLocalDateTime = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    };
+    
     const now = new Date();
+    now.setHours(23, 59, 59, 999);
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    handleDateRangeChange(weekAgo.toISOString(), now.toISOString(), 'week');
+    weekAgo.setHours(0, 0, 0, 0);
+    
+    handleDateRangeChange(formatLocalDateTime(weekAgo), formatLocalDateTime(now), 'week');
   }, []);
 
   const formatCurrency = (value: number) => {

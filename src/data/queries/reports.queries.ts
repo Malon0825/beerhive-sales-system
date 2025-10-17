@@ -7,11 +7,16 @@ import { supabaseAdmin } from '@/data/supabase/server-client';
 
 /**
  * Get sales data by date range
+ * 
+ * Handles both POS orders (single order payment) and Tab orders (session-based payment)
+ * For tabs, queries the order_sessions table to avoid counting each order separately
+ * This prevents sales duplication for multi-order tabs
  */
 export async function getSalesByDateRange(startDate: string, endDate: string) {
   const supabase = supabaseAdmin;
 
-  const { data, error } = await supabase
+  // Get POS orders (no session - direct payment)
+  const { data: posOrders, error: posError } = await supabase
     .from('orders')
     .select(`
       id,
@@ -24,16 +29,69 @@ export async function getSalesByDateRange(startDate: string, endDate: string) {
       status,
       completed_at,
       created_at,
+      session_id,
       cashier:cashier_id(id, full_name),
       customer:customer_id(id, full_name, tier)
     `)
+    .is('session_id', null)
     .gte('completed_at', startDate)
     .lte('completed_at', endDate)
     .eq('status', 'completed')
     .order('completed_at', { ascending: false });
 
-  if (error) throw error;
-  return data;
+  if (posError) throw posError;
+
+  // Get closed sessions (tabs - group payment)
+  const { data: sessions, error: sessionsError } = await supabase
+    .from('order_sessions')
+    .select(`
+      id,
+      session_number,
+      total_amount,
+      subtotal,
+      discount_amount,
+      tax_amount,
+      closed_at,
+      closed_by,
+      table:restaurant_tables!order_sessions_table_id_fkey(id, table_number),
+      customer:customers(id, full_name, tier),
+      orders(
+        payment_method,
+        cashier_id
+      )
+    `)
+    .eq('status', 'closed')
+    .gte('closed_at', startDate)
+    .lte('closed_at', endDate)
+    .order('closed_at', { ascending: false });
+
+  if (sessionsError) throw sessionsError;
+
+  // Transform sessions to match order format for consistency
+  const sessionOrders = sessions.map((session: any) => {
+    // Get payment method and cashier from first order in session
+    const firstOrder = session.orders?.[0];
+    
+    return {
+      id: session.id,
+      order_number: session.session_number,
+      total_amount: session.total_amount,
+      subtotal: session.subtotal,
+      discount_amount: session.discount_amount,
+      tax_amount: session.tax_amount,
+      payment_method: firstOrder?.payment_method || null,
+      status: 'completed',
+      completed_at: session.closed_at,
+      created_at: session.closed_at,
+      cashier: firstOrder?.cashier_id ? { id: firstOrder.cashier_id, full_name: null } : null,
+      customer: session.customer || null,
+      is_session: true, // Flag to identify this as a session
+      table: session.table,
+    };
+  });
+
+  // Combine POS orders and session orders
+  return [...posOrders, ...sessionOrders];
 }
 
 /**
@@ -74,6 +132,7 @@ export async function getDailySalesSummary(startDate: string, endDate: string) {
 
 /**
  * Get sales by hour (for peak hours analysis)
+ * Handles both POS orders and closed sessions
  */
 export async function getSalesByHour(date: string) {
   const supabase = supabaseAdmin;
@@ -81,14 +140,26 @@ export async function getSalesByHour(date: string) {
   const startDate = `${date}T00:00:00`;
   const endDate = `${date}T23:59:59`;
 
-  const { data, error } = await supabase
+  // Get POS orders
+  const { data: posOrders, error: posError } = await supabase
     .from('orders')
     .select('completed_at, total_amount')
+    .is('session_id', null)
     .gte('completed_at', startDate)
     .lte('completed_at', endDate)
     .eq('status', 'completed');
 
-  if (error) throw error;
+  if (posError) throw posError;
+
+  // Get closed sessions
+  const { data: sessions, error: sessionsError } = await supabase
+    .from('order_sessions')
+    .select('closed_at, total_amount')
+    .eq('status', 'closed')
+    .gte('closed_at', startDate)
+    .lte('closed_at', endDate);
+
+  if (sessionsError) throw sessionsError;
 
   // Group by hour
   const hourlyMap = new Map();
@@ -96,10 +167,19 @@ export async function getSalesByHour(date: string) {
     hourlyMap.set(hour, { hour, total_revenue: 0, transaction_count: 0 });
   }
 
-  data.forEach((order: any) => {
+  // Process POS orders
+  posOrders.forEach((order: any) => {
     const hour = new Date(order.completed_at).getHours();
     const hourData = hourlyMap.get(hour)!;
     hourData.total_revenue += parseFloat(order.total_amount);
+    hourData.transaction_count += 1;
+  });
+
+  // Process sessions
+  sessions.forEach((session: any) => {
+    const hour = new Date(session.closed_at).getHours();
+    const hourData = hourlyMap.get(hour)!;
+    hourData.total_revenue += parseFloat(session.total_amount);
     hourData.transaction_count += 1;
   });
 
@@ -203,28 +283,57 @@ export async function getAllProductsSold(startDate: string, endDate: string) {
 
 /**
  * Get sales by payment method
+ * Handles both POS orders and closed sessions
  */
 export async function getSalesByPaymentMethod(startDate: string, endDate: string) {
   const supabase = supabaseAdmin;
 
-  const { data, error } = await supabase
+  // Get POS orders
+  const { data: posOrders, error: posError } = await supabase
     .from('orders')
     .select('payment_method, total_amount')
+    .is('session_id', null)
     .gte('completed_at', startDate)
     .lte('completed_at', endDate)
     .eq('status', 'completed');
 
-  if (error) throw error;
+  if (posError) throw posError;
+
+  // Get closed sessions with payment method from first order
+  const { data: sessions, error: sessionsError } = await supabase
+    .from('order_sessions')
+    .select(`
+      total_amount,
+      orders(payment_method)
+    `)
+    .eq('status', 'closed')
+    .gte('closed_at', startDate)
+    .lte('closed_at', endDate);
+
+  if (sessionsError) throw sessionsError;
 
   // Aggregate by payment method
   const paymentMap = new Map();
-  data.forEach((order: any) => {
+  
+  // Process POS orders
+  posOrders.forEach((order: any) => {
     const method = order.payment_method || 'unknown';
     if (!paymentMap.has(method)) {
       paymentMap.set(method, { payment_method: method, total_amount: 0, count: 0 });
     }
     const payment = paymentMap.get(method);
     payment.total_amount += parseFloat(order.total_amount);
+    payment.count += 1;
+  });
+
+  // Process sessions
+  sessions.forEach((session: any) => {
+    const method = session.orders?.[0]?.payment_method || 'unknown';
+    if (!paymentMap.has(method)) {
+      paymentMap.set(method, { payment_method: method, total_amount: 0, count: 0 });
+    }
+    const payment = paymentMap.get(method);
+    payment.total_amount += parseFloat(session.total_amount);
     payment.count += 1;
   });
 
@@ -281,25 +390,46 @@ export async function getSalesByCategory(startDate: string, endDate: string) {
 
 /**
  * Get sales by cashier
+ * Handles both POS orders and closed sessions
+ * For sessions, credits the cashier who closed the tab
  */
 export async function getSalesByCashier(startDate: string, endDate: string) {
   const supabase = supabaseAdmin;
 
-  const { data, error } = await supabase
+  // Get POS orders
+  const { data: posOrders, error: posError } = await supabase
     .from('orders')
     .select(`
       total_amount,
       cashier:cashier_id(id, full_name)
     `)
+    .is('session_id', null)
     .gte('completed_at', startDate)
     .lte('completed_at', endDate)
     .eq('status', 'completed');
 
-  if (error) throw error;
+  if (posError) throw posError;
+
+  // Get closed sessions with cashier from first order
+  const { data: sessions, error: sessionsError } = await supabase
+    .from('order_sessions')
+    .select(`
+      total_amount,
+      orders(
+        cashier:cashier_id(id, full_name)
+      )
+    `)
+    .eq('status', 'closed')
+    .gte('closed_at', startDate)
+    .lte('closed_at', endDate);
+
+  if (sessionsError) throw sessionsError;
 
   // Aggregate by cashier
   const cashierMap = new Map();
-  data.forEach((order: any) => {
+  
+  // Process POS orders
+  posOrders.forEach((order: any) => {
     if (!order.cashier) return;
     
     const key = order.cashier.id;
@@ -313,6 +443,25 @@ export async function getSalesByCashier(startDate: string, endDate: string) {
     }
     const cashier = cashierMap.get(key);
     cashier.total_sales += parseFloat(order.total_amount);
+    cashier.transaction_count += 1;
+  });
+
+  // Process sessions
+  sessions.forEach((session: any) => {
+    const cashierData = session.orders?.[0]?.cashier;
+    if (!cashierData) return;
+    
+    const key = cashierData.id;
+    if (!cashierMap.has(key)) {
+      cashierMap.set(key, {
+        cashier_id: cashierData.id,
+        cashier_name: cashierData.full_name,
+        total_sales: 0,
+        transaction_count: 0
+      });
+    }
+    const cashier = cashierMap.get(key);
+    cashier.total_sales += parseFloat(session.total_amount);
     cashier.transaction_count += 1;
   });
 
