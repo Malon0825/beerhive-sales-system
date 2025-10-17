@@ -1,4 +1,5 @@
 import { InventoryRepository } from '@/data/repositories/InventoryRepository';
+import { PackageRepository } from '@/data/repositories/PackageRepository';
 import { AppError } from '@/lib/errors/AppError';
 import { supabaseAdmin } from '@/data/supabase/server-client';
 
@@ -13,8 +14,11 @@ export class StockDeduction {
    * Processes each product independently to ensure all items are attempted
    * even if one fails. Handles user ID validation to prevent UUID errors.
    * 
+   * IMPORTANT: Now handles package items by expanding them into component products
+   * and deducting stock for each component based on package configuration.
+   * 
    * @param orderId - The order ID for reference
-   * @param orderItems - Array of order items to deduct
+   * @param orderItems - Array of order items to deduct (can include packages)
    * @param userId - User performing the deduction (must be valid UUID)
    * @returns Promise that resolves with deduction results
    * @throws AppError if all deductions fail
@@ -23,6 +27,7 @@ export class StockDeduction {
     orderId: string,
     orderItems: Array<{
       product_id: string | null;
+      package_id?: string | null;
       quantity: number;
     }>,
     userId: string
@@ -39,19 +44,61 @@ export class StockDeduction {
     const deductions: Array<{
       productId: string;
       quantity: number;
+      source: string; // Track if from direct product or package
     }> = [];
 
-    // Collect all product deductions (skip packages and null product_ids)
+    // Collect all product deductions (including package component products)
     for (const item of orderItems) {
-      if (!item.product_id) {
-        console.log(`⏭️  [StockDeduction.deductForOrder] Skipping item without product_id (likely a package)`);
-        continue;
+      // Handle direct product items
+      if (item.product_id) {
+        deductions.push({
+          productId: item.product_id,
+          quantity: item.quantity,
+          source: 'product',
+        });
+        console.log(`📦 [StockDeduction.deductForOrder] Added direct product: ${item.product_id} x${item.quantity}`);
       }
+      // Handle package items - expand to component products
+      else if (item.package_id) {
+        console.log(`📦 [StockDeduction.deductForOrder] Expanding package: ${item.package_id}`);
+        try {
+          const pkg = await PackageRepository.getById(item.package_id);
+          
+          if (!pkg) {
+            console.error(`❌ [StockDeduction.deductForOrder] Package not found: ${item.package_id}`);
+            continue;
+          }
 
-      deductions.push({
-        productId: item.product_id,
-        quantity: item.quantity,
-      });
+          if (!pkg.items || pkg.items.length === 0) {
+            console.warn(`⚠️  [StockDeduction.deductForOrder] Package ${item.package_id} has no items`);
+            continue;
+          }
+
+          // Deduct stock for each component product in the package
+          for (const packageItem of pkg.items) {
+            if (packageItem.product_id) {
+              const componentQuantity = packageItem.quantity * item.quantity;
+              deductions.push({
+                productId: packageItem.product_id,
+                quantity: componentQuantity,
+                source: `package:${pkg.name}`,
+              });
+              console.log(
+                `📦 [StockDeduction.deductForOrder] Added package component: ` +
+                `${packageItem.product?.name || packageItem.product_id} x${componentQuantity} ` +
+                `(from package "${pkg.name}" x${item.quantity})`
+              );
+            }
+          }
+        } catch (error) {
+          console.error(`❌ [StockDeduction.deductForOrder] Error expanding package ${item.package_id}:`, error);
+          // Continue processing other items
+        }
+      }
+      // Skip items without product_id or package_id
+      else {
+        console.warn(`⚠️  [StockDeduction.deductForOrder] Item has no product_id or package_id, skipping`);
+      }
     }
 
     console.log(`📦 [StockDeduction.deductForOrder] ${deductions.length} products to deduct`);
@@ -71,7 +118,8 @@ export class StockDeduction {
       try {
         console.log(
           `📦 [StockDeduction.deductForOrder] [${i + 1}/${deductions.length}] ` +
-          `Deducting ${deduction.quantity} units of product ${deduction.productId}`
+          `Deducting ${deduction.quantity} units of product ${deduction.productId} ` +
+          `(source: ${deduction.source})`
         );
 
         await InventoryRepository.adjustStock(
@@ -91,7 +139,8 @@ export class StockDeduction {
 
         console.log(
           `✅ [StockDeduction.deductForOrder] [${i + 1}/${deductions.length}] ` +
-          `Successfully deducted ${deduction.quantity} units of product ${deduction.productId}`
+          `Successfully deducted ${deduction.quantity} units of product ${deduction.productId} ` +
+          `(source: ${deduction.source})`
         );
       } catch (error) {
         // Log the error but continue processing other products
@@ -148,8 +197,11 @@ export class StockDeduction {
    * Processes each product independently to ensure all items are attempted
    * even if one fails. Handles user ID validation to prevent UUID errors.
    * 
+   * IMPORTANT: Now handles package items by expanding them into component products
+   * and returning stock for each component based on package configuration.
+   * 
    * @param orderId - The order ID for reference
-   * @param orderItems - Array of order items to return
+   * @param orderItems - Array of order items to return (can include packages)
    * @param userId - User performing the return (must be valid UUID)
    * @returns Promise that resolves with return results
    * @throws AppError if all returns fail
@@ -158,6 +210,7 @@ export class StockDeduction {
     orderId: string,
     orderItems: Array<{
       product_id: string | null;
+      package_id?: string | null;
       quantity: number;
     }>,
     userId: string
@@ -174,19 +227,61 @@ export class StockDeduction {
     const returns: Array<{
       productId: string;
       quantity: number;
+      source: string; // Track if from direct product or package
     }> = [];
 
-    // Collect all product returns (skip packages and null product_ids)
+    // Collect all product returns (including package component products)
     for (const item of orderItems) {
-      if (!item.product_id) {
-        console.log(`⏭️  [StockDeduction.returnForVoidedOrder] Skipping item without product_id`);
-        continue;
+      // Handle direct product items
+      if (item.product_id) {
+        returns.push({
+          productId: item.product_id,
+          quantity: item.quantity,
+          source: 'product',
+        });
+        console.log(`🔄 [StockDeduction.returnForVoidedOrder] Added direct product return: ${item.product_id} x${item.quantity}`);
       }
+      // Handle package items - expand to component products
+      else if (item.package_id) {
+        console.log(`🔄 [StockDeduction.returnForVoidedOrder] Expanding package: ${item.package_id}`);
+        try {
+          const pkg = await PackageRepository.getById(item.package_id);
+          
+          if (!pkg) {
+            console.error(`❌ [StockDeduction.returnForVoidedOrder] Package not found: ${item.package_id}`);
+            continue;
+          }
 
-      returns.push({
-        productId: item.product_id,
-        quantity: item.quantity,
-      });
+          if (!pkg.items || pkg.items.length === 0) {
+            console.warn(`⚠️  [StockDeduction.returnForVoidedOrder] Package ${item.package_id} has no items`);
+            continue;
+          }
+
+          // Return stock for each component product in the package
+          for (const packageItem of pkg.items) {
+            if (packageItem.product_id) {
+              const componentQuantity = packageItem.quantity * item.quantity;
+              returns.push({
+                productId: packageItem.product_id,
+                quantity: componentQuantity,
+                source: `package:${pkg.name}`,
+              });
+              console.log(
+                `🔄 [StockDeduction.returnForVoidedOrder] Added package component return: ` +
+                `${packageItem.product?.name || packageItem.product_id} x${componentQuantity} ` +
+                `(from package "${pkg.name}" x${item.quantity})`
+              );
+            }
+          }
+        } catch (error) {
+          console.error(`❌ [StockDeduction.returnForVoidedOrder] Error expanding package ${item.package_id}:`, error);
+          // Continue processing other items
+        }
+      }
+      // Skip items without product_id or package_id
+      else {
+        console.warn(`⚠️  [StockDeduction.returnForVoidedOrder] Item has no product_id or package_id, skipping`);
+      }
     }
 
     console.log(`🔄 [StockDeduction.returnForVoidedOrder] ${returns.length} products to return`);

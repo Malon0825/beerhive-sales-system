@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { ChangeTableDialog } from './ChangeTableDialog';
-import SessionItemsManagerModal from '@/views/orders/SessionItemsManagerModal';
+import ManageTabItemsModal from '@/views/orders/ManageTabItemsModal';
 
 /**
  * TableWithTabCard Component
@@ -295,9 +295,9 @@ export default function TableWithTabCard({
         />
       )}
       
-      {/* Manage Items Modal */}
+      {/* Manage Items Modal - Single modal shows all items directly */}
       {session && (
-        <SessionItemsManagerModal
+        <ManageTabItemsModal
           sessionId={session.id}
           sessionNumber={session.session_number}
           isOpen={showManageItemsModal}

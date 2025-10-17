@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/views/shared/ui/button';
 import { Badge } from '@/views/shared/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/views/shared/ui/card';
@@ -85,9 +86,16 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [headerContainer, setHeaderContainer] = useState<HTMLElement | null>(null);
   
   // Access stock tracker context
   const stockTracker = useStockTracker();
+
+  // Find the header container for portal rendering
+  useEffect(() => {
+    const container = document.getElementById('tab-detail-container');
+    setHeaderContainer(container);
+  }, []);
 
   /**
    * Fetch session details
@@ -417,78 +425,80 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
         </div>
       )}
       
+      {/* Portal: Render Session Info in Header */}
+      {session && headerContainer && createPortal(
+        <Card className="shadow-md">
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              {/* Left: Session Number & Status */}
+              <div className="flex items-center gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-semibold text-sm">{session.session_number}</span>
+                    <Badge className="bg-green-600 text-white text-xs">{session.status}</Badge>
+                  </div>
+                  {session.table && (
+                    <div className="flex items-center gap-1 text-xs text-gray-600 mt-1">
+                      <MapPin className="w-3 h-3" />
+                      Table {session.table.table_number}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Right: Customer & Total */}
+              <div className="flex items-center gap-3">
+                {/* Customer Badge */}
+                {selectedCustomer ? (
+                  <Badge 
+                    className={`flex items-center gap-1 cursor-pointer ${getTierBadgeColor(selectedCustomer.tier)}`}
+                    onClick={() => setShowCustomerSearch(true)}
+                  >
+                    {selectedCustomer.tier !== 'regular' && <Star className="w-3 h-3" />}
+                    <User className="w-3 h-3" />
+                    <span className="hidden sm:inline">{selectedCustomer.full_name}</span>
+                    <span className="sm:hidden">{selectedCustomer.full_name.split(' ')[0]}</span>
+                    <Edit className="w-3 h-3 ml-1" />
+                  </Badge>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowCustomerSearch(true)}
+                    className="h-7 text-xs"
+                  >
+                    <User className="w-3 h-3 mr-1" />
+                    <span className="hidden sm:inline">Select Customer</span>
+                    <span className="sm:hidden">Customer</span>
+                  </Button>
+                )}
+                
+                {/* Session Total */}
+                <div className="text-right">
+                  <div className="text-xs text-gray-600">Total</div>
+                  <div className="text-lg font-bold text-green-600">
+                    {formatCurrency(session.total_amount || 0)}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* VIP Notice (if applicable) */}
+            {selectedCustomer && selectedCustomer.tier !== 'regular' && (
+              <div className="mt-3 p-2 bg-purple-50 rounded text-xs text-purple-800 flex items-center gap-1">
+                <Star className="w-3 h-3" />
+                {formatTier(selectedCustomer.tier)} - Special pricing applied
+              </div>
+            )}
+          </CardContent>
+        </Card>,
+        headerContainer
+      )}
+      
       {/* Responsive Main Layout Container - Optimized height for better space utilization */}
       <div className="flex flex-col xl:flex-row gap-4 h-[calc(100vh-12rem)]">
         {/* Left Column - Product Selection (Expands on XL screens) */}
         <div className="flex-1 min-w-0 flex flex-col gap-3 min-h-0">
-          {/* Compact Session Info Header */}
-          {session && (
-            <Card className="shadow-md flex-shrink-0">
-              <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  {/* Left: Session Number & Status */}
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-semibold text-sm">{session.session_number}</span>
-                        <Badge className="bg-green-600 text-white text-xs">{session.status}</Badge>
-                      </div>
-                      {session.table && (
-                        <div className="flex items-center gap-1 text-xs text-gray-600 mt-1">
-                          <MapPin className="w-3 h-3" />
-                          Table {session.table.table_number}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Right: Customer & Total */}
-                  <div className="flex items-center gap-3">
-                    {/* Customer Badge */}
-                    {selectedCustomer ? (
-                      <Badge 
-                        className={`flex items-center gap-1 cursor-pointer ${getTierBadgeColor(selectedCustomer.tier)}`}
-                        onClick={() => setShowCustomerSearch(true)}
-                      >
-                        {selectedCustomer.tier !== 'regular' && <Star className="w-3 h-3" />}
-                        <User className="w-3 h-3" />
-                        <span className="hidden sm:inline">{selectedCustomer.full_name}</span>
-                        <span className="sm:hidden">{selectedCustomer.full_name.split(' ')[0]}</span>
-                        <Edit className="w-3 h-3 ml-1" />
-                      </Badge>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowCustomerSearch(true)}
-                        className="h-7 text-xs"
-                      >
-                        <User className="w-3 h-3 mr-1" />
-                        <span className="hidden sm:inline">Select Customer</span>
-                        <span className="sm:hidden">Customer</span>
-                      </Button>
-                    )}
-                    
-                    {/* Session Total */}
-                    <div className="text-right">
-                      <div className="text-xs text-gray-600">Total</div>
-                      <div className="text-lg font-bold text-green-600">
-                        {formatCurrency(session.total_amount || 0)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* VIP Notice (if applicable) */}
-                {selectedCustomer && selectedCustomer.tier !== 'regular' && (
-                  <div className="mt-3 p-2 bg-purple-50 rounded text-xs text-purple-800 flex items-center gap-1">
-                    <Star className="w-3 h-3" />
-                    {formatTier(selectedCustomer.tier)} - Special pricing applied
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
 
           {/* Product Selector - Takes remaining space and scrolls internally */}
           <div className="flex-1 min-h-0">

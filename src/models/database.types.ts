@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -1710,7 +1710,7 @@ export type Database = {
       customer_tier: "regular" | "vip_silver" | "vip_gold" | "vip_platinum"
       discount_type: "percentage" | "fixed_amount" | "complimentary"
       event_type: "birthday" | "anniversary" | "custom"
-      kitchen_order_status: "pending" | "preparing" | "ready" | "served"
+      kitchen_order_status: "pending" | "preparing" | "ready" | "served" | "cancelled"
       order_destination: "kitchen" | "bartender" | "both"
       order_status: "pending" | "completed" | "voided" | "on_hold"
       package_type: "vip_only" | "regular" | "promotional"
@@ -1873,7 +1873,7 @@ export const Constants = {
       customer_tier: ["regular", "vip_silver", "vip_gold", "vip_platinum"],
       discount_type: ["percentage", "fixed_amount", "complimentary"],
       event_type: ["birthday", "anniversary", "custom"],
-      kitchen_order_status: ["pending", "preparing", "ready", "served"],
+      kitchen_order_status: ["pending", "preparing", "ready", "served", "cancelled"],
       order_destination: ["kitchen", "bartender", "both"],
       order_status: ["pending", "completed", "voided", "on_hold"],
       package_type: ["vip_only", "regular", "promotional"],

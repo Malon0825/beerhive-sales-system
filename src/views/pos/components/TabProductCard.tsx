@@ -166,7 +166,7 @@ export function TabProductCard({
       <div className="space-y-2">
         {/* Product Name - Full name visible with line-clamp */}
         <h3
-          className="font-semibold text-sm leading-tight min-h-[2.5rem] line-clamp-2"
+          className="font-semibold text-lg leading-tight min-h-[2.5rem] line-clamp-2"
           title={product.name}
         >
           {product.name}

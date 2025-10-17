@@ -36,24 +36,30 @@ export default function AddOrderToTabPage({
 
   return (
     <StockTrackerProvider>
-      <div className="space-y-6">
-        {/* Header with Back Button */}
-        <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push('/tabs')}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Tabs
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Add Order to Tab</h1>
-            <p className="text-gray-600 mt-1">
-              Add items to the active tab • Stock tracking enabled
-            </p>
+      <div className="space-y-4">
+        {/* Header with Back Button and Tab Detail */}
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          {/* Left: Back Button and Title */}
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push('/tabs')}
+              className="h-10 w-10 p-0 hover:bg-gray-100 flex-shrink-0"
+              aria-label="Back to tabs"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Add Order to Tab</h1>
+              <p className="text-sm text-gray-600">
+                Add items to the active tab • Stock tracking enabled
+              </p>
+            </div>
           </div>
+
+          {/* Right: Tab Detail will be rendered here by SessionOrderFlow */}
+          <div id="tab-detail-container" className="lg:min-w-[400px]" />
         </div>
 
         {/* Order Flow Component with Stock Tracking */}

@@ -1,21 +1,45 @@
-# Bug Fix Summary - Tab Payment Mismatch
+# Bug Fix Summary - Release v1.0.2
 
+## Fixes Included in This Release
+
+### 1. Tab Payment Mismatch (COMPLETED)
 **Issue ID:** Tab Module Payment/Billing Discrepancy  
 **Reported:** Sales mismatch between physical payments and system records  
 **Fixed:** October 17, 2025  
 **Severity:** Critical - Financial accuracy issue
 
+### 2. Inventory Integrity Issues (NEW)
+**Issue ID:** Inventory Stock Deduction Loopholes  
+**Reported:** Stock not reliably deducted for all sales  
+**Fixed:** October 17, 2025  
+**Severity:** Critical - Inventory integrity issue
+
 ---
 
 ## Executive Summary
 
-Fixed a critical bug in the Tab module where payment amounts were being duplicated across multiple orders within the same session, causing sales reports to show inflated payment totals compared to actual physical cash/card collected.
+This release contains TWO critical fixes that address financial accuracy and inventory integrity:
+
+### Fix #1: Tab Payment Duplication
+Fixed payment amounts being duplicated across multiple orders within the same session, causing sales reports to show inflated payment totals.
 
 **Example Impact:**
 - Tab with 3 orders totaling $100
 - Customer pays $100
 - **Before:** System recorded $300 in payments (3 × $100)
 - **After:** System correctly records $100 in payments
+
+### Fix #2: Inventory Stock Deduction Loopholes
+Fixed THREE critical loopholes where products were sold without proper stock deduction:
+
+1. **Tab orders never confirmed** → Stock not deducted even when paid
+2. **Package items** → Component products never had stock reduced
+3. **Race conditions** → Concurrent orders could oversell inventory
+
+**Example Impact:**
+- Tab with 10 beers closed without confirming → Stock never reduced
+- Package "Bucket Deal" (6 beers + wings) sold → No stock deduction at all
+- 5 concurrent orders for same product → Could oversell and go negative
 
 ---
 
@@ -40,7 +64,7 @@ In `OrderSessionService.closeTab()`, when closing a tab containing multiple orde
 
 ## Files Modified
 
-### Code Changes
+### Code Changes - Tab Payment Fix
 1. **src/core/services/orders/OrderSessionService.ts**
    - Removed payment amount duplication in `closeTab()` method
    - Added clarifying comments about session-level payment handling
@@ -50,23 +74,44 @@ In `OrderSessionService.closeTab()`, when closing a tab containing multiple orde
    - Updated `getSalesByHour()` to handle both POS and tab orders
    - Updated `getSalesByPaymentMethod()` to aggregate correctly
    - Updated `getSalesByCashier()` to credit tab closers properly
-   - All changes prevent counting tab orders multiple times in reports
 
-### Documentation Created
-1. **docs/release-v1.0.2/TAB_PAYMENT_DUPLICATION_FIX.md**
-   - Detailed technical documentation
-   - Testing recommendations
-   - Impact analysis
+### Code Changes - Inventory Integrity Fix
+1. **src/core/services/inventory/StockDeduction.ts**
+   - Added package expansion logic to deduct component products
+   - Enhanced `deductForOrder()` to handle packages
+   - Enhanced `returnForVoidedOrder()` to handle packages
+   - Added source tracking for audit trail
+
+2. **src/core/services/orders/OrderSessionService.ts**
+   - Fixed tab close to check if orders were confirmed
+   - Deduct stock at payment time if never confirmed before
+   - Comprehensive logging and error handling
+
+3. **src/data/repositories/InventoryRepository.ts**
+   - Implemented atomic stock adjustments using database RPC
+   - Prevents race conditions in concurrent updates
+   - Fallback to regular updates with warning if RPC unavailable
+
+### Database Migrations
+1. **migrations/release-v1.0.2/add_atomic_stock_adjustment.sql**
+   - Creates `adjust_product_stock_atomic()` PostgreSQL function
+   - Uses row-level locking to prevent race conditions
+   - Validates stock won't go negative atomically
 
 2. **docs/release-v1.0.2/data_migration_tab_payment_cleanup.sql**
-   - Database migration script
-   - Verification queries
-   - Rollback procedures
+   - Cleans up duplicate payment records
+
+### Documentation Created
+1. **docs/release-v1.0.2/INVENTORY_INTEGRITY_FIX.md** (NEW)
+   - Comprehensive technical documentation for all 3 inventory fixes
+   - Detailed test cases and verification procedures
+   - Migration instructions and monitoring guidelines
+
+2. **docs/release-v1.0.2/TAB_PAYMENT_DUPLICATION_FIX.md**
+   - Tab payment fix documentation
 
 3. **docs/release-v1.0.2/REPORTS_MODULE_FIX.md**
-   - Reports module changes documentation
-   - Query logic explanation
-   - Testing verification
+   - Reports module changes
 
 4. **docs/release-v1.0.2/BUGFIX_SUMMARY.md** (this file)
 
@@ -74,16 +119,27 @@ In `OrderSessionService.closeTab()`, when closing a tab containing multiple orde
 
 ## Testing Required
 
-### Pre-Deployment Testing
+### Pre-Deployment Testing - Tab Payment Fix
 - [ ] Test single-order tab payment
 - [ ] Test multi-order tab payment (3+ orders)
 - [ ] Test POS order payment (ensure unchanged)
 - [ ] Verify sales reports show correct totals
 
+### Pre-Deployment Testing - Inventory Fix
+- [ ] Test tab order without confirming (CRITICAL)
+- [ ] Test package order and verify component stock deduction
+- [ ] Test concurrent orders for same product (load test)
+- [ ] Test void order with package items
+- [ ] Verify inventory movements logged correctly
+
 ### Post-Deployment Verification
-- [ ] Run data migration script
+- [ ] Run payment cleanup migration script
+- [ ] Apply atomic stock adjustment migration
 - [ ] Verify no orders with `session_id` have `amount_tendered` set
-- [ ] Compare daily sales report with physical cash/card collected
+- [ ] Verify no products have negative `current_stock`
+- [ ] Compare daily sales report with physical cash collected
+- [ ] Check inventory movements match order completions
+- [ ] Monitor logs for "was never confirmed" warnings
 - [ ] Monitor for any edge cases
 
 ---
@@ -91,23 +147,40 @@ In `OrderSessionService.closeTab()`, when closing a tab containing multiple orde
 ## Deployment Checklist
 
 1. **Code Deployment**
-   - [ ] Deploy updated `OrderSessionService.ts` to production
+   - [ ] Deploy all updated files to production
    - [ ] Verify deployment successful
+   - [ ] Check application starts without errors
 
-2. **Data Migration**
-   - [ ] Backup production database
-   - [ ] Run verification queries (Step 1 & 2 in migration script)
-   - [ ] Execute cleanup UPDATE statement (Step 4)
-   - [ ] Verify fix with Step 5 query
-   - [ ] Validate sales totals with Step 6 query
+2. **Database Migrations**
+   - [ ] Backup production database (CRITICAL)
+   - [ ] Apply atomic stock adjustment migration:
+     ```bash
+     psql $DATABASE_URL -f migrations/release-v1.0.2/add_atomic_stock_adjustment.sql
+     ```
+   - [ ] Verify function created: `SELECT routine_name FROM information_schema.routines WHERE routine_name = 'adjust_product_stock_atomic';`
+   - [ ] Run payment cleanup migration (if needed)
+   - [ ] Verify no negative stock: `SELECT * FROM products WHERE current_stock < 0;`
 
-3. **Validation**
+3. **Validation - Tab Payment**
    - [ ] Process test tab with multiple orders
    - [ ] Verify payment amounts not duplicated
    - [ ] Run sales report and compare with expected values
-   - [ ] Monitor system for 24-48 hours
 
-4. **Cleanup**
+4. **Validation - Inventory**
+   - [ ] Create tab order without confirming, then close tab
+   - [ ] Verify stock was deducted (check `inventory_movements`)
+   - [ ] Order package item and verify components deducted
+   - [ ] Check logs for atomic function usage
+   - [ ] Verify no "insufficient stock" errors for valid orders
+
+5. **Monitoring (First 48 Hours)**
+   - [ ] Watch for "Order was never confirmed" warnings
+   - [ ] Monitor for stock deduction failures
+   - [ ] Check for negative stock incidents
+   - [ ] Verify atomic function being used (no fallback warnings)
+   - [ ] Compare sales with inventory movements
+
+6. **Cleanup**
    - [ ] Drop backup table after 1 week (if no issues)
    - [ ] Archive migration scripts
 
@@ -172,8 +245,23 @@ If critical issues occur:
 
 ## Conclusion
 
-This fix addresses a critical financial accuracy issue in the Tab module. The solution is minimal, focused, and maintains backward compatibility. With proper testing and data migration, this fix will ensure sales reports accurately reflect actual business transactions.
+This release addresses TWO critical issues that compromise system integrity:
+
+1. **Financial Accuracy** - Tab payment duplication fix ensures sales reports match actual payments
+2. **Inventory Integrity** - Stock deduction fixes ensure reliable inventory tracking
+
+Both fixes are production-ready with comprehensive documentation, testing procedures, and rollback plans. The changes maintain backward compatibility while significantly improving system reliability.
 
 **Status:** ✅ Ready for deployment  
-**Priority:** High - Financial accuracy  
-**Complexity:** Low - Single file change + data migration
+**Priority:** Critical - Financial accuracy + Inventory integrity  
+**Complexity:** Medium - Multiple files + database migration  
+**Risk Level:** Low-Medium with proper testing  
+**Testing Time:** 2-4 hours recommended  
+**Deployment Window:** Off-peak hours recommended
+
+### Key Benefits
+- ✅ Accurate sales reports matching physical payments
+- ✅ Reliable inventory tracking across all order types
+- ✅ Prevention of overselling through atomic updates
+- ✅ Complete audit trail for all stock movements
+- ✅ Staff can trust system data for decision-making

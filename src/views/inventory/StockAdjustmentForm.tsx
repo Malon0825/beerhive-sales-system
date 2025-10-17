@@ -23,7 +23,7 @@ export default function StockAdjustmentForm({
   const [formData, setFormData] = useState({
     movement_type: 'stock_in',
     reason: 'purchase',
-    quantity_change: '',
+    quantity: '', // Changed from quantity_change - now always absolute value
     unit_cost: '',
     notes: '',
   });
@@ -36,34 +36,106 @@ export default function StockAdjustmentForm({
     if (product) {
       checkAdjustmentRequirements();
     }
-  }, [product, formData.quantity_change]);
+  }, [product, formData.quantity, formData.movement_type]);
+
+  /**
+   * Get contextual reasons based on selected movement type
+   */
+  const getAvailableReasons = () => {
+    switch (formData.movement_type) {
+      case 'stock_in':
+        return [
+          { value: 'purchase', label: 'Purchase from Supplier' },
+          { value: 'void_return', label: 'Void/Return' },
+          { value: 'count_correction', label: 'Count Correction (Increase)' },
+        ];
+      case 'stock_out':
+        return [
+          { value: 'damaged', label: 'Damaged' },
+          { value: 'expired', label: 'Expired' },
+          { value: 'theft', label: 'Theft/Loss' },
+          { value: 'waste', label: 'Waste/Spillage' },
+          { value: 'count_correction', label: 'Count Correction (Decrease)' },
+        ];
+      case 'physical_count':
+        return [
+          { value: 'count_correction', label: 'Physical Inventory Count' },
+        ];
+      default:
+        return [];
+    }
+  };
+
+  /**
+   * Calculate new stock based on movement type and quantity
+   */
+  const calculateNewStock = (): number => {
+    if (!product) return 0;
+    const qty = parseFloat(formData.quantity) || 0;
+    
+    switch (formData.movement_type) {
+      case 'stock_in':
+        return product.current_stock + qty; // Add
+      case 'stock_out':
+        return product.current_stock - qty; // Subtract
+      case 'physical_count':
+        return qty; // Set exact amount
+      default:
+        return product.current_stock;
+    }
+  };
+
+  /**
+   * Calculate actual quantity change for the database
+   */
+  const calculateQuantityChange = (): number => {
+    if (!product) return 0;
+    const qty = parseFloat(formData.quantity) || 0;
+    
+    switch (formData.movement_type) {
+      case 'stock_in':
+        return qty; // Positive
+      case 'stock_out':
+        return -qty; // Negative
+      case 'physical_count':
+        return qty - product.current_stock; // Difference
+      default:
+        return 0;
+    }
+  };
 
   const checkAdjustmentRequirements = () => {
     if (!product) return;
 
-    // Validate adjustment
-    const quantityChange = parseFloat(formData.quantity_change as string) || 0;
-    const validation = InventoryService.validateAdjustment(
-      product.current_stock,
-      quantityChange,
-      formData.movement_type
-    );
+    const newStock = calculateNewStock();
+    const quantityChange = calculateQuantityChange();
 
-    if (!validation.valid) {
-      setWarning(validation.error || null);
-    } else if (validation.error) {
-      setWarning(validation.error);
+    // Check for negative stock
+    if (newStock < 0) {
+      setWarning(`This adjustment would result in negative stock (${newStock.toFixed(2)} ${product.unit_of_measure})`);
+    } else if (newStock === 0 && formData.movement_type === 'stock_out') {
+      setWarning(`This will reduce stock to zero`);
     } else {
       setWarning(null);
     }
 
-    // Check if requires approval
+    // Check if requires approval (>10% change)
     const needsApproval = InventoryService.requiresManagerApproval(
       product.current_stock,
       quantityChange
     );
     setRequiresApproval(needsApproval);
   };
+
+  /**
+   * Reset reason when movement type changes
+   */
+  useEffect(() => {
+    const reasons = getAvailableReasons();
+    if (reasons.length > 0 && !reasons.find(r => r.value === formData.reason)) {
+      setFormData(prev => ({ ...prev, reason: reasons[0].value }));
+    }
+  }, [formData.movement_type]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,7 +149,7 @@ export default function StockAdjustmentForm({
       
       const payload = {
         product_id: product.id,
-        quantity_change: parseFloat(formData.quantity_change as string) || 0,
+        quantity_change: calculateQuantityChange(), // Calculated based on movement type
         movement_type: formData.movement_type,
         reason: formData.reason,
         unit_cost: formData.unit_cost ? parseFloat(formData.unit_cost as string) : undefined,
@@ -124,7 +196,9 @@ export default function StockAdjustmentForm({
     );
   }
 
-  const newStock = product.current_stock + (parseFloat(formData.quantity_change as string) || 0);
+  const newStock = calculateNewStock();
+  const availableReasons = getAvailableReasons();
+  const isPhysicalCount = formData.movement_type === 'physical_count';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -154,14 +228,18 @@ export default function StockAdjustmentForm({
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         >
-          <option value="stock_in">Stock In</option>
-          <option value="stock_out">Stock Out</option>
-          <option value="transfer">Transfer</option>
-          <option value="physical_count">Physical Count</option>
+          <option value="stock_in">➕ Stock In - Increase Inventory</option>
+          <option value="stock_out">➖ Stock Out - Decrease Inventory</option>
+          <option value="physical_count">📊 Physical Count - Set Exact Amount</option>
         </select>
+        <p className="text-xs text-gray-500 mt-1">
+          {formData.movement_type === 'stock_in' && 'Adding inventory (purchases, returns)'}
+          {formData.movement_type === 'stock_out' && 'Removing inventory (damage, waste, theft)'}
+          {formData.movement_type === 'physical_count' && 'Setting inventory to exact count'}
+        </p>
       </div>
 
-      {/* Reason */}
+      {/* Reason - Contextual based on Movement Type */}
       <div>
         <Label>Reason *</Label>
         <select
@@ -170,35 +248,62 @@ export default function StockAdjustmentForm({
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         >
-          <option value="purchase">Purchase</option>
-          <option value="damaged">Damaged</option>
-          <option value="expired">Expired</option>
-          <option value="theft">Theft</option>
-          <option value="waste">Waste</option>
-          <option value="count_correction">Count Correction</option>
-          <option value="transfer_in">Transfer In</option>
-          <option value="transfer_out">Transfer Out</option>
+          {availableReasons.map((reason) => (
+            <option key={reason.value} value={reason.value}>
+              {reason.label}
+            </option>
+          ))}
         </select>
       </div>
 
-      {/* Quantity Change */}
+      {/* Quantity - Behavior changes based on movement type */}
       <div>
-        <Label>Quantity Change *</Label>
+        <Label>
+          {isPhysicalCount ? 'Set Stock To *' : 'Quantity *'}
+        </Label>
         <Input
           type="number"
           step="0.01"
-          value={formData.quantity_change}
+          min="0"
+          value={formData.quantity}
           onChange={(e) =>
-            setFormData({ ...formData, quantity_change: e.target.value })
+            setFormData({ ...formData, quantity: e.target.value })
           }
           required
-          placeholder="Enter positive for increase, negative for decrease"
+          placeholder={
+            isPhysicalCount 
+              ? 'Enter exact stock count' 
+              : 'Enter quantity (always positive number)'
+          }
         />
-        <div className="mt-2 text-sm">
-          <span className="text-gray-600">New Stock:</span>{' '}
-          <span className={`font-bold ${newStock < 0 ? 'text-red-600' : 'text-green-600'}`}>
-            {newStock.toFixed(2)} {product.unit_of_measure}
-          </span>
+        <div className="mt-2 p-3 bg-gray-50 rounded-md border border-gray-200">
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-gray-600">Current Stock:</span>{' '}
+              <span className="font-semibold text-gray-900">
+                {product.current_stock.toFixed(2)} {product.unit_of_measure}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-600">New Stock:</span>{' '}
+              <span className={`font-bold ${
+                newStock < 0 ? 'text-red-600' : 
+                newStock === 0 ? 'text-orange-600' : 
+                newStock > product.current_stock ? 'text-green-600' : 
+                'text-blue-600'
+              }`}>
+                {newStock.toFixed(2)} {product.unit_of_measure}
+              </span>
+            </div>
+          </div>
+          {!isPhysicalCount && (
+            <div className="mt-2 pt-2 border-t border-gray-200">
+              <span className="text-xs text-gray-500">
+                {formData.movement_type === 'stock_in' && `Will add ${parseFloat(formData.quantity) || 0} to stock`}
+                {formData.movement_type === 'stock_out' && `Will remove ${parseFloat(formData.quantity) || 0} from stock`}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -350,65 +350,84 @@ export default function SessionProductSelector({
     <Card className="h-full flex flex-col overflow-hidden shadow-md">
       {/* Header */}
       <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b flex-shrink-0">
-        <CardTitle className="flex items-center gap-2">
-          <Package className="w-5 h-5 text-blue-600" />
-          {activeView === 'packages' ? 'Select Packages' : 'Select Products'}
-        </CardTitle>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <CardTitle className="flex items-center gap-2">
+            <Package className="w-5 h-5 text-blue-600" />
+            {activeView === 'packages' ? 'Select Packages' : 'Select Products'}
+          </CardTitle>
+          
+          {/* View Switcher - Moved beside title */}
+          <div className="flex gap-2">
+            <Button
+              variant={activeView === 'all' ? 'default' : 'outline'}
+              onClick={() => setActiveView('all')}
+              size="sm"
+              className={activeView === 'all' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+            >
+              <GridIcon className="w-4 h-4 mr-2" />
+              All Products
+            </Button>
+            <Button
+              variant={activeView === 'featured' ? 'default' : 'outline'}
+              onClick={() => setActiveView('featured')}
+              size="sm"
+              className={activeView === 'featured' ? 'bg-yellow-600 hover:bg-yellow-700' : ''}
+            >
+              <Star className="w-4 h-4 mr-2" />
+              Featured
+            </Button>
+            <Button
+              variant={activeView === 'packages' ? 'default' : 'outline'}
+              onClick={() => setActiveView('packages')}
+              size="sm"
+              className={activeView === 'packages' ? 'bg-amber-600 hover:bg-amber-700' : ''}
+            >
+              <Package className="w-4 h-4 mr-2" />
+              Packages
+            </Button>
+          </div>
+        </div>
       </CardHeader>
       
       <CardContent className="flex-1 overflow-hidden flex flex-col p-4 space-y-4 min-h-0">
-        {/* View Switcher */
-        }
-        <div className="flex gap-2 flex-shrink-0">
-          <Button
-            variant={activeView === 'all' ? 'default' : 'outline'}
-            onClick={() => setActiveView('all')}
-            size="sm"
-            className={activeView === 'all' ? 'bg-blue-600 hover:bg-blue-700' : ''}
-          >
-            <GridIcon className="w-4 h-4 mr-2" />
-            All Products
-          </Button>
-          <Button
-            variant={activeView === 'featured' ? 'default' : 'outline'}
-            onClick={() => setActiveView('featured')}
-            size="sm"
-            className={activeView === 'featured' ? 'bg-yellow-600 hover:bg-yellow-700' : ''}
-          >
-            <Star className="w-4 h-4 mr-2" />
-            Featured
-          </Button>
-          <Button
-            variant={activeView === 'packages' ? 'default' : 'outline'}
-            onClick={() => setActiveView('packages')}
-            size="sm"
-            className={activeView === 'packages' ? 'bg-amber-600 hover:bg-amber-700' : ''}
-          >
-            <Package className="w-4 h-4 mr-2" />
-            Packages
-          </Button>
-        </div>
-        {/* Search Bar */}
-        <div className="relative flex-shrink-0">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <Input
-            type="text"
-            placeholder="Search products or packages by name or SKU..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 text-base"
-          />
-        </div>
+        {/* Search Bar and Category Filter - Horizontal Layout */}
+        {activeView === 'all' ? (
+          <div className="flex gap-3 flex-shrink-0 items-center flex-wrap">
+            {/* Search Bar */}
+            <div className="relative flex-1 min-w-[280px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Input
+                type="text"
+                placeholder="Search products or packages..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 text-base"
+              />
+            </div>
 
-        {/* Category Filter - Only show for 'All Products' view */}
-        {activeView === 'all' && (
+            {/* Category Filter Dropdown */}
+            <div className="w-64 flex-shrink-0">
+              <CategoryFilter
+                selectedCategoryId={selectedCategory}
+                onCategoryChange={setSelectedCategory}
+                showProductCount={true}
+                productCountPerCategory={productCountPerCategory}
+              />
+            </div>
+          </div>
+        ) : (
           <div className="flex-shrink-0">
-            <CategoryFilter
-              selectedCategoryId={selectedCategory}
-              onCategoryChange={setSelectedCategory}
-              showProductCount={true}
-              productCountPerCategory={productCountPerCategory}
-            />
+            {/* Search Bar - Full Width for Featured and Packages views */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Input
+                type="text"
+                placeholder="Search products or packages by name or SKU..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 text-base"
+              />
+            </div>
           </div>
         )}
 
@@ -424,7 +443,7 @@ export default function SessionProductSelector({
                   <p className="text-sm mt-2">Try adjusting your search or filters</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 pb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pb-6">
                   {/* Render package matches (only when searching) */}
                   {filteredPackagesForAll.map((pkg) => {
                     const isVIPOnly = pkg.package_type === 'vip_only';
@@ -512,7 +531,7 @@ export default function SessionProductSelector({
                   <p className="text-sm mt-2">Mark products as featured in product settings</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 pb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pb-6">
                   {filteredFeaturedProducts.map((product) => (
                     <TabProductCard
                       key={product.id}
@@ -541,7 +560,7 @@ export default function SessionProductSelector({
                   <p className="text-lg font-medium">No packages available</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 pb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-6">
                   {packages.map(pkg => {
                     const isVIPOnly = pkg.package_type === 'vip_only';
                     const customerIsVIP = isVIPCustomer();
