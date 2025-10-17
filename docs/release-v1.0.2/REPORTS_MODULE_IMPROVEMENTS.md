@@ -299,7 +299,12 @@ If issues arise, revert these commits:
 ## Version History
 
 ### v1.0.2 (October 17, 2025)
-- ✅ Custom range default to 6pm-5am
+- ✅ **Business hours alignment (5pm-5pm) - ALL filters**
+- ✅ Today: 5pm yesterday → 5pm today
+- ✅ Yesterday: 5pm 2 days ago → 5pm yesterday
+- ✅ Last 7 Days: 5pm 8 days ago → 5pm today
+- ✅ Last 30 Days: 5pm 31 days ago → 5pm today
+- ✅ Custom range: Defaults to 5pm-5pm
 - ✅ Bar/Line chart toggle
 - ✅ Bar width limitation
 - ✅ Revenue query documentation
