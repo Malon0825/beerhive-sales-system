@@ -175,7 +175,14 @@ export class OrderModificationService {
         `Kitchen notification: ${notificationResult.message}`
       );
 
-      // Step 8: Log modification in audit trail
+      // Step 8: Recalculate order and session totals (CRITICAL for sales reliability)
+      await this.recalculateOrderTotals(orderId);
+      console.log(
+        `💰 [OrderModificationService.reduceItemQuantity] ` +
+        `Order and session totals recalculated`
+      );
+
+      // Step 9: Log modification in audit trail
       await this.logModification({
         order_id: orderId,
         order_item_id: itemId,
@@ -289,6 +296,13 @@ export class OrderModificationService {
       if (kitchenOrders.length > 0) {
         await this.cancelKitchenOrders(kitchenOrders, `Item removed: ${reason || 'Customer request'}`);
       }
+
+      // Recalculate order and session totals (CRITICAL for sales reliability)
+      await this.recalculateOrderTotals(orderId);
+      console.log(
+        `💰 [OrderModificationService.removeOrderItem] ` +
+        `Order and session totals recalculated`
+      );
 
       // Log modification
       await this.logModification({
@@ -459,6 +473,81 @@ export class OrderModificationService {
         .in('id', kitchenOrders.map(ko => ko.id));
     } catch (error) {
       console.error('Error cancelling kitchen orders:', error);
+    }
+  }
+
+  /**
+   * Recalculate order totals from order items
+   * Updates orders table which triggers session total update via database trigger
+   * 
+   * CRITICAL: This ensures sales data integrity when items are modified
+   * 
+   * @param orderId - Order ID to recalculate
+   */
+  private static async recalculateOrderTotals(orderId: string): Promise<void> {
+    try {
+      console.log(
+        `🧮 [OrderModificationService.recalculateOrderTotals] ` +
+        `Recalculating totals for order ${orderId}`
+      );
+
+      // Get all order items for this order
+      const { data: orderItems, error: itemsError } = await supabaseAdmin
+        .from('order_items')
+        .select('subtotal, discount_amount, total')
+        .eq('order_id', orderId);
+
+      if (itemsError) {
+        throw new AppError(`Failed to fetch order items: ${itemsError.message}`, 500);
+      }
+
+      if (!orderItems || orderItems.length === 0) {
+        console.warn(
+          `⚠️  [OrderModificationService.recalculateOrderTotals] ` +
+          `No items found for order ${orderId}`
+        );
+        return;
+      }
+
+      // Calculate new totals from items
+      const newSubtotal = orderItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+      const newDiscountAmount = orderItems.reduce((sum, item) => sum + (item.discount_amount || 0), 0);
+      const newTotalAmount = orderItems.reduce((sum, item) => sum + (item.total || 0), 0);
+
+      console.log(
+        `🧮 [OrderModificationService.recalculateOrderTotals] ` +
+        `New totals - Subtotal: ${newSubtotal}, Discount: ${newDiscountAmount}, Total: ${newTotalAmount}`
+      );
+
+      // Update order totals
+      // This will trigger the database trigger to update session totals automatically
+      const { error: updateError } = await supabaseAdmin
+        .from('orders')
+        .update({
+          subtotal: newSubtotal,
+          discount_amount: newDiscountAmount,
+          total_amount: newTotalAmount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+
+      if (updateError) {
+        throw new AppError(`Failed to update order totals: ${updateError.message}`, 500);
+      }
+
+      console.log(
+        `✅ [OrderModificationService.recalculateOrderTotals] ` +
+        `Order totals updated. Session totals will be updated automatically by database trigger.`
+      );
+    } catch (error) {
+      console.error(
+        `❌ [OrderModificationService.recalculateOrderTotals] Error:`,
+        error
+      );
+      // Re-throw to ensure the calling function knows about the failure
+      throw error instanceof AppError
+        ? error
+        : new AppError('Failed to recalculate order totals', 500);
     }
   }
 
