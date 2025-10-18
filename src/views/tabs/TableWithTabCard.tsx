@@ -281,35 +281,31 @@ export default function TableWithTabCard({
       </CardContent>
       
       {/* Change Table Dialog */}
-      {session && (
-        <ChangeTableDialog
-          open={showChangeTableDialog}
-          onOpenChange={setShowChangeTableDialog}
-          sessionId={session.id}
-          currentTableNumber={table.table_number}
-          onSuccess={() => {
-            if (onTableChanged) {
-              onTableChanged();
-            }
-          }}
-        />
-      )}
+      <ChangeTableDialog
+        open={showChangeTableDialog && !!session}
+        onOpenChange={setShowChangeTableDialog}
+        sessionId={session?.id || ''}
+        currentTableNumber={table.table_number}
+        onSuccess={() => {
+          if (onTableChanged) {
+            onTableChanged();
+          }
+        }}
+      />
       
       {/* Manage Items Modal - Single modal shows all items directly */}
-      {session && (
-        <ManageTabItemsModal
-          sessionId={session.id}
-          sessionNumber={session.session_number}
-          isOpen={showManageItemsModal}
-          onClose={() => setShowManageItemsModal(false)}
-          onItemsChanged={() => {
-            // Refresh parent data
-            if (onTableChanged) {
-              onTableChanged();
-            }
-          }}
-        />
-      )}
+      <ManageTabItemsModal
+        sessionId={session?.id || ''}
+        sessionNumber={session?.session_number || ''}
+        isOpen={showManageItemsModal && !!session}
+        onClose={() => setShowManageItemsModal(false)}
+        onItemsChanged={() => {
+          // Refresh parent data
+          if (onTableChanged) {
+            onTableChanged();
+          }
+        }}
+      />
     </Card>
   );
 }
