@@ -130,10 +130,49 @@ export class OrderItemService {
 
       console.log(`✅ [OrderItemService.removeOrderItem] Order item deleted`);
 
-      // 9. Recalculate order totals
+      // 9. Check if this was the last item in the order
+      const { data: remainingItems, error: checkError } = await supabaseAdmin
+        .from('order_items')
+        .select('id')
+        .eq('order_id', orderId);
+
+      if (checkError) {
+        console.error('❌ [OrderItemService.removeOrderItem] Error checking remaining items:', checkError);
+      }
+
+      if (!remainingItems || remainingItems.length === 0) {
+        // No items left - automatically void the order
+        console.log(`⚠️  [OrderItemService.removeOrderItem] No items remaining - voiding order ${orderId}`);
+        
+        const { error: voidError } = await supabaseAdmin
+          .from('orders')
+          .update({
+            status: OrderStatus.VOIDED,
+            voided_at: new Date().toISOString(),
+            voided_by: userId,
+            voided_reason: 'All items removed from order',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', orderId);
+
+        if (voidError) {
+          console.error('❌ [OrderItemService.removeOrderItem] Failed to void order:', voidError);
+          throw new AppError(`Failed to void order after removing last item: ${voidError.message}`, 500);
+        }
+
+        console.log(`✅ [OrderItemService.removeOrderItem] Order voided automatically`);
+
+        // Get voided order
+        const voidedOrder = await OrderRepository.getById(orderId);
+        console.log(`🎉 [OrderItemService.removeOrderItem] Last item removed - order voided`);
+        
+        return voidedOrder;
+      }
+
+      // 10. Items remain - recalculate order totals
       await this.recalculateOrderTotals(orderId);
 
-      // 10. Get updated order
+      // 11. Get updated order
       const updatedOrder = await OrderRepository.getById(orderId);
 
       console.log(`🎉 [OrderItemService.removeOrderItem] Item removal completed successfully`);

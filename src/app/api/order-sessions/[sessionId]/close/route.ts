@@ -8,6 +8,11 @@ import { UserRepository } from '@/data/repositories/UserRepository';
  * POST /api/order-sessions/[sessionId]/close
  * Close a session and process final payment
  * 
+ * Features:
+ * - Supports zero-amount closures (payment_method = 'none', amount_tendered = 0)
+ * - Automatically closes tabs with no orders or all items removed
+ * - Standard payment processing for tabs with amounts > 0
+ * 
  * Authentication:
  * - Attempts to get authenticated user from request
  * - Falls back to default POS user if not authenticated
@@ -51,11 +56,15 @@ export async function POST(
       );
     }
 
-    if (!amount_tendered || amount_tendered <= 0) {
-      return NextResponse.json(
-        { success: false, error: 'Amount tendered must be greater than 0' },
-        { status: 400 }
-      );
+    // Allow zero-amount closures for tabs with no orders (payment_method = 'none')
+    // This happens when all items are removed or tab has no orders
+    if (payment_method !== 'none') {
+      if (!amount_tendered || amount_tendered <= 0) {
+        return NextResponse.json(
+          { success: false, error: 'Amount tendered must be greater than 0' },
+          { status: 400 }
+        );
+      }
     }
 
     const result = await OrderSessionService.closeTab(sessionId, {

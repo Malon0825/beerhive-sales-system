@@ -22,6 +22,7 @@ export default function CloseTabPage() {
 
   /**
    * Fetch session data including orders for item count
+   * If total is 0, automatically close tab without payment
    */
   useEffect(() => {
     const fetchSession = async () => {
@@ -29,7 +30,40 @@ export default function CloseTabPage() {
         const data = await apiGet(`/api/order-sessions/${sessionId}`);
         
         if (data.success) {
-          setSessionData(data.data);
+          const session = data.data;
+          setSessionData(session);
+          
+          // Auto-close tabs with zero amount
+          if (session.total_amount === 0 || session.total_amount === null) {
+            console.log('💰 Total is ₱0.00 - Auto-closing tab without payment...');
+            
+            try {
+              const closeResponse = await fetch(`/api/order-sessions/${sessionId}/close`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  payment_method: 'none',
+                  amount_tendered: 0,
+                  discount_amount: 0,
+                }),
+              });
+              
+              const closeData = await closeResponse.json();
+              
+              if (closeData.success) {
+                console.log('✅ Tab closed successfully');
+                // Show brief success message and redirect
+                alert('Tab closed successfully (No payment required - ₱0.00)');
+                router.push('/tabs');
+              } else {
+                throw new Error(closeData.error || 'Failed to close tab');
+              }
+            } catch (error) {
+              console.error('Failed to auto-close zero-amount tab:', error);
+              alert('Failed to close tab. Please try again.');
+              router.push('/tabs');
+            }
+          }
         }
       } catch (error) {
         console.error('Failed to fetch session:', error);
@@ -39,7 +73,7 @@ export default function CloseTabPage() {
     };
 
     fetchSession();
-  }, [sessionId]);
+  }, [sessionId, router]);
 
   /**
    * Handle dialog close
@@ -139,6 +173,19 @@ export default function CloseTabPage() {
   const itemCount = sessionData.orders?.reduce((total: number, order: any) => {
     return total + (order.order_items?.length || 0);
   }, 0) || 0;
+
+  // Don't render PaymentPanel for zero-amount tabs (auto-closing)
+  if (sessionData.total_amount === 0 || sessionData.total_amount === null) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Closing tab...</p>
+          <p className="mt-2 text-sm text-gray-500">No payment required (₱0.00)</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <PaymentPanel

@@ -229,9 +229,47 @@ export default function TabManagementDashboard() {
 
   /**
    * Handle close tab
+   * If total amount is 0, directly close the tab without payment
+   * Otherwise, navigate to payment page
    */
-  const handleCloseTab = (sessionId: string) => {
-    router.push(`/order-sessions/${sessionId}/close`);
+  const handleCloseTab = async (sessionId: string) => {
+    // Find the session to check total amount
+    const session = sessions.find(s => s.id === sessionId);
+    
+    if (!session) {
+      console.error('Session not found:', sessionId);
+      return;
+    }
+    
+    // If total is 0, close tab immediately without payment
+    if (session.total_amount === 0 || session.total_amount === null) {
+      try {
+        console.log('💰 Total is ₱0.00 - Closing tab without payment...');
+        
+        const response = await apiPost(`/api/order-sessions/${sessionId}/close`, {
+          payment_method: 'none',
+          amount_tendered: 0,
+          discount_amount: 0,
+        });
+        
+        if (response.success) {
+          console.log('✅ Tab closed successfully');
+          // Refresh data to update UI
+          await fetchAllData();
+          
+          // Show success message (you could add a toast notification here)
+          alert('Tab closed successfully (No payment required - ₱0.00)');
+        } else {
+          throw new Error(response.error || 'Failed to close tab');
+        }
+      } catch (error) {
+        console.error('Failed to close zero-amount tab:', error);
+        alert('Failed to close tab. Please try again.');
+      }
+    } else {
+      // Normal flow - navigate to payment page
+      router.push(`/order-sessions/${sessionId}/close`);
+    }
   };
 
   if (loading) {

@@ -175,16 +175,15 @@ export default function BillPreviewModal({
   };
 
 
-  if (!isOpen) return null;
-
   const receiptData = useMemo(
     () => (billData ? createSessionReceiptOrderData(billData) : null),
     [billData]
   );
 
+  // Don't use early return to avoid hooks violations with conditional portal
   return (
     <>
-      {/* Bill Preview Modal */}
+      {isOpen && (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-lg shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden">
           {/* Header */}
@@ -254,9 +253,10 @@ export default function BillPreviewModal({
           )}
         </div>
       </div>
+      )}
 
       {/* Hidden print container */}
-      {isMounted && billData && receiptData && createPortal(
+      {isOpen && isMounted && billData && receiptData && createPortal(
         <div 
           ref={printContainerRef} 
           style={{ 

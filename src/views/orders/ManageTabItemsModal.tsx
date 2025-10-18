@@ -32,7 +32,7 @@ import { formatCurrency } from '@/lib/utils/formatters';
  * - Only CONFIRMED order items can be modified
  * - Can only DECREASE quantity (no increases)
  * - Items in PREPARING/READY status show warnings
- * - Last item in order cannot be removed (must void order)
+ * - Removing last item automatically voids the order
  * - All changes immediately update inventory and kitchen
  * 
  * @component
@@ -410,37 +410,48 @@ export default function ManageTabItemsModal({
                             {/* Remove Button */}
                             <div className="ml-auto">
                               {confirmRemove === item.id ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm text-red-600 font-medium">Remove item?</span>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => setConfirmRemove(null)}
-                                    disabled={processingItemId === item.id}
-                                  >
-                                    Cancel
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => handleRemoveItem(item)}
-                                    disabled={processingItemId === item.id || item.is_last_item_in_order}
-                                  >
-                                    {processingItemId === item.id ? (
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                    ) : (
-                                      'Confirm'
-                                    )}
-                                  </Button>
+                                <div className="flex flex-col gap-2">
+                                  {item.is_last_item_in_order && (
+                                    <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                                      <p className="text-xs text-amber-800 font-semibold">
+                                        ⚠️ Warning: This is the last item. Removing it will void the entire order.
+                                      </p>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-red-600 font-medium">
+                                      {item.is_last_item_in_order ? 'Void order?' : 'Remove item?'}
+                                    </span>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setConfirmRemove(null)}
+                                      disabled={processingItemId === item.id}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      onClick={() => handleRemoveItem(item)}
+                                      disabled={processingItemId === item.id}
+                                    >
+                                      {processingItemId === item.id ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        'Confirm'
+                                      )}
+                                    </Button>
+                                  </div>
                                 </div>
                               ) : (
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={() => setConfirmRemove(item.id)}
-                                  disabled={processingItemId !== null || item.is_last_item_in_order}
+                                  disabled={processingItemId !== null}
                                   className="border-red-200 text-red-600 hover:bg-red-50"
-                                  title={item.is_last_item_in_order ? 'Cannot remove last item - void order instead' : 'Remove item'}
+                                  title={item.is_last_item_in_order ? 'Remove last item (will void order)' : 'Remove item'}
                                 >
                                   <Trash2 className="w-3 h-3 mr-1" />
                                   Remove

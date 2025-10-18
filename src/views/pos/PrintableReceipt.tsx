@@ -258,13 +258,6 @@ export function PrintableReceipt({ orderData, isPrintMode = false }: PrintableRe
           <p className="text-base font-bold text-black">Thank You For Your Patronage!</p>
           <p className="text-sm font-semibold mt-1 text-black">Please Come Again!</p>
         </div>
-        
-        <div className="border-t border-gray-300 pt-3 mt-4">
-          <p className="text-xs italic">
-            This serves as your official receipt
-          </p>
-
-        </div>
       </div>
 
       {/* Print Timestamp - Only visible when printed */}
