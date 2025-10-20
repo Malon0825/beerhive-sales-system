@@ -16,6 +16,23 @@ All notable changes to this project in version 1.0.2 are documented in this file
   - Path param: `orderId`
   - Returns success/error status
 
+- **`GET /api/categories/[id]`** - Fetch single category by ID
+  - Path param: `id` (category UUID)
+  - Returns category details
+
+- **`PUT /api/categories/[id]`** - Update existing category
+  - Path param: `id` (category UUID)
+  - Body: name, description, color_code, default_destination
+  - Validates duplicate names (case-insensitive + plural detection)
+  - Returns updated category data
+
+- **`DELETE /api/categories/[id]`** - Soft delete category with usage protection
+  - Path param: `id` (category UUID)
+  - Checks if products use the category before deletion
+  - Returns list of affected products (up to 5) if in use
+  - Blocks deletion when products exist
+  - Soft deletes only when no products found
+
 #### UI Components
 - **Clear Cancelled button** in `KitchenHeader` component
   - Red trash icon with "Clear Cancelled" label
@@ -28,11 +45,48 @@ All notable changes to this project in version 1.0.2 are documented in this file
   - Visible only for `CANCELLED` status orders
   - Calls `onRemove` callback when clicked
 
+- **`CategoryDialog` component** (NEW) - Reusable dialog for category management
+  - Dual mode: create and edit
+  - Form fields: name, description, color picker, destination selector
+  - Delete button (edit mode only) with confirmation dialog
+  - Smart validation with duplicate detection
+  - Rich error messages showing affected products when deletion blocked
+  - Type-safe form handling with proper null handling
+  - Extended toast notifications (10s) for product list visibility
+
+- **Edit Category button** in `ProductForm` component
+  - Appears next to "Create New" button
+  - Disabled when no category selected
+  - Opens `CategoryDialog` in edit mode with selected category data
+  - Includes helpful tooltip for disabled state
+
 #### Features
 - Cancelled order count in status summary (Kitchen & Bartender displays)
 - Cancelled filter tab (Kitchen & Bartender displays)
 - Individual order removal functionality
 - Bulk cancelled order cleanup functionality
+
+- **Complete Category Management System (CRUD)**
+  - **Create:** Add new categories with validation
+  - **Read:** Fetch and display active categories
+  - **Update:** Edit existing category details
+  - **Delete:** Soft delete with usage protection
+  
+- **Smart Category Validation**
+  - Case-insensitive duplicate detection ("Beer" = "beer" = "BEER")
+  - Plural/singular form detection ("Beer" = "Beers", "Glass" = "Glasses")
+  - Pattern matching for common English plural rules
+  - Irregular plural support ("Child" = "Children", "Man" = "Men")
+  - Clear, actionable error messages
+  
+- **Category Deletion Protection**
+  - Pre-deletion validation checks product usage
+  - Shows up to 5 affected products with names and SKUs
+  - Displays total count indicator ("... and X more")
+  - Prevents data integrity issues from orphaned product references
+  - Guides users to reassign products before deletion
+  - Extended toast duration (10 seconds) for readability
+
 - **Dynamic Grid Column Selector** with session persistence
   - Cycling button with dot-based visual design
   - Supports 3, 4, 5, and 6 column layouts
@@ -41,6 +95,13 @@ All notable changes to this project in version 1.0.2 are documented in this file
   - Smooth animations on grid changes
 
 ### Changed
+
+#### API Layer
+- **`POST /api/categories`** - Enhanced with smart validation
+  - Added duplicate name detection (case-insensitive)
+  - Added plural/singular form detection
+  - Returns detailed error with similar category names
+  - HTTP 409 status for duplicates with actionable messages
 
 #### Repository Layer
 - **`KitchenOrderRepository.getActive()`**
@@ -124,6 +185,13 @@ All notable changes to this project in version 1.0.2 are documented in this file
   - Added fade-in and zoom-in animations (300ms)
   - Improved visual feedback on grid layout changes
 
+- **`ProductForm` component** (Inventory Module)
+  - Extracted inline category creation dialog into reusable `CategoryDialog`
+  - Added "Edit" button for category management
+  - Integrated edit/delete category functionality
+  - Enhanced category selection UI with action buttons
+  - Auto-refresh category list after create/edit/delete operations
+
 ### Fixed
 
 - **Critical: Cancelled orders now remain visible**
@@ -199,11 +267,22 @@ ALTER COLUMN order_item_id DROP NOT NULL;
 Added:
   src/app/api/kitchen/orders/clear-cancelled/route.ts
   src/app/api/kitchen/orders/[orderId]/delete/route.ts
+  src/app/api/categories/[id]/route.ts
   src/lib/hooks/useSessionStorage.ts
+  src/lib/utils/categoryNameValidator.ts
   src/views/shared/ui/GridColumnSelector.tsx
+  src/views/inventory/CategoryDialog.tsx
   migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql
+  docs/release-v1.0.2/EDIT_CATEGORY_FEATURE.md
+  docs/release-v1.0.2/DELETE_CATEGORY_FEATURE.md
+  docs/release-v1.0.2/CATEGORY_DELETION_PROTECTION.md
+  docs/release-v1.0.2/CATEGORY_DUPLICATE_VALIDATION.md
+  summary/release-v1.0.2/EDIT_CATEGORY_IMPLEMENTATION.md
+  summary/release-v1.0.2/SMART_PLURAL_DETECTION.md
+  summary/release-v1.0.2/CATEGORY_MANAGEMENT_COMPLETE.md
 
 Modified:
+  src/app/api/categories/route.ts
   src/data/repositories/KitchenOrderRepository.ts
   src/core/services/orders/OrderItemService.ts
   src/views/kitchen/components/KitchenHeader.tsx
@@ -215,12 +294,13 @@ Modified:
   src/views/pos/POSInterface.tsx
   src/views/pos/components/TabProductCard.tsx
   src/views/pos/components/ProductCard.tsx
+  src/views/inventory/ProductForm.tsx
   src/app/(dashboard)/order-sessions/[sessionId]/close/page.tsx
 
 Lines Changed:
-  +~700 lines added
-  -~60 lines removed
-  ~350 lines modified
+  +~1,900 lines added
+  -~160 lines removed
+  ~450 lines modified
 ```
 
 ### Performance Impact

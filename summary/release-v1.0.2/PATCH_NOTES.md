@@ -32,6 +32,24 @@ Keep your kitchen and bartender displays clean with new cleanup options:
 - Updated filter tabs: All, Pending, Preparing, Cancelled
 - Cancelled order count in status summary
 
+### 📂 Complete Category Management System
+Manage product categories with a powerful, intelligent system:
+
+- **Create categories** - Add new categories with validation
+- **Edit categories** - Update names, colors, and settings
+- **Delete categories** - Safely remove unused categories
+- **Smart validation** - Prevents duplicate names automatically
+  - Case-insensitive: "Beer" = "beer" = "BEER"
+  - Plural detection: "Beer" = "Beers", "Glass" = "Glasses"
+  - Pattern matching: "Category" = "Categories"
+  - Irregular plurals: "Child" = "Children"
+
+**Safety Features:**
+- ⛔ **Cannot delete categories in use** - System blocks deletion if products use the category
+- 📋 **Shows affected products** - See which products (up to 5) need reassignment
+- 💡 **Clear guidance** - Actionable messages guide you through conflicts
+- 🔒 **Data integrity** - Prevents orphaned product references
+
 ### 🎛️ Dynamic Grid Layout Control
 Customize your product display with a flexible grid system:
 
@@ -58,8 +76,15 @@ migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql
 ```
 
 ### New API Endpoints
+
+**Kitchen/Bartender:**
 - `DELETE /api/kitchen/orders/clear-cancelled` - Clear all cancelled orders
 - `DELETE /api/kitchen/orders/[orderId]/delete` - Remove individual order
+
+**Category Management:**
+- `GET /api/categories/[id]` - Fetch single category details
+- `PUT /api/categories/[id]` - Update category with validation
+- `DELETE /api/categories/[id]` - Soft delete with usage protection
 
 ---
 
@@ -81,6 +106,26 @@ migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql
 - **Preparing** → Click "Mark Ready"  
 - **Ready** → Order disappears automatically (waiter handles from here)
 
+### For Inventory Management
+
+**To edit a category:**
+1. Open "Add Product" dialog
+2. Select a category from the dropdown
+3. Click "Edit" button next to "Create New"
+4. Modify name, description, color, or destination
+5. Click "Update Category"
+
+**To delete a category:**
+1. Edit the category (steps above)
+2. Click red "Delete Category" button
+3. Confirm deletion in popup
+4. If products use the category, you'll see which ones need reassignment
+
+**Smart validation prevents:**
+- Duplicate names: "Beer" and "beer" are the same
+- Similar names: "Beer" and "Beers" are too similar
+- Data loss: Can't delete categories with products
+
 ---
 
 ## ⚠️ Important Notes
@@ -101,23 +146,39 @@ migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql
 | No way to clear old cancelled orders | Added Clear All and individual Remove buttons |
 | Payment dialog shows white screen on close | Now properly redirects to tabs page |
 | Grid layout changes not animated | Added smooth transitions with key-based re-rendering |
+| Duplicate category names allowed | Smart validation prevents duplicates and similar names |
+| Categories deleted with products in use | Usage protection blocks deletion and shows affected products |
 
 ---
 
 ## 📦 What's Included
 
+**Kitchen/Bartender Improvements:**
 - ✅ Cancelled order visibility fix
 - ✅ Clear All Cancelled button
 - ✅ Individual Remove button per order
 - ✅ Auto-hide ready orders
 - ✅ Updated UI/filters
-- ✅ Dynamic grid column selector
+
+**Category Management:**
+- ✅ Complete CRUD system (Create, Read, Update, Delete)
+- ✅ Smart duplicate detection (case-insensitive + plural forms)
+- ✅ Category deletion protection with product usage check
+- ✅ Edit category UI with color picker and destination selector
+- ✅ Reusable CategoryDialog component
+
+**UI/UX Enhancements:**
+- ✅ Dynamic grid column selector (3/4/5/6 columns)
 - ✅ Session-based preference persistence
 - ✅ Enhanced POS & Tab layouts
 - ✅ Smooth grid animations
 - ✅ Payment dialog navigation fix
-- ✅ Database migration
-- ✅ New API endpoints
+
+**Technical:**
+- ✅ Database migration for cancelled orders
+- ✅ New API endpoints (Kitchen + Category management)
+- ✅ Smart validation utilities
+- ✅ Comprehensive documentation
 
 ---
 

@@ -21,8 +21,9 @@ import {
 } from '../shared/ui/dialog';
 import { CreateProductDTO } from '@/models/dtos/CreateProductDTO';
 import { Product } from '@/models/entities/Product';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, Plus, Pencil } from 'lucide-react';
 import { toast } from '@/lib/hooks/useToast';
+import CategoryDialog, { CategoryFormData } from './CategoryDialog';
 
 /**
  * Category interface matching database structure
@@ -60,15 +61,10 @@ export default function ProductForm({ product, onSubmit, onCancel, isLoading = f
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   
-  // Category creation state
+  // Category dialog state
   const [showCategoryDialog, setShowCategoryDialog] = useState(false);
-  const [creatingCategory, setCreatingCategory] = useState(false);
-  const [newCategory, setNewCategory] = useState({
-    name: '',
-    description: '',
-    color_code: '#3B82F6',
-    default_destination: 'kitchen' as 'kitchen' | 'bartender',
-  });
+  const [categoryDialogMode, setCategoryDialogMode] = useState<'create' | 'edit'>('create');
+  const [editingCategory, setEditingCategory] = useState<CategoryFormData | null>(null);
 
   // Form state - using empty strings for number fields to allow clearing
   const [formData, setFormData] = useState<any>({
@@ -139,72 +135,54 @@ export default function ProductForm({ product, onSubmit, onCancel, isLoading = f
   };
 
   /**
-   * Handle creating a new category
+   * Open category dialog for creating a new category
    */
-  const handleCreateCategory = async () => {
-    if (!newCategory.name.trim()) {
+  const handleCreateCategory = () => {
+    setCategoryDialogMode('create');
+    setEditingCategory(null);
+    setShowCategoryDialog(true);
+  };
+
+  /**
+   * Open category dialog for editing the selected category
+   */
+  const handleEditCategory = () => {
+    if (!formData.category_id) {
       toast({
-        title: 'Validation Error',
-        description: 'Category name is required',
+        title: 'No category selected',
+        description: 'Please select a category to edit',
         variant: 'destructive',
       });
       return;
     }
 
-    try {
-      setCreatingCategory(true);
-      
-      const response = await fetch('/api/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newCategory.name,
-          description: newCategory.description || null,
-          color_code: newCategory.color_code,
-          default_destination: newCategory.default_destination,
-          display_order: categories.length + 1, // Add to end
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to create category');
-      }
-
-      // Show success message
+    const categoryToEdit = categories.find((cat) => cat.id === formData.category_id);
+    if (!categoryToEdit) {
       toast({
-        title: 'Category created!',
-        description: `"${newCategory.name}" has been added to categories.`,
-        variant: 'success',
-      });
-
-      // Reload categories
-      await loadCategories();
-
-      // Auto-select the new category
-      if (result.data?.id) {
-        handleInputChange('category_id', result.data.id);
-      }
-
-      // Reset form and close dialog
-      setNewCategory({
-        name: '',
-        description: '',
-        color_code: '#3B82F6',
-        default_destination: 'kitchen',
-      });
-      setShowCategoryDialog(false);
-    } catch (error) {
-      console.error('Error creating category:', error);
-      toast({
-        title: 'Failed to create category',
-        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+        title: 'Category not found',
+        description: 'The selected category could not be found',
         variant: 'destructive',
       });
-    } finally {
-      setCreatingCategory(false);
+      return;
     }
+
+    setCategoryDialogMode('edit');
+    setEditingCategory({
+      id: categoryToEdit.id,
+      name: categoryToEdit.name,
+      description: categoryToEdit.description,
+      color_code: categoryToEdit.color_code,
+      default_destination: (categoryToEdit.default_destination as 'kitchen' | 'bartender') || 'kitchen',
+    });
+    setShowCategoryDialog(true);
+  };
+
+  /**
+   * Handle successful category create/update
+   * Reloads category list and maintains selection
+   */
+  const handleCategorySuccess = async () => {
+    await loadCategories();
   };
 
   /**
@@ -362,21 +340,35 @@ export default function ProductForm({ product, onSubmit, onCancel, isLoading = f
           />
         </div>
 
-        {/* Category with Create New Button */}
+        {/* Category with Create New and Edit Buttons */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="category">Category</Label>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowCategoryDialog(true)}
-              disabled={isLoading}
-              className="h-7 text-xs"
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Create New
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleEditCategory}
+                disabled={isLoading || !formData.category_id}
+                className="h-7 text-xs"
+                title={!formData.category_id ? 'Select a category to edit' : 'Edit selected category'}
+              >
+                <Pencil className="h-3 w-3 mr-1" />
+                Edit
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleCreateCategory}
+                disabled={isLoading}
+                className="h-7 text-xs"
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Create New
+              </Button>
+            </div>
           </div>
           <Select
             value={formData.category_id}
@@ -630,109 +622,14 @@ export default function ProductForm({ product, onSubmit, onCancel, isLoading = f
         </Button>
       </div>
 
-      {/* Create Category Dialog */}
-      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Create New Category</DialogTitle>
-            <DialogDescription>
-              Add a new product category. This will be available immediately in the category dropdown.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            {/* Category Name */}
-            <div className="space-y-2">
-              <Label htmlFor="new-category-name">
-                Category Name <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="new-category-name"
-                value={newCategory.name}
-                onChange={(e) => setNewCategory(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="e.g., Desserts, Appetizers, Sides"
-                disabled={creatingCategory}
-              />
-            </div>
-
-            {/* Description */}
-            <div className="space-y-2">
-              <Label htmlFor="new-category-description">Description (Optional)</Label>
-              <Input
-                id="new-category-description"
-                value={newCategory.description}
-                onChange={(e) => setNewCategory(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Brief description of the category"
-                disabled={creatingCategory}
-              />
-            </div>
-
-            {/* Color and Destination */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Color */}
-              <div className="space-y-2">
-                <Label htmlFor="new-category-color">Color Code</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="new-category-color"
-                    type="color"
-                    value={newCategory.color_code}
-                    onChange={(e) => setNewCategory(prev => ({ ...prev, color_code: e.target.value }))}
-                    disabled={creatingCategory}
-                    className="w-14 h-10 p-1"
-                  />
-                  <Input
-                    value={newCategory.color_code}
-                    onChange={(e) => setNewCategory(prev => ({ ...prev, color_code: e.target.value }))}
-                    placeholder="#3B82F6"
-                    disabled={creatingCategory}
-                    className="flex-1"
-                  />
-                </div>
-              </div>
-
-              {/* Default Destination */}
-              <div className="space-y-2">
-                <Label htmlFor="new-category-destination">Route Orders To</Label>
-                <Select
-                  value={newCategory.default_destination}
-                  onValueChange={(value: 'kitchen' | 'bartender') => 
-                    setNewCategory(prev => ({ ...prev, default_destination: value }))
-                  }
-                  disabled={creatingCategory}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="kitchen">🍳 Kitchen</SelectItem>
-                    <SelectItem value="bartender">🍺 Bartender</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowCategoryDialog(false)}
-              disabled={creatingCategory}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleCreateCategory}
-              disabled={creatingCategory || !newCategory.name.trim()}
-            >
-              {creatingCategory && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {creatingCategory ? 'Creating...' : 'Create Category'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Category Dialog (Create/Edit) */}
+      <CategoryDialog
+        open={showCategoryDialog}
+        onOpenChange={setShowCategoryDialog}
+        onSuccess={handleCategorySuccess}
+        mode={categoryDialogMode}
+        category={editingCategory}
+      />
     </form>
   );
 }
