@@ -229,7 +229,7 @@ export default function TableWithTabCard({
                 }}
               >
                 <Edit3 className="w-3 h-3 mr-1" />
-                Manage Items
+                Remove Items
               </Button>
               
               {/* Change Table Button */}

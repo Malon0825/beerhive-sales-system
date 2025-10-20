@@ -14,11 +14,13 @@ import { Search, Package as PackageIcon, Grid as GridIcon, CheckCircle2 } from '
 import { Input } from '../shared/ui/input';
 import CategoryFilter from './components/CategoryFilter';
 import { ProductCard } from './components/ProductCard';
+import GridColumnSelector from '@/views/shared/ui/GridColumnSelector';
 import { OrderSummaryPanel } from './components/OrderSummaryPanel';
 import { CustomerSearch } from './CustomerSearch';
 import { TableSelector } from './TableSelector';
 import { PaymentPanel } from './PaymentPanel';
 import { SalesReceipt } from './SalesReceipt';
+import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
 
 /**
  * POSInterface - Main POS Component
@@ -62,10 +64,26 @@ export function POSInterface() {
   const [cartRestored, setCartRestored] = useState(false);
   const [topSellingMap, setTopSellingMap] = useState<Record<string, number>>({});
   
+  // Grid columns with session storage persistence (default: 5 columns)
+  const [gridColumns, setGridColumns] = useSessionStorage<number>('pos-product-grid-columns', 5);
+  
   // Context hooks
   const cart = useCart();
   const stockTracker = useStockTracker();
   const { markOrderAsPaid } = useLocalOrder();
+
+  /**
+   * Generate dynamic grid class based on selected columns
+   */
+  const getGridClass = () => {
+    const colMap: Record<number, string> = {
+      3: 'lg:grid-cols-3',
+      4: 'lg:grid-cols-4',
+      5: 'lg:grid-cols-5',
+      6: 'lg:grid-cols-6',
+    };
+    return `grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 ${colMap[gridColumns] || 'lg:grid-cols-5'}`;
+  };
   
   // Show loading message if cart items were restored
   useEffect(() => {
@@ -578,62 +596,76 @@ export function POSInterface() {
     <div className="flex h-[calc(100vh-8rem)] gap-4 relative">
       {/* Left Panel - Products */}
       <div className="flex-1 min-w-0 flex flex-col gap-3">
-        {/* Search Bar */}
-        <Card className="p-4 shadow-md">
-          <div className="flex items-center gap-3">
-            <Search className="h-5 w-5 text-gray-400 flex-shrink-0" />
-            <Input
-              type="text"
-              placeholder="Search products or packages by name or SKU..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 text-base"
-            />
-          </div>
-        </Card>
-
         {/* Main Content Area */}
         <Card className="flex-1 overflow-hidden flex flex-col shadow-md">
-          <div className="p-4 border-b bg-gradient-to-r from-amber-50 to-orange-50 overflow-hidden">
-            {/* View Toggle Buttons */}
-            <div className="flex gap-2 mb-4">
-              <Button
-                variant={activeView === 'all' ? 'default' : 'outline'}
-                onClick={() => setActiveView('all')}
-                size="sm"
-                className={activeView === 'all' ? 'bg-amber-600 hover:bg-amber-700' : ''}
-              >
-                <GridIcon className="w-4 h-4 mr-2" />
-                All Products
-              </Button>
-              <Button
-                variant={activeView === 'packages' ? 'default' : 'outline'}
-                onClick={() => setActiveView('packages')}
-                size="sm"
-                className={activeView === 'packages' ? 'bg-amber-600 hover:bg-amber-700' : ''}
-              >
-                <PackageIcon className="w-4 h-4 mr-2" />
-                Packages
-              </Button>
-              <Button
-                variant={activeView === 'featured' ? 'default' : 'outline'}
-                onClick={() => setActiveView('featured')}
-                size="sm"
-                className={activeView === 'featured' ? 'bg-amber-600 hover:bg-amber-700' : ''}
-              >
-                ⭐ Featured
-              </Button>
+          <div className="p-4 border-b bg-gradient-to-r from-amber-50 to-orange-50 overflow-hidden space-y-3">
+            {/* Top Row: Grid Selector and View Toggle Buttons */}
+            <div className="flex items-center justify-between gap-3">
+              {/* Left: Grid Column Selector */}
+              <GridColumnSelector
+                columns={gridColumns}
+                onColumnsChange={setGridColumns}
+              />
+              
+              {/* Right: View Toggle Buttons */}
+              <div className="flex gap-2">
+                <Button
+                  variant={activeView === 'all' ? 'default' : 'outline'}
+                  onClick={() => setActiveView('all')}
+                  size="sm"
+                  className={activeView === 'all' ? 'bg-amber-600 hover:bg-amber-700' : ''}
+                >
+                  <GridIcon className="w-4 h-4 mr-2" />
+                  All Products
+                </Button>
+                <Button
+                  variant={activeView === 'packages' ? 'default' : 'outline'}
+                  onClick={() => setActiveView('packages')}
+                  size="sm"
+                  className={activeView === 'packages' ? 'bg-amber-600 hover:bg-amber-700' : ''}
+                >
+                  <PackageIcon className="w-4 h-4 mr-2" />
+                  Packages
+                </Button>
+                <Button
+                  variant={activeView === 'featured' ? 'default' : 'outline'}
+                  onClick={() => setActiveView('featured')}
+                  size="sm"
+                  className={activeView === 'featured' ? 'bg-amber-600 hover:bg-amber-700' : ''}
+                >
+                  ⭐ Featured
+                </Button>
+              </div>
             </div>
 
-            {/* Category Filter - Only show for product views */}
-            {activeView !== 'packages' && (
-              <CategoryFilter
-                selectedCategoryId={selectedCategory}
-                onCategoryChange={setSelectedCategory}
-                showProductCount={true}
-                productCountPerCategory={productCountPerCategory}
-              />
-            )}
+            {/* Bottom Row: Search Bar and Category Filter */}
+            <div className="flex items-center gap-3">
+              {/* Left: Search Bar */}
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Search products or packages by name or SKU..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 text-base"
+                />
+              </div>
+              
+              {/* Right: Category Filter - Only show for product views */}
+              <div className="w-64 flex-shrink-0">
+                {activeView !== 'packages' ? (
+                  <CategoryFilter
+                    selectedCategoryId={selectedCategory}
+                    onCategoryChange={setSelectedCategory}
+                    showProductCount={true}
+                    productCountPerCategory={productCountPerCategory}
+                  />
+                ) : (
+                  <div></div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Products Grid */}
@@ -652,7 +684,10 @@ export function POSInterface() {
                     <p className="text-sm mt-2">Try adjusting your search or filters</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                  <div 
+                    key={`grid-all-${gridColumns}`}
+                    className={`${getGridClass()} gap-3 sm:gap-4 transition-all duration-500 ease-in-out`}
+                  >
                     {/* Package matches (only shown when searching in 'All Products' view) */}
                     {filteredPackagesForAll.map(pkg => {
                       const isVIPOnly = pkg.package_type === 'vip_only';
@@ -661,7 +696,7 @@ export function POSInterface() {
                       return (
                         <Card
                           key={`pkg-${pkg.id}`}
-                          className={`p-4 transition-all ${
+                          className={`p-4 transition-all duration-300 animate-in fade-in zoom-in-95 ${
                             canPurchase ? 'cursor-pointer hover:shadow-lg hover:border-amber-400' : 'opacity-60 cursor-not-allowed'
                           }`}
                           onClick={() => canPurchase && handleAddPackage(pkg)}
@@ -724,7 +759,10 @@ export function POSInterface() {
                     <p className="text-lg font-medium">No packages available</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div 
+                    key={`grid-packages-${gridColumns}`}
+                    className={`${getGridClass()} gap-4 transition-all duration-500 ease-in-out`}
+                  >
                     {packages.map(pkg => {
                       const isVIPOnly = pkg.package_type === 'vip_only';
                       const customerIsVIP = cart.customer && cart.customer.tier !== 'regular';
@@ -732,7 +770,7 @@ export function POSInterface() {
                       return (
                         <Card
                           key={pkg.id}
-                          className={`p-4 transition-all ${
+                          className={`p-4 transition-all duration-300 animate-in fade-in zoom-in-95 ${
                             canPurchase ? 'cursor-pointer hover:shadow-lg hover:border-amber-400' : 'opacity-60 cursor-not-allowed'
                           }`}
                           onClick={() => canPurchase && handleAddPackage(pkg)}

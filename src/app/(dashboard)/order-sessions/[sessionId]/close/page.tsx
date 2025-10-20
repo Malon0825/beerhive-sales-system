@@ -77,10 +77,13 @@ export default function CloseTabPage() {
 
   /**
    * Handle dialog close
+   * Navigates back to tabs when dialog is closed
    */
-  const handleClose = () => {
-    setIsOpen(false);
-    router.push('/tabs'); // Redirect to unified tab management
+  const handleClose = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      router.push('/tabs'); // Redirect to unified tab management
+    }
   };
 
   /**
@@ -190,7 +193,7 @@ export default function CloseTabPage() {
   return (
     <PaymentPanel
       open={isOpen}
-      onOpenChange={setIsOpen}
+      onOpenChange={handleClose}
       onPaymentComplete={handleSuccess}
       mode="close-tab"
       sessionId={sessionId}
