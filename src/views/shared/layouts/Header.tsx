@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { User, LogOut, Menu } from 'lucide-react';
+import { User, LogOut, Menu, Sparkles } from 'lucide-react';
 import { Button } from '../ui/button';
 import {
   DropdownMenu,
@@ -15,6 +15,7 @@ import { Badge } from '../ui/badge';
 import { AuthUser } from '@/core/services/auth/AuthService';
 import { UserRole } from '@/models/enums/UserRole';
 import { ProfileDialog } from '../profile/ProfileDialog';
+import { PatchNotesDialog } from '../profile/PatchNotesDialog';
 import { NotificationBell } from '../ui/NotificationBell';
 
 interface HeaderProps {
@@ -63,6 +64,7 @@ const getRoleLabel = (role: UserRole) => {
  */
 export function Header({ user, onLogout, onMenuClick }: HeaderProps) {
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [patchNotesDialogOpen, setPatchNotesDialogOpen] = useState(false);
 
   return (
     <>
@@ -130,6 +132,10 @@ export function Header({ user, onLogout, onMenuClick }: HeaderProps) {
               <User className="mr-2 h-4 w-4" />
               <span>Profile</span>
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setPatchNotesDialogOpen(true)}>
+              <Sparkles className="mr-2 h-4 w-4" />
+              <span>Patch Notes</span>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-red-600 focus:text-red-600"
@@ -147,6 +153,12 @@ export function Header({ user, onLogout, onMenuClick }: HeaderProps) {
       <ProfileDialog 
         open={profileDialogOpen} 
         onOpenChange={setProfileDialogOpen} 
+      />
+
+      {/* Patch Notes Dialog */}
+      <PatchNotesDialog 
+        open={patchNotesDialogOpen} 
+        onOpenChange={setPatchNotesDialogOpen} 
       />
     </>
   );

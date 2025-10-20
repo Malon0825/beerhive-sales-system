@@ -19,7 +19,18 @@ const nextConfig = {
       bodySizeLimit: '2mb',
     },
     // Optimize package imports - tree-shake large libraries
-    optimizePackageImports: ['lucide-react', 'date-fns', 'recharts'],
+    // This reduces bundle size by only importing used components
+    optimizePackageImports: [
+      'lucide-react',
+      'date-fns', 
+      'recharts',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-popover',
+      '@radix-ui/react-select',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-toast',
+    ],
   },
   
   // Note: serverActions allowedOrigins removed to support Vercel/Netlify deployment
@@ -62,6 +73,16 @@ const nextConfig = {
           })
         );
       }
+    } else {
+      // SERVER-SIDE: Externalize heavy dependencies to reduce serverless function size
+      // These will be loaded from node_modules at runtime instead of being bundled
+      config.externals = config.externals || [];
+      config.externals.push({
+        '@react-pdf/renderer': 'commonjs @react-pdf/renderer',
+        'canvas': 'commonjs canvas',
+        'bufferutil': 'commonjs bufferutil',
+        'utf-8-validate': 'commonjs utf-8-validate',
+      });
     }
     
     // Disable filesystem caching for production builds to prevent

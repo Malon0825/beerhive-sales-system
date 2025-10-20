@@ -38,6 +38,18 @@
 # - Manages rewrites, redirects, and middleware
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+  
+  # Include heavy dependencies in node_modules instead of bundling
+  # This reduces serverless function size significantly
+  [plugins.inputs]
+    # Exclude heavy dependencies from being bundled into the function
+    # They will be loaded from node_modules at runtime
+    includeFiles = [
+      "node_modules/@react-pdf/**",
+      "node_modules/react-pdf/**",
+      "node_modules/pdfjs-dist/**",
+      "node_modules/canvas/**"
+    ]
 
 # ===================================
 # SECRET SCANNING CONFIGURATION
