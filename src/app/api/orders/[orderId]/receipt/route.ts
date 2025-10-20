@@ -13,14 +13,9 @@ import { ReceiptGenerator } from '@/core/utils/generators/receiptGenerator';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// Use Netlify On-Demand Builders for this heavy route
-// This separates it from the main server handler and provides:
-// - Longer timeout (up to 26 seconds vs 10 seconds)
-// - Separate bundle (doesn't bloat main handler)
-// - CDN caching for repeated requests
-export const config = {
-  type: 'experimental-background',
-};
+// NOTE: PDF libraries are dynamically imported below to prevent bundling issues
+// This allows Netlify to properly handle the heavy dependencies at runtime
+// without bloating the serverless function size
 
 export async function GET(
   request: NextRequest,
