@@ -27,6 +27,8 @@ export function OrderStatusBadge({ status, className = '' }: OrderStatusBadgePro
         return 'bg-green-100 text-green-800 border-green-300';
       case KitchenOrderStatus.SERVED:
         return 'bg-gray-100 text-gray-800 border-gray-300';
+      case KitchenOrderStatus.CANCELLED:
+        return 'bg-red-100 text-red-800 border-red-300 line-through';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300';
     }

@@ -1,11 +1,13 @@
-import { RefreshCw, Volume2, VolumeX } from 'lucide-react';
+import { RefreshCw, Volume2, VolumeX, Trash2 } from 'lucide-react';
 
 interface KitchenHeaderProps {
   pendingCount: number;
   preparingCount: number;
-  readyCount: number;
+  cancelledCount: number;
   onRefresh: () => void;
+  onClearCancelled: () => void;
   isRefreshing?: boolean;
+  isClearingCancelled?: boolean;
   isMuted?: boolean;
   onToggleMute?: () => void;
 }
@@ -17,18 +19,22 @@ interface KitchenHeaderProps {
  * 
  * @param pendingCount - Number of pending orders
  * @param preparingCount - Number of orders being prepared
- * @param readyCount - Number of ready orders
+ * @param cancelledCount - Number of cancelled orders
  * @param onRefresh - Callback when refresh button is clicked
+ * @param onClearCancelled - Callback when clear cancelled button is clicked
  * @param isRefreshing - Whether data is currently refreshing
+ * @param isClearingCancelled - Whether cancelled orders are being cleared
  * @param isMuted - Whether notifications are muted
  * @param onToggleMute - Callback when mute button is clicked
  */
 export function KitchenHeader({
   pendingCount,
   preparingCount,
-  readyCount,
+  cancelledCount,
   onRefresh,
+  onClearCancelled,
   isRefreshing = false,
+  isClearingCancelled = false,
   isMuted = false,
   onToggleMute,
 }: KitchenHeaderProps) {
@@ -62,6 +68,14 @@ export function KitchenHeader({
               </button>
             )}
             <button
+              onClick={onClearCancelled}
+              disabled={isClearingCancelled || cancelledCount === 0}
+              className="bg-red-600 text-white px-2 py-2 rounded hover:bg-red-700 transition disabled:opacity-50 flex items-center"
+              title="Clear all cancelled orders"
+            >
+              <Trash2 className={`h-4 w-4 ${isClearingCancelled ? 'animate-pulse' : ''}`} />
+            </button>
+            <button
               onClick={onRefresh}
               disabled={isRefreshing}
               className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1"
@@ -83,8 +97,8 @@ export function KitchenHeader({
             <p className="text-xl font-bold text-blue-600">{preparingCount}</p>
           </div>
           <div className="text-center flex-1">
-            <p className="text-xs text-gray-600">Ready</p>
-            <p className="text-xl font-bold text-green-600">{readyCount}</p>
+            <p className="text-xs text-gray-600">Cancelled</p>
+            <p className="text-xl font-bold text-red-600">{cancelledCount}</p>
           </div>
         </div>
       </div>
@@ -116,8 +130,8 @@ export function KitchenHeader({
             <p className="text-xl lg:text-2xl font-bold text-blue-600">{preparingCount}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs lg:text-sm text-gray-600">Ready</p>
-            <p className="text-xl lg:text-2xl font-bold text-green-600">{readyCount}</p>
+            <p className="text-xs lg:text-sm text-gray-600">Cancelled</p>
+            <p className="text-xl lg:text-2xl font-bold text-red-600">{cancelledCount}</p>
           </div>
         </div>
 
@@ -139,6 +153,15 @@ export function KitchenHeader({
               </span>
             </button>
           )}
+          <button
+            onClick={onClearCancelled}
+            disabled={isClearingCancelled || cancelledCount === 0}
+            className="bg-red-600 text-white px-3 lg:px-4 py-2 rounded hover:bg-red-700 transition disabled:opacity-50 flex items-center gap-2"
+            title="Clear all cancelled orders"
+          >
+            <Trash2 className={`h-4 lg:h-5 w-4 lg:w-5 ${isClearingCancelled ? 'animate-pulse' : ''}`} />
+            <span className="text-sm lg:text-base">Clear Cancelled</span>
+          </button>
           <button
             onClick={onRefresh}
             disabled={isRefreshing}

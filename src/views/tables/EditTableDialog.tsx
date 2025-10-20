@@ -16,28 +16,40 @@ import { Label } from '../shared/ui/label';
 import { AlertCircle } from 'lucide-react';
 import { supabase } from '@/data/supabase/client';
 
-interface AddTableDialogProps {
+interface EditTableDialogProps {
+  table: Table | null;
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (tableData: {
-    table_number: string;
-    capacity: number;
-    area?: string;
-    notes?: string;
-  }) => Promise<void>;
+  onConfirm: (
+    tableId: string,
+    tableData: {
+      table_number: string;
+      capacity: number;
+      area?: string;
+      notes?: string;
+    }
+  ) => Promise<void>;
 }
 
 /**
- * AddTableDialog Component
- * Dialog for adding a new table to the restaurant
+ * EditTableDialog Component
+ * Dialog for editing an existing table's details
+ * 
  * Features:
- * - Table number input (required)
- * - Capacity input (required)
+ * - Pre-populated with current table data
+ * - Table number input (required, must be unique)
+ * - Capacity input (required, 1-50)
  * - Area selection (optional)
  * - Notes field (optional)
  * - Validation before submission
+ * 
+ * Frontend Integration:
+ * - Called with table object to edit
+ * - Validates input client-side before API call
+ * - Returns updated table data via onConfirm callback
+ * - Handles errors and displays to user
  */
-export default function AddTableDialog({ isOpen, onClose, onConfirm }: AddTableDialogProps) {
+export default function EditTableDialog({ table, isOpen, onClose, onConfirm }: EditTableDialogProps) {
   const [tableNumber, setTableNumber] = useState('');
   const [capacity, setCapacity] = useState('');
   const [area, setArea] = useState('');
@@ -48,7 +60,7 @@ export default function AddTableDialog({ isOpen, onClose, onConfirm }: AddTableD
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Predefined area options
+   * Predefined area options (same as AddTableDialog for consistency)
    */
   const areaOptions = [
     { value: '', label: 'General (No specific area)' },
@@ -100,7 +112,35 @@ export default function AddTableDialog({ isOpen, onClose, onConfirm }: AddTableD
   };
 
   /**
+   * Populate form fields when table changes
+   * Reset form when dialog opens with a new table
+   */
+  useEffect(() => {
+    if (table && isOpen) {
+      setTableNumber(table.table_number || '');
+      setCapacity(table.capacity?.toString() || '');
+      
+      // Check if current area is a predefined option or custom
+      const currentArea = table.area || '';
+      const isPredefined = areaOptions.some(opt => opt.value === currentArea);
+      
+      if (isPredefined || !currentArea) {
+        setArea(currentArea);
+        setCustomArea('');
+      } else {
+        // Existing area is custom - set to custom mode
+        setArea('__custom__');
+        setCustomArea(currentArea);
+      }
+      
+      setNotes(table.notes || '');
+      setError(null);
+    }
+  }, [table, isOpen]);
+
+  /**
    * Validate form inputs
+   * @returns Error message or null if valid
    */
   const validateForm = (): string | null => {
     if (!tableNumber.trim()) {
@@ -133,8 +173,11 @@ export default function AddTableDialog({ isOpen, onClose, onConfirm }: AddTableD
       }
 
       // Check for duplicate (case-insensitive)
+      // Exclude current table's area if it's the same
       const normalizedCustomArea = trimmedCustomArea.toLowerCase();
-      if (existingAreas.includes(normalizedCustomArea)) {
+      const currentTableArea = table?.area?.toLowerCase();
+      
+      if (normalizedCustomArea !== currentTableArea && existingAreas.includes(normalizedCustomArea)) {
         return `Area "${trimmedCustomArea}" already exists`;
       }
 
@@ -153,8 +196,11 @@ export default function AddTableDialog({ isOpen, onClose, onConfirm }: AddTableD
 
   /**
    * Handle form submission
+   * Validates input and calls API via onConfirm callback
    */
   const handleSubmit = async () => {
+    if (!table) return;
+    
     setError(null);
 
     // Validate
@@ -183,37 +229,25 @@ export default function AddTableDialog({ isOpen, onClose, onConfirm }: AddTableD
         notes: notes.trim() || undefined,
       };
 
-      await onConfirm(tableData);
+      await onConfirm(table.id, tableData);
 
-      // Success - reset form and close
-      resetForm();
+      // Success - close dialog
       onClose();
     } catch (err: any) {
-      console.error('Error adding table:', err);
-      setError(err.message || 'Failed to add table');
+      console.error('Error updating table:', err);
+      setError(err.message || 'Failed to update table');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   /**
-   * Reset form fields
-   */
-  const resetForm = () => {
-    setTableNumber('');
-    setCapacity('');
-    setArea('');
-    setCustomArea('');
-    setNotes('');
-    setError(null);
-  };
-
-  /**
    * Handle dialog close
+   * Prevent closing while submitting
    */
   const handleClose = () => {
     if (!isSubmitting) {
-      resetForm();
+      setError(null);
       onClose();
     }
   };
@@ -222,9 +256,9 @@ export default function AddTableDialog({ isOpen, onClose, onConfirm }: AddTableD
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add New Table</DialogTitle>
+          <DialogTitle>Edit Table</DialogTitle>
           <DialogDescription>
-            Add a new table to handle high demand. Fill in the required information below.
+            Update table information. Changes will be reflected immediately.
           </DialogDescription>
         </DialogHeader>
 
@@ -276,7 +310,9 @@ export default function AddTableDialog({ isOpen, onClose, onConfirm }: AddTableD
               value={area}
               onChange={(e) => {
                 setArea(e.target.value);
-                setCustomArea(''); // Reset custom area when changing selection
+                if (e.target.value !== '__custom__') {
+                  setCustomArea(''); // Reset custom area when changing selection
+                }
               }}
               disabled={isSubmitting}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -348,10 +384,10 @@ export default function AddTableDialog({ isOpen, onClose, onConfirm }: AddTableD
             {isSubmitting ? (
               <>
                 <span className="animate-spin mr-2">⏳</span>
-                Adding...
+                Saving...
               </>
             ) : (
-              'Add Table'
+              'Save Changes'
             )}
           </Button>
         </DialogFooter>

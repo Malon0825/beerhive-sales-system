@@ -122,10 +122,10 @@ export async function PATCH(
           );
       }
     } else {
-      // Regular update
+      // Regular update (table details: table_number, capacity, area, notes)
       // Authorization: regular updates restricted to manager/admin
       await requireManagerOrAbove(request);
-      table = await TableRepository.update(tableId, body);
+      table = await TableService.updateTableDetails(tableId, body, supabaseAdmin);
     }
 
     return NextResponse.json({

@@ -12,6 +12,7 @@ import ReservationDialog from './ReservationDialog';
 import OccupyTableDialog from './OccupyTableDialog';
 import AddTableDialog from './AddTableDialog';
 import DeactivateTableDialog from './DeactivateTableDialog';
+import EditTableDialog from './EditTableDialog';
 import { supabase } from '@/data/supabase/client';
 import { Plus, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
@@ -37,6 +38,7 @@ export default function TableGrid({ onTableSelect, selectedTableId }: TableGridP
   const [showOccupyDialog, setShowOccupyDialog] = useState(false);
   const [showAddTableDialog, setShowAddTableDialog] = useState(false);
   const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [showInactiveTables, setShowInactiveTables] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -53,6 +55,7 @@ export default function TableGrid({ onTableSelect, selectedTableId }: TableGridP
   const canDeactivate = isManagerOrAbove();
   const canReactivate = isManagerOrAbove();
   const canCreateTable = isManagerOrAbove();
+  const canEditTable = isManagerOrAbove();
 
   // Show toast notification
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -186,6 +189,16 @@ export default function TableGrid({ onTableSelect, selectedTableId }: TableGridP
     setShowDeactivateDialog(true);
   };
 
+  /**
+   * Handle edit button click
+   * Opens the edit table dialog
+   * @param {Table} table - Table to edit
+   */
+  const handleEditClick = (table: Table) => {
+    setSelectedTable(table);
+    setShowEditDialog(true);
+  };
+
   // Confirm reservation
   const handleConfirmReservation = async (tableId: string, notes?: string) => {
     await handleStatusChange(tableId, 'reserve', notes);
@@ -273,6 +286,45 @@ export default function TableGrid({ onTableSelect, selectedTableId }: TableGridP
     } catch (error) {
       console.error('Error adding table:', error);
       showToast(error instanceof Error ? error.message : 'Failed to add table', 'error');
+      throw error;
+    }
+  };
+
+  /**
+   * Handle editing a table
+   * Updates table details via API and refreshes UI
+   * @param {string} tableId - Table ID to edit
+   * @param {object} tableData - Updated table data
+   */
+  const handleEditTable = async (
+    tableId: string,
+    tableData: {
+      table_number: string;
+      capacity: number;
+      area?: string;
+      notes?: string;
+    }
+  ) => {
+    try {
+      const data = await apiPatch(`/api/tables/${tableId}`, tableData);
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to update table');
+      }
+
+      // Optimistically update local state immediately
+      if (data.data) {
+        setTables((prev) =>
+          prev.map((table) =>
+            table.id === tableId ? (data.data as Table) : table
+          )
+        );
+      }
+
+      showToast(`Table ${tableData.table_number} updated successfully`, 'success');
+    } catch (error) {
+      console.error('Error updating table:', error);
+      showToast(error instanceof Error ? error.message : 'Failed to update table', 'error');
       throw error;
     }
   };
@@ -467,6 +519,7 @@ export default function TableGrid({ onTableSelect, selectedTableId }: TableGridP
                     onOccupy={handleOccupyClick}
                     onQuickAction={handleQuickStatusChange}
                     onDeactivate={handleDeactivateClick}
+                    onEdit={handleEditClick}
                     onClick={handleTableClick}
                     // Pass role-based action visibility
                     canReserve={canReserve}
@@ -475,6 +528,7 @@ export default function TableGrid({ onTableSelect, selectedTableId }: TableGridP
                     canMarkCleaned={canMarkCleaned}
                     canCancelReservation={canCancelReservation}
                     canDeactivate={canDeactivate}
+                    canEdit={canEditTable}
                   />
                 </div>
               ))}
@@ -547,6 +601,13 @@ export default function TableGrid({ onTableSelect, selectedTableId }: TableGridP
         isOpen={showDeactivateDialog}
         onClose={() => setShowDeactivateDialog(false)}
         onConfirm={handleConfirmDeactivate}
+      />
+
+      <EditTableDialog
+        table={selectedTable}
+        isOpen={showEditDialog}
+        onClose={() => setShowEditDialog(false)}
+        onConfirm={handleEditTable}
       />
 
       {/* Toast Notification */}

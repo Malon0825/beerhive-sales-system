@@ -132,7 +132,8 @@ export function TabProductCard({
   return (
     <Card
       className={`
-        p-4 transition-all duration-200 relative overflow-hidden
+        p-4 transition-all duration-300 relative overflow-hidden
+        animate-in fade-in zoom-in-95
         ${
           disabled || isOutOfStock
             ? 'opacity-50 cursor-not-allowed'

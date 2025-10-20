@@ -95,16 +95,23 @@ export function ProductCard({
   const stockStatus = getStockStatus();
   const StatusIcon = stockStatus.icon;
 
+  const handleClick = () => {
+    if (!disabled && !isOutOfStock) {
+      onClick(product);
+    }
+  };
+
   return (
     <Card
       className={`
-        p-4 transition-all duration-200 relative overflow-hidden
+        p-4 transition-all duration-300 relative overflow-hidden
+        animate-in fade-in zoom-in-95
         ${disabled || isOutOfStock 
           ? 'opacity-50 cursor-not-allowed' 
-          : 'cursor-pointer hover:shadow-xl hover:scale-105 hover:border-amber-400'
+          : 'cursor-pointer hover:shadow-xl hover:scale-105 hover:border-amber-500'
         }
       `}
-      onClick={() => !disabled && !isOutOfStock && onClick(product)}
+      onClick={handleClick}
     >
       {/* Featured Badge */}
       {isFeatured && (

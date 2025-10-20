@@ -129,7 +129,8 @@ export class KitchenOrderRepository {
   }
 
   /**
-   * Get active kitchen orders (pending and preparing)
+   * Get active kitchen orders (pending, preparing, and cancelled)
+   * Excludes READY and SERVED orders (ready orders disappear once marked)
    * Uses admin client to bypass RLS policies
    */
   static async getActive(destination?: 'kitchen' | 'bartender'): Promise<any[]> {
@@ -151,7 +152,11 @@ export class KitchenOrderRepository {
             notes
           )
         `)
-        .in('status', [KitchenOrderStatus.PENDING, KitchenOrderStatus.PREPARING]);
+        .in('status', [
+          KitchenOrderStatus.PENDING, 
+          KitchenOrderStatus.PREPARING, 
+          KitchenOrderStatus.CANCELLED
+        ]);
 
       if (destination) {
         query = query.or(`destination.eq.${destination},destination.eq.both`);

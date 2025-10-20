@@ -8,7 +8,9 @@ import { Badge } from '@/views/shared/ui/badge';
 import { Search, Package, Loader2, Grid as GridIcon, Star } from 'lucide-react';
 import CategoryFilter from './components/CategoryFilter';
 import { TabProductCard } from './components/TabProductCard';
+import GridColumnSelector from '@/views/shared/ui/GridColumnSelector';
 import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
+import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
 import { formatCurrency } from '@/lib/utils/formatters';
 
 /**
@@ -84,8 +86,24 @@ export default function SessionProductSelector({
   const [activeView, setActiveView] = useState<'all' | 'featured' | 'packages'>('all');
   const [topSellingMap, setTopSellingMap] = useState<Record<string, number>>({});
   
+  // Grid columns with session storage persistence (default: 5 columns)
+  const [gridColumns, setGridColumns] = useSessionStorage<number>('tab-product-grid-columns', 5);
+  
   // Access stock tracker context
   const stockTracker = useStockTracker();
+
+  /**
+   * Generate dynamic grid class based on selected columns
+   */
+  const getGridClass = () => {
+    const colMap: Record<number, string> = {
+      3: 'lg:grid-cols-3',
+      4: 'lg:grid-cols-4',
+      5: 'lg:grid-cols-5',
+      6: 'lg:grid-cols-6',
+    };
+    return `grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 ${colMap[gridColumns] || 'lg:grid-cols-5'}`;
+  };
 
   /**
    * Fetch active products, packages, and initialize stock tracker
@@ -350,13 +368,20 @@ export default function SessionProductSelector({
     <Card className="h-full flex flex-col overflow-hidden shadow-md">
       {/* Header */}
       <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b flex-shrink-0">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center justify-between gap-4">
+          {/* Left: Title */}
           <CardTitle className="flex items-center gap-2">
             <Package className="w-5 h-5 text-blue-600" />
             {activeView === 'packages' ? 'Select Packages' : 'Select Products'}
           </CardTitle>
           
-          {/* View Switcher - Moved beside title */}
+          {/* Center: Grid Column Selector */}
+          <GridColumnSelector
+            columns={gridColumns}
+            onColumnsChange={setGridColumns}
+          />
+          
+          {/* Right: View Switcher */}
           <div className="flex gap-2">
             <Button
               variant={activeView === 'all' ? 'default' : 'outline'}
@@ -443,7 +468,10 @@ export default function SessionProductSelector({
                   <p className="text-sm mt-2">Try adjusting your search or filters</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pb-6">
+                <div 
+                  key={`grid-all-${gridColumns}`}
+                  className={`${getGridClass()} gap-3 sm:gap-4 pb-6 transition-all duration-500 ease-in-out`}
+                >
                   {/* Render package matches (only when searching) */}
                   {filteredPackagesForAll.map((pkg) => {
                     const isVIPOnly = pkg.package_type === 'vip_only';
@@ -454,7 +482,7 @@ export default function SessionProductSelector({
                     return (
                       <Card
                         key={`pkg-${pkg.id}`}
-                        className={`p-4 border-2 transition-all ${
+                        className={`p-4 border-2 transition-all duration-300 animate-in fade-in zoom-in-95 ${
                           canPurchase
                             ? 'cursor-pointer hover:shadow-lg hover:border-amber-400'
                             : 'opacity-60 cursor-not-allowed'
@@ -531,7 +559,10 @@ export default function SessionProductSelector({
                   <p className="text-sm mt-2">Mark products as featured in product settings</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pb-6">
+                <div 
+                  key={`grid-featured-${gridColumns}`}
+                  className={`${getGridClass()} gap-3 sm:gap-4 pb-6 transition-all duration-500 ease-in-out`}
+                >
                   {filteredFeaturedProducts.map((product) => (
                     <TabProductCard
                       key={product.id}
@@ -560,7 +591,10 @@ export default function SessionProductSelector({
                   <p className="text-lg font-medium">No packages available</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-6">
+                <div 
+                  key={`grid-packages-${gridColumns}`}
+                  className={`${getGridClass()} gap-4 pb-6 transition-all duration-500 ease-in-out`}
+                >
                   {packages.map(pkg => {
                     const isVIPOnly = pkg.package_type === 'vip_only';
                     const customerIsVIP = isVIPCustomer();
@@ -570,7 +604,7 @@ export default function SessionProductSelector({
                     return (
                       <Card
                         key={pkg.id}
-                        className={`p-4 border-2 transition-all ${
+                        className={`p-4 border-2 transition-all duration-300 animate-in fade-in zoom-in-95 ${
                           canPurchase
                             ? 'cursor-pointer hover:shadow-lg hover:border-amber-400'
                             : 'opacity-60 cursor-not-allowed'

@@ -189,4 +189,93 @@ export class TableService {
       throw error instanceof AppError ? error : new AppError('Failed to cancel reservation', 500);
     }
   }
+
+  /**
+   * Update table details (table number, capacity, area, notes)
+   * Validates business rules before updating
+   * 
+   * @param tableId - Table ID to update
+   * @param updates - Fields to update (table_number, capacity, area, notes)
+   * @param client - Optional Supabase client instance (for server-side usage)
+   * @returns Updated table
+   * 
+   * @throws AppError if table not found
+   * @throws AppError if validation fails
+   * @throws AppError if table_number already exists
+   * 
+   * @remarks
+   * - Table number can be changed even if table is occupied
+   * - Capacity must be between 1 and 50
+   * - Cannot change to a table_number that already exists
+   * - Area can be set to null/empty for general area
+   */
+  static async updateTableDetails(
+    tableId: string, 
+    updates: {
+      table_number?: string;
+      capacity?: number;
+      area?: string | null;
+      notes?: string | null;
+    },
+    client?: SupabaseClient<Database>
+  ): Promise<Table> {
+    try {
+      // Fetch existing table
+      const table = await TableRepository.getById(tableId, client);
+      
+      if (!table) {
+        throw new AppError('Table not found', 404);
+      }
+
+      // Validate table_number if provided
+      if (updates.table_number !== undefined) {
+        const trimmedNumber = updates.table_number.trim();
+        
+        if (!trimmedNumber) {
+          throw new AppError('Table number cannot be empty', 400);
+        }
+
+        if (!/^[a-zA-Z0-9\s-]+$/.test(trimmedNumber)) {
+          throw new AppError('Table number can only contain letters, numbers, spaces, and hyphens', 400);
+        }
+
+        // Check if table_number already exists (excluding current table)
+        if (trimmedNumber !== table.table_number) {
+          const existingTable = await TableRepository.getByTableNumber(trimmedNumber, client);
+          if (existingTable && existingTable.id !== tableId) {
+            throw new AppError(`Table number '${trimmedNumber}' already exists`, 409);
+          }
+        }
+
+        updates.table_number = trimmedNumber;
+      }
+
+      // Validate capacity if provided
+      if (updates.capacity !== undefined) {
+        if (updates.capacity < 1) {
+          throw new AppError('Capacity must be at least 1', 400);
+        }
+
+        if (updates.capacity > 50) {
+          throw new AppError('Capacity cannot exceed 50 persons', 400);
+        }
+      }
+
+      // Sanitize area (empty string becomes null)
+      if (updates.area !== undefined) {
+        updates.area = updates.area?.trim() || null;
+      }
+
+      // Sanitize notes (empty string becomes null)
+      if (updates.notes !== undefined) {
+        updates.notes = updates.notes?.trim() || null;
+      }
+
+      // Update table using repository
+      return await TableRepository.update(tableId, updates);
+    } catch (error) {
+      console.error('Update table details error:', error);
+      throw error instanceof AppError ? error : new AppError('Failed to update table', 500);
+    }
+  }
 }

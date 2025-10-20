@@ -4,11 +4,12 @@ import { KitchenOrderStatus } from '@/models/enums/KitchenOrderStatus';
 import { KitchenOrderWithRelations } from '@/models/types/KitchenOrderWithRelations';
 import { Card } from '@/views/shared/ui/card';
 import { OrderStatusBadge } from './components/OrderStatusBadge';
-import { Clock, AlertTriangle } from 'lucide-react';
+import { Clock, AlertTriangle, Trash2 } from 'lucide-react';
 
 interface OrderCardProps {
   kitchenOrder: KitchenOrderWithRelations;
   onStatusChange: (orderId: string, status: KitchenOrderStatus) => void;
+  onRemove?: (orderId: string) => void;
 }
 
 /**
@@ -19,7 +20,7 @@ interface OrderCardProps {
  * @param kitchenOrder - Kitchen order with related data
  * @param onStatusChange - Callback when order status changes
  */
-export function OrderCard({ kitchenOrder, onStatusChange }: OrderCardProps) {
+export function OrderCard({ kitchenOrder, onStatusChange, onRemove }: OrderCardProps) {
   const { order, order_item, product_name, status, sent_at, is_urgent, special_instructions } = kitchenOrder;
   
   /**
@@ -47,6 +48,15 @@ export function OrderCard({ kitchenOrder, onStatusChange }: OrderCardProps) {
    */
   const handleMarkServed = () => {
     onStatusChange(kitchenOrder.id, KitchenOrderStatus.SERVED);
+  };
+
+  /**
+   * Handle remove cancelled order
+   */
+  const handleRemove = () => {
+    if (onRemove) {
+      onRemove(kitchenOrder.id);
+    }
   };
 
   return (
@@ -123,6 +133,16 @@ export function OrderCard({ kitchenOrder, onStatusChange }: OrderCardProps) {
             className="flex-1 bg-gray-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded text-sm sm:text-base font-medium hover:bg-gray-700 transition active:scale-95"
           >
             Mark Served
+          </button>
+        )}
+        
+        {status === KitchenOrderStatus.CANCELLED && onRemove && (
+          <button
+            onClick={handleRemove}
+            className="flex-1 bg-red-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded text-sm sm:text-base font-medium hover:bg-red-700 transition active:scale-95 flex items-center justify-center gap-2"
+          >
+            <Trash2 className="h-4 w-4" />
+            Remove
           </button>
         )}
       </div>

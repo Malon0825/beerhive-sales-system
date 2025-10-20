@@ -7,7 +7,7 @@ interface FilterTabsProps {
     all: number;
     pending: number;
     preparing: number;
-    ready: number;
+    cancelled: number;
   };
 }
 
@@ -71,16 +71,16 @@ export function FilterTabs({ activeFilter, onFilterChange, counts }: FilterTabsP
         Preparing ({counts.preparing})
       </button>
       <button
-        onClick={() => onFilterChange(KitchenOrderStatus.READY)}
+        onClick={() => onFilterChange(KitchenOrderStatus.CANCELLED)}
         className={`
           flex-shrink-0 px-3 sm:px-4 py-2 rounded text-sm sm:text-base font-medium transition snap-start
-          ${activeFilter === KitchenOrderStatus.READY
-            ? 'bg-green-600 text-white shadow-md'
+          ${activeFilter === KitchenOrderStatus.CANCELLED
+            ? 'bg-red-600 text-white shadow-md'
             : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           }
         `}
       >
-        Ready ({counts.ready})
+        Cancelled ({counts.cancelled})
       </button>
     </div>
   );
