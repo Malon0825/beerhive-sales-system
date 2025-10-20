@@ -58,21 +58,19 @@ export function ReceiptPreviewModal({
     }
   };
 
-  const handleDownloadPDF = async () => {
-    try {
-      const response = await fetch(`/api/orders/${orderId}/receipt?format=pdf`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `receipt-${receiptData?.orderNumber || orderId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('PDF download error:', error);
-      alert('Failed to download PDF');
+  const handlePrintToPDF = () => {
+    // Open receipt in new window for browser's print-to-PDF functionality
+    const printWindow = window.open(
+      `/api/orders/${orderId}/receipt?format=html`,
+      '_blank',
+      'width=400,height=600'
+    );
+
+    if (printWindow) {
+      printWindow.addEventListener('load', () => {
+        // Auto-trigger print dialog (users can save as PDF from here)
+        printWindow.print();
+      });
     }
   };
 
@@ -224,11 +222,12 @@ export function ReceiptPreviewModal({
               Print
             </button>
             <button
-              onClick={handleDownloadPDF}
+              onClick={handlePrintToPDF}
               className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+              title="Open print dialog - save as PDF from browser"
             >
               <Download className="w-4 h-4" />
-              Download PDF
+              Save as PDF
             </button>
           </div>
         )}

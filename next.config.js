@@ -59,50 +59,16 @@ const nextConfig = {
   
   // Webpack configuration for optimizations and bundle analysis
   webpack: (config, { isServer }) => {
-    // Don't bundle @react-pdf/renderer on client-side
-    // It's only used in API routes (server-side)
-    if (!isServer) {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        '@react-pdf/renderer': false,
-        'canvas': false,
-      };
-      
-      // Enable bundle analyzer when ANALYZE=true
-      if (process.env.ANALYZE === 'true') {
-        const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
-        config.plugins.push(
-          new BundleAnalyzerPlugin({
-            analyzerMode: 'static',
-            reportFilename: './analyze.html',
-            openAnalyzer: true,
-          })
-        );
-      }
-    } else {
-      // SERVER-SIDE: Externalize heavy dependencies to reduce serverless function size
-      // These will be loaded from node_modules at runtime instead of being bundled
-      // Critical for Netlify deployment to prevent timeout on function upload
-      config.externals = config.externals || [];
-      
-      // Mark as external if already in externals array, otherwise push
-      const externalLibs = [
-        '@react-pdf/renderer',
-        'canvas',
-        'bufferutil', 
-        'utf-8-validate',
-        'sharp',
-        'pdfkit',
-        'fontkit',
-        'png-js',
-        'yoga-layout',
-      ];
-      
-      externalLibs.forEach(lib => {
-        config.externals.push({
-          [lib]: `commonjs ${lib}`,
-        });
-      });
+    // Enable bundle analyzer when ANALYZE=true
+    if (!isServer && process.env.ANALYZE === 'true') {
+      const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+      config.plugins.push(
+        new BundleAnalyzerPlugin({
+          analyzerMode: 'static',
+          reportFilename: './analyze.html',
+          openAnalyzer: true,
+        })
+      );
     }
     
     // Disable filesystem caching for production builds to prevent

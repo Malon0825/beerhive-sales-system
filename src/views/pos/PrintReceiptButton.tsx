@@ -27,7 +27,6 @@ export function PrintReceiptButton({
   autoPrint = false,
 }: PrintReceiptButtonProps) {
   const [printing, setPrinting] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [printOrderData, setPrintOrderData] = useState<any | null>(null);
   const printContainerRef = useRef<HTMLDivElement | null>(null);
@@ -131,32 +130,21 @@ export function PrintReceiptButton({
   };
 
   /**
-   * Download PDF receipt
+   * Print to PDF using browser's print dialog
    */
-  const handleDownloadPDF = async () => {
-    setDownloading(true);
+  const handlePrintToPDF = () => {
+    // Open receipt in new window for browser's print-to-PDF functionality
+    const printWindow = window.open(
+      `/api/orders/${orderId}/receipt?format=html`,
+      '_blank',
+      'width=400,height=600'
+    );
 
-    try {
-      const response = await fetch(`/api/orders/${orderId}/receipt?format=pdf`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to generate PDF');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `receipt-${orderNumber || orderId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('PDF download error:', error);
-      alert('Failed to download PDF. Please try again.');
-    } finally {
-      setDownloading(false);
+    if (printWindow) {
+      printWindow.addEventListener('load', () => {
+        // Auto-trigger print dialog (users can save as PDF from here)
+        printWindow.print();
+      });
     }
   };
 
@@ -191,21 +179,12 @@ export function PrintReceiptButton({
         </button>
 
         <button
-          onClick={handleDownloadPDF}
-          disabled={downloading}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          onClick={handlePrintToPDF}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+          title="Save as PDF from browser"
         >
-          {downloading ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              Generating...
-            </>
-          ) : (
-            <>
-              <Download className="w-4 h-4" />
-              PDF
-            </>
-          )}
+          <Download className="w-4 h-4" />
+          Save PDF
         </button>
       </div>
     );
@@ -214,21 +193,12 @@ export function PrintReceiptButton({
   if (variant === 'pdf') {
     return (
       <button
-        onClick={handleDownloadPDF}
-        disabled={downloading}
-        className={`inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${className}`}
+        onClick={handlePrintToPDF}
+        className={`inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors ${className}`}
+        title="Save as PDF from browser"
       >
-        {downloading ? (
-          <>
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-            Generating PDF...
-          </>
-        ) : (
-          <>
-            <Download className="w-4 h-4" />
-            Download PDF
-          </>
-        )}
+        <Download className="w-4 h-4" />
+        Save as PDF
       </button>
     );
   }

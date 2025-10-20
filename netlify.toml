@@ -42,12 +42,8 @@
 
 # Functions configuration for serverless bundle optimization
 [functions]
-  # Increase function size limit to accommodate Next.js server bundle
-  # Default is 50MB, increase to 52MB for standalone builds
-  included_files = ["!node_modules/@react-pdf/renderer/**/*.map"]
+  # Use Node File Trace bundler for optimal Next.js serverless function size
   node_bundler = "nft"
-  # Use external node modules for standalone build
-  external_node_modules = ["@react-pdf/renderer", "canvas", "sharp", "pdfkit"]
 
 # ===================================
 # SECRET SCANNING CONFIGURATION
