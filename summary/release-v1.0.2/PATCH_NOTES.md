@@ -32,6 +32,21 @@ Keep your kitchen and bartender displays clean with new cleanup options:
 - Updated filter tabs: All, Pending, Preparing, Cancelled
 - Cancelled order count in status summary
 
+### 🎛️ Dynamic Grid Layout Control
+Customize your product display with a flexible grid system:
+
+- **Click-to-cycle grid selector** with visual dot indicators
+- **4 layout options:** 3, 4, 5, or 6 columns
+- **Session persistence** - your preference saves during your work session
+- **Smooth animations** when changing grid sizes
+- **Available in both POS and Tab modules**
+
+### 🖼️ Enhanced POS & Tab Layouts
+- **Reorganized headers** for better space utilization
+- **Consolidated controls** - all tools in one place
+- **Cleaner design** - removed redundant UI elements
+- **Improved navigation** - fixed payment dialog redirect issues
+
 ---
 
 ## 🔧 Technical Updates
@@ -84,6 +99,8 @@ migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql
 | Staff unaware of cancellations | Clear red "CANCELLED" badge added |
 | Ready orders clutter display | Now auto-hide when marked ready |
 | No way to clear old cancelled orders | Added Clear All and individual Remove buttons |
+| Payment dialog shows white screen on close | Now properly redirects to tabs page |
+| Grid layout changes not animated | Added smooth transitions with key-based re-rendering |
 
 ---
 
@@ -94,6 +111,11 @@ migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql
 - ✅ Individual Remove button per order
 - ✅ Auto-hide ready orders
 - ✅ Updated UI/filters
+- ✅ Dynamic grid column selector
+- ✅ Session-based preference persistence
+- ✅ Enhanced POS & Tab layouts
+- ✅ Smooth grid animations
+- ✅ Payment dialog navigation fix
 - ✅ Database migration
 - ✅ New API endpoints
 

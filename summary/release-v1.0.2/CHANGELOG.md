@@ -33,6 +33,12 @@ All notable changes to this project in version 1.0.2 are documented in this file
 - Cancelled filter tab (Kitchen & Bartender displays)
 - Individual order removal functionality
 - Bulk cancelled order cleanup functionality
+- **Dynamic Grid Column Selector** with session persistence
+  - Cycling button with dot-based visual design
+  - Supports 3, 4, 5, and 6 column layouts
+  - Click to cycle through grid sizes
+  - Preferences persist throughout browser session
+  - Smooth animations on grid changes
 
 ### Changed
 
@@ -84,6 +90,40 @@ All notable changes to this project in version 1.0.2 are documented in this file
   - Added conditional "Remove" button for cancelled orders
   - Imported `Trash2` icon from lucide-react
 
+- **`GridColumnSelector` component** (NEW)
+  - Reusable cycling button for grid layout control
+  - Dot-based visual representation matching column count
+  - Smooth animations and hover effects
+  - Tooltips showing column count on hover
+  - Keyboard accessible with ARIA labels
+
+- **`useSessionStorage` hook** (NEW)
+  - Custom React hook for session storage persistence
+  - Type-safe with TypeScript generics
+  - Automatic serialization/deserialization
+  - Data persists until browser session ends
+
+- **`SessionProductSelector` component** (Tab Module)
+  - Reorganized header layout for better space utilization
+  - Grid selector on left, title centered, view buttons on right
+  - Dynamic grid with smooth transition animations
+  - Key-based re-rendering for proper animation triggers
+
+- **`POSInterface` component** (POS Module)
+  - Consolidated header with all controls in one area
+  - Top row: Grid selector + View toggle buttons
+  - Bottom row: Search bar + Category filter
+  - Removed separate search card for cleaner layout
+  - Dynamic grid with animation support
+
+- **`TabProductCard` component**
+  - Added fade-in and zoom-in animations (300ms)
+  - Enhanced transition effects for grid changes
+
+- **`ProductCard` component**
+  - Added fade-in and zoom-in animations (300ms)
+  - Improved visual feedback on grid layout changes
+
 ### Fixed
 
 - **Critical: Cancelled orders now remain visible**
@@ -96,6 +136,12 @@ All notable changes to this project in version 1.0.2 are documented in this file
   - READY orders now auto-hide to reduce clutter
   - Clear visual indicators for cancelled items
   - Staff can easily identify and manage cancelled orders
+
+- **Tab payment dialog navigation**
+  - Fixed white screen issue when closing payment dialog
+  - Now properly redirects to /tabs when dialog is closed
+  - Works for both X button and Close button
+  - Updated `handleClose` to properly handle navigation
 
 ### Database
 
@@ -153,6 +199,8 @@ ALTER COLUMN order_item_id DROP NOT NULL;
 Added:
   src/app/api/kitchen/orders/clear-cancelled/route.ts
   src/app/api/kitchen/orders/[orderId]/delete/route.ts
+  src/lib/hooks/useSessionStorage.ts
+  src/views/shared/ui/GridColumnSelector.tsx
   migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql
 
 Modified:
@@ -163,11 +211,16 @@ Modified:
   src/views/kitchen/KitchenDisplay.tsx
   src/views/kitchen/OrderCard.tsx
   src/views/bartender/BartenderDisplay.tsx
+  src/views/pos/SessionProductSelector.tsx
+  src/views/pos/POSInterface.tsx
+  src/views/pos/components/TabProductCard.tsx
+  src/views/pos/components/ProductCard.tsx
+  src/app/(dashboard)/order-sessions/[sessionId]/close/page.tsx
 
 Lines Changed:
-  +~500 lines added
-  -~50 lines removed
-  ~250 lines modified
+  +~700 lines added
+  -~60 lines removed
+  ~350 lines modified
 ```
 
 ### Performance Impact
