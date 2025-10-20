@@ -27,6 +27,7 @@ export function KitchenDisplay() {
   const [orders, setOrders] = useState<KitchenOrderWithRelations[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isClearingCancelled, setIsClearingCancelled] = useState(false);
   const [filter, setFilter] = useState<'all' | KitchenOrderStatus>('all');
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -88,6 +89,30 @@ export function KitchenDisplay() {
     } catch (err) {
       console.error('Error updating status:', err);
       toast({ title: 'Error', description: 'Failed to update order status', variant: 'destructive' });
+    }
+  };
+
+  /**
+   * Handle remove cancelled order
+   */
+  const handleRemoveOrder = async (orderId: string) => {
+    try {
+      const response = await fetch(`/api/kitchen/orders/${orderId}/delete`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast({ title: 'Success', description: 'Cancelled order removed' });
+        // Refresh orders to update UI
+        await fetchOrders();
+      } else {
+        toast({ title: 'Error', description: `Failed to remove order: ${data.error}`, variant: 'destructive' });
+      }
+    } catch (err) {
+      console.error('Error removing order:', err);
+      toast({ title: 'Error', description: 'Failed to remove order', variant: 'destructive' });
     }
   };
 
@@ -167,13 +192,52 @@ export function KitchenDisplay() {
   }, {} as Record<string, KitchenOrderWithRelations[]>);
 
   /**
+   * Handle clear all cancelled orders
+   */
+  const handleClearCancelled = async () => {
+    try {
+      setIsClearingCancelled(true);
+      
+      const response = await fetch('/api/kitchen/orders/clear-cancelled?destination=kitchen', {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast({ 
+          title: 'Success', 
+          description: `Cleared ${data.count} cancelled order(s)` 
+        });
+        // Refresh orders
+        await fetchOrders();
+      } else {
+        toast({ 
+          title: 'Error', 
+          description: `Failed to clear cancelled orders: ${data.error}`, 
+          variant: 'destructive' 
+        });
+      }
+    } catch (err) {
+      console.error('Error clearing cancelled orders:', err);
+      toast({ 
+        title: 'Error', 
+        description: 'Failed to clear cancelled orders', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setIsClearingCancelled(false);
+    }
+  };
+
+  /**
    * Calculate order counts by status
    */
   const orderCounts = {
     all: orders.length,
     pending: orders.filter(o => o.status === KitchenOrderStatus.PENDING).length,
     preparing: orders.filter(o => o.status === KitchenOrderStatus.PREPARING).length,
-    ready: orders.filter(o => o.status === KitchenOrderStatus.READY).length,
+    cancelled: orders.filter(o => o.status === KitchenOrderStatus.CANCELLED).length,
   };
 
   if (isLoading) {
@@ -210,9 +274,11 @@ export function KitchenDisplay() {
       <KitchenHeader
         pendingCount={orderCounts.pending}
         preparingCount={orderCounts.preparing}
-        readyCount={orderCounts.ready}
+        cancelledCount={orderCounts.cancelled}
         onRefresh={handleRefresh}
+        onClearCancelled={handleClearCancelled}
         isRefreshing={isRefreshing}
+        isClearingCancelled={isClearingCancelled}
         isMuted={isMuted}
         onToggleMute={toggleMute}
       />
@@ -267,6 +333,7 @@ export function KitchenDisplay() {
                       key={order.id} 
                       kitchenOrder={order}
                       onStatusChange={handleStatusChange}
+                      onRemove={handleRemoveOrder}
                     />
                   ))}
                 </div>

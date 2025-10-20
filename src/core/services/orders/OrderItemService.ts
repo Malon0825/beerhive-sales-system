@@ -19,9 +19,9 @@ import { supabaseAdmin } from '@/data/supabase/server-client';
  * 
  * Professional Features:
  * - Validates item status before removal
- * - Only allows removal of CONFIRMED items (not yet PREPARING)
+ * - Allows removal of items even if being prepared (marks as CANCELLED)
  * - Returns stock to inventory
- * - Removes corresponding kitchen orders
+ * - Marks corresponding kitchen orders as CANCELLED
  * - Updates order totals correctly
  * - Maintains audit trail
  */
@@ -31,11 +31,14 @@ export class OrderItemService {
    * 
    * Flow:
    * 1. Validate order and item exist
-   * 2. Check item is in CONFIRMED status (not yet preparing)
-   * 3. Find and delete associated kitchen orders
+   * 2. Check item is in CONFIRMED status
+   * 3. Mark all associated kitchen orders as CANCELLED (visible to kitchen/bartender)
    * 4. Return stock to inventory
    * 5. Delete order item
-   * 6. Recalculate order totals
+   * 6. Recalculate order totals or void order if no items remain
+   * 
+   * Note: Kitchen orders are always marked as CANCELLED (not deleted) so that
+   * kitchen/bartender staff can see what items were removed by the customer.
    * 
    * @param orderId - Order ID
    * @param orderItemId - Order item ID to remove
@@ -82,28 +85,15 @@ export class OrderItemService {
         (ko: any) => ko.order_item_id === orderItemId
       );
 
-      // 5. Validate kitchen orders are not already being prepared
-      const preparingOrders = relatedKitchenOrders.filter(
-        (ko: any) => ko.status === KitchenOrderStatus.PREPARING || 
-                     ko.status === KitchenOrderStatus.READY
-      );
+      console.log(`📋 [OrderItemService.removeOrderItem] Found ${relatedKitchenOrders.length} kitchen orders to handle`);
 
-      if (preparingOrders.length > 0) {
-        throw new AppError(
-          'Cannot remove item that is already being prepared in kitchen/bar',
-          400
-        );
-      }
-
-      console.log(`📋 [OrderItemService.removeOrderItem] Found ${relatedKitchenOrders.length} kitchen orders to delete`);
-
-      // 6. Delete kitchen orders (only PENDING status allowed)
+      // 5. Mark all kitchen orders as CANCELLED (so kitchen/bartender can see what was removed)
       for (const kitchenOrder of relatedKitchenOrders) {
-        await this.deleteKitchenOrder(kitchenOrder.id);
-        console.log(`✅ [OrderItemService.removeOrderItem] Deleted kitchen order ${kitchenOrder.id}`);
+        await this.cancelKitchenOrder(kitchenOrder.id);
+        console.log(`✅ [OrderItemService.removeOrderItem] Marked kitchen order ${kitchenOrder.id} (${kitchenOrder.status}) as CANCELLED`);
       }
 
-      // 7. Return stock if item has product_id
+      // 6. Return stock if item has product_id
       if (orderItem.product_id) {
         console.log(`📦 [OrderItemService.removeOrderItem] Returning ${orderItem.quantity} units of product ${orderItem.product_id} to stock`);
         
@@ -118,7 +108,7 @@ export class OrderItemService {
         console.log(`⏭️  [OrderItemService.removeOrderItem] No product_id, skipping stock return (likely a package)`);
       }
 
-      // 8. Delete the order item
+      // 7. Delete the order item
       const { error: deleteError } = await supabaseAdmin
         .from('order_items')
         .delete()
@@ -130,7 +120,7 @@ export class OrderItemService {
 
       console.log(`✅ [OrderItemService.removeOrderItem] Order item deleted`);
 
-      // 9. Check if this was the last item in the order
+      // 8. Check if this was the last item in the order
       const { data: remainingItems, error: checkError } = await supabaseAdmin
         .from('order_items')
         .select('id')
@@ -169,10 +159,10 @@ export class OrderItemService {
         return voidedOrder;
       }
 
-      // 10. Items remain - recalculate order totals
+      // 9. Items remain - recalculate order totals
       await this.recalculateOrderTotals(orderId);
 
-      // 11. Get updated order
+      // 10. Get updated order
       const updatedOrder = await OrderRepository.getById(orderId);
 
       console.log(`🎉 [OrderItemService.removeOrderItem] Item removal completed successfully`);
@@ -385,8 +375,35 @@ export class OrderItemService {
   }
 
   /**
+   * Cancel a kitchen order
+   * Marks the kitchen order as CANCELLED (for items already being prepared)
+   * This allows kitchen/bartender to see the cancellation
+   * 
+   * @param kitchenOrderId - Kitchen order ID
+   * @private
+   */
+  private static async cancelKitchenOrder(kitchenOrderId: string): Promise<void> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('kitchen_orders')
+        .update({
+          status: KitchenOrderStatus.CANCELLED,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', kitchenOrderId);
+
+      if (error) {
+        throw new AppError(`Failed to cancel kitchen order: ${error.message}`, 500);
+      }
+    } catch (error) {
+      console.error('Cancel kitchen order error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Delete a kitchen order
-   * Removes from kitchen_orders table (will trigger realtime update)
+   * Removes from kitchen_orders table (for PENDING orders only)
    * 
    * @param kitchenOrderId - Kitchen order ID
    * @private
