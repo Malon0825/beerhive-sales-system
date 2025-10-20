@@ -13,6 +13,15 @@ import { ReceiptGenerator } from '@/core/utils/generators/receiptGenerator';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+// Use Netlify On-Demand Builders for this heavy route
+// This separates it from the main server handler and provides:
+// - Longer timeout (up to 26 seconds vs 10 seconds)
+// - Separate bundle (doesn't bloat main handler)
+// - CDN caching for repeated requests
+export const config = {
+  type: 'experimental-background',
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
