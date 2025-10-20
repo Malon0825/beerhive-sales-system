@@ -25,6 +25,8 @@ interface TableCardProps {
   onQuickAction?: (tableId: string, action: 'release' | 'markCleaned' | 'cancelReservation') => Promise<void>;
   /** Handler to deactivate a table. Rendered only when `canDeactivate` is true. */
   onDeactivate?: (table: Table) => void;
+  /** Handler to edit table details. Rendered only when `canEdit` is true. */
+  onEdit?: (table: Table) => void;
   /** Card click handler for future details navigation. */
   onClick?: (table: Table) => void;
 
@@ -40,6 +42,8 @@ interface TableCardProps {
   canCancelReservation?: boolean;
   /** Whether to show the Deactivate button. Defaults to true. */
   canDeactivate?: boolean;
+  /** Whether to show the Edit button. Defaults to true. */
+  canEdit?: boolean;
 }
 
 /**
@@ -52,7 +56,8 @@ export default function TableCard({
   onReserve, 
   onOccupy, 
   onQuickAction,
-  onDeactivate, 
+  onDeactivate,
+  onEdit, 
   onClick,
   canReserve = true,
   canOccupy = true,
@@ -60,6 +65,7 @@ export default function TableCard({
   canMarkCleaned = true,
   canCancelReservation = true,
   canDeactivate = true,
+  canEdit = true,
 }: TableCardProps) {
   /**
    * Handle reserve button click
@@ -110,6 +116,16 @@ export default function TableCard({
     }
   };
 
+  /**
+   * Handle edit button click
+   */
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onEdit) {
+      onEdit(table);
+    }
+  };
+
   const getCardBorderColor = () => {
     switch (table.status) {
       case TableStatus.AVAILABLE:
@@ -132,7 +148,7 @@ export default function TableCard({
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
-        <div>
+        <div className="flex-1">
           <h3 className="text-2xl font-bold text-gray-900">
             {table.table_number}
           </h3>
@@ -142,7 +158,20 @@ export default function TableCard({
             </p>
           )}
         </div>
-        <TableStatusBadge status={table.status} />
+        <div className="flex items-center gap-2">
+          {canEdit && onEdit && (
+            <button
+              onClick={handleEditClick}
+              className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+              title="Edit table details"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+          )}
+          <TableStatusBadge status={table.status} />
+        </div>
       </div>
 
       {/* Capacity */}

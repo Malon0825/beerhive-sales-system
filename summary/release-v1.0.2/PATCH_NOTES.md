@@ -59,6 +59,24 @@ Customize your product display with a flexible grid system:
 - **Smooth animations** when changing grid sizes
 - **Available in both POS and Tab modules**
 
+### 🏠 Complete Table Management System
+Manage restaurant tables with comprehensive CRUD functionality:
+
+- **Edit Tables** - Update table number, capacity, area, and notes
+- **Custom Areas** - Create custom area names beyond predefined options
+- **Smart Validation** - Prevents duplicate areas (case-insensitive)
+  - "Garden" and "garden" are treated as the same
+  - "Rooftop Bar" normalized to "rooftop bar"
+- **Predefined Areas** - Quick selection: Indoor, Outdoor, VIP, Bar, Patio, Terrace
+- **Data Consistency** - All custom areas stored in lowercase
+- **Manager/Admin Only** - Proper role-based access control
+
+**Tables Module Cleanup:**
+- 🎯 **Focused Purpose** - Tables page now purely for table management
+- ❌ **Removed Tab Selection** - No more SessionSelector sidebar
+- ✅ **Full-Width Display** - Better space utilization
+- 🔀 **Clear Separation** - Tab operations moved to Tabs module
+
 ### 🖼️ Enhanced POS & Tab Layouts
 - **Reorganized headers** for better space utilization
 - **Consolidated controls** - all tools in one place
@@ -126,6 +144,29 @@ migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql
 - Similar names: "Beer" and "Beers" are too similar
 - Data loss: Can't delete categories with products
 
+### For Table Management
+
+**To edit a table:**
+1. Go to Tables module (`/tables`)
+2. Click the pencil icon on any table card
+3. Modify table number, capacity, area, or notes
+4. Click "Save Changes"
+
+**To create a custom area:**
+1. Click "Add Table" or "Edit" on a table
+2. Open the Area dropdown
+3. Select "+ Create New Area"
+4. Input field appears - type custom area name
+5. System validates for duplicates (case-insensitive)
+6. Area saved in lowercase for consistency
+
+**Examples of custom areas:**
+- ✅ "garden" - simple custom area
+- ✅ "rooftop bar" - with spaces
+- ✅ "second-floor" - with hyphens
+- ❌ "Garden" - blocked if "garden" exists
+- ❌ "Indoor" - blocked (predefined area)
+
 ---
 
 ## ⚠️ Important Notes
@@ -148,6 +189,9 @@ migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql
 | Grid layout changes not animated | Added smooth transitions with key-based re-rendering |
 | Duplicate category names allowed | Smart validation prevents duplicates and similar names |
 | Categories deleted with products in use | Usage protection blocks deletion and shows affected products |
+| No edit table function | Added EditTableDialog with full validation |
+| Limited to predefined areas | Custom area creation with duplicate validation |
+| Tables module mixed with tabs | Separated - Tables for table management, Tabs for tab operations |
 
 ---
 
@@ -166,6 +210,14 @@ migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql
 - ✅ Category deletion protection with product usage check
 - ✅ Edit category UI with color picker and destination selector
 - ✅ Reusable CategoryDialog component
+
+**Table Management:**
+- ✅ Edit table function with full validation
+- ✅ Custom area creation with smart validation
+- ✅ Case-insensitive duplicate prevention
+- ✅ EditTableDialog component
+- ✅ Tables module cleanup (removed tab selection)
+- ✅ Focused, single-purpose table management
 
 **UI/UX Enhancements:**
 - ✅ Dynamic grid column selector (3/4/5/6 columns)

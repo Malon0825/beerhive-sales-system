@@ -60,6 +60,29 @@ All notable changes to this project in version 1.0.2 are documented in this file
   - Opens `CategoryDialog` in edit mode with selected category data
   - Includes helpful tooltip for disabled state
 
+- **`EditTableDialog` component** (NEW) - Dialog for editing table details
+  - Pre-populated form with current table data
+  - Edit table number, capacity, area, and notes
+  - Custom area creation with validation
+  - Real-time validation and error display
+  - Manager/Admin only access
+  - Auto-detects custom vs predefined areas
+
+- **Custom Area Creation** in Add/Edit Table Dialogs
+  - "+ Create New Area" option in area dropdown
+  - Dynamic input field appears when selected
+  - Fetches existing areas from database on open
+  - Case-insensitive duplicate validation
+  - Checks against predefined area options
+  - Lowercase normalization for consistency
+  - Clear validation error messages
+
+- **Edit Button** in `TableCard` component
+  - Pencil icon button next to status badge
+  - Opens EditTableDialog with table data
+  - Only visible to managers/admins
+  - Prevents event propagation
+
 #### Features
 - Cancelled order count in status summary (Kitchen & Bartender displays)
 - Cancelled filter tab (Kitchen & Bartender displays)
@@ -93,6 +116,23 @@ All notable changes to this project in version 1.0.2 are documented in this file
   - Click to cycle through grid sizes
   - Preferences persist throughout browser session
   - Smooth animations on grid changes
+
+- **Complete Table Management System**
+  - **Edit Table Function** - Update table details (number, capacity, area, notes)
+  - **Custom Area Creation** - Create custom area names beyond predefined options
+  - **Case-Insensitive Validation** - Prevents duplicate areas ("Garden" = "garden")
+  - **Predefined Areas** - Indoor, Outdoor, VIP, Bar, Patio, Terrace
+  - **Smart Validation** - Checks against existing areas and predefined options
+  - **Data Consistency** - All custom areas normalized to lowercase
+  - **Manager/Admin Only** - Proper role-based access control
+
+- **Tables Module Cleanup**
+  - Removed tab/session selection functionality from Tables module
+  - Tables page now purely focused on table management
+  - Eliminated SessionSelector component from layout
+  - Full-width TableGrid for better space utilization
+  - Simplified workflow following Single Responsibility Principle
+  - All tab operations moved to dedicated Tabs module
 
 ### Changed
 
@@ -192,6 +232,38 @@ All notable changes to this project in version 1.0.2 are documented in this file
   - Enhanced category selection UI with action buttons
   - Auto-refresh category list after create/edit/delete operations
 
+- **`TableGrid` component**
+  - Integrated EditTableDialog component
+  - Added edit handlers and state management
+  - Optimistic UI updates after edits
+  - Props for table selection now optional (backward compatible)
+
+- **`TableCard` component**
+  - Added edit button with pencil icon
+  - Added `onEdit` handler prop
+  - Added `canEdit` permission flag
+  - Enhanced header layout with edit controls
+
+- **Tables Page** (`/tables`)
+  - Removed SessionSelector component (tab selection)
+  - Removed split layout (was TableGrid + SessionSelector)
+  - Now displays full-width TableGrid only
+  - Updated description to focus on table management
+  - Simplified workflow - tables only, no tab operations
+
+- **`AddTableDialog` component**
+  - Added custom area creation support
+  - Fetches existing areas on dialog open
+  - Added `customArea` state for new area names
+  - Enhanced validation for custom areas
+  - Lowercase normalization for area names
+
+- **`EditTableDialog` component**
+  - Added custom area creation support
+  - Auto-detects if current area is custom
+  - Pre-populates custom input for non-predefined areas
+  - Enhanced validation excluding current table's area
+
 ### Fixed
 
 - **Critical: Cancelled orders now remain visible**
@@ -268,6 +340,7 @@ Added:
   src/app/api/kitchen/orders/clear-cancelled/route.ts
   src/app/api/kitchen/orders/[orderId]/delete/route.ts
   src/app/api/categories/[id]/route.ts
+  src/views/tables/EditTableDialog.tsx
   src/lib/hooks/useSessionStorage.ts
   src/lib/utils/categoryNameValidator.ts
   src/views/shared/ui/GridColumnSelector.tsx
@@ -277,12 +350,21 @@ Added:
   docs/release-v1.0.2/DELETE_CATEGORY_FEATURE.md
   docs/release-v1.0.2/CATEGORY_DELETION_PROTECTION.md
   docs/release-v1.0.2/CATEGORY_DUPLICATE_VALIDATION.md
+  docs/EDIT_TABLE_FEATURE.md
+  docs/CUSTOM_AREA_FEATURE.md
+  docs/TABLES_MODULE_CLEANUP.md
   summary/release-v1.0.2/EDIT_CATEGORY_IMPLEMENTATION.md
   summary/release-v1.0.2/SMART_PLURAL_DETECTION.md
   summary/release-v1.0.2/CATEGORY_MANAGEMENT_COMPLETE.md
 
 Modified:
   src/app/api/categories/route.ts
+  src/app/api/tables/[tableId]/route.ts
+  src/core/services/tables/TableService.ts
+  src/views/tables/TableGrid.tsx
+  src/views/tables/TableCard.tsx
+  src/views/tables/AddTableDialog.tsx
+  src/app/(dashboard)/tables/page.tsx
   src/data/repositories/KitchenOrderRepository.ts
   src/core/services/orders/OrderItemService.ts
   src/views/kitchen/components/KitchenHeader.tsx
@@ -298,9 +380,9 @@ Modified:
   src/app/(dashboard)/order-sessions/[sessionId]/close/page.tsx
 
 Lines Changed:
-  +~1,900 lines added
-  -~160 lines removed
-  ~450 lines modified
+  +~2,400 lines added
+  -~190 lines removed
+  ~550 lines modified
 ```
 
 ### Performance Impact

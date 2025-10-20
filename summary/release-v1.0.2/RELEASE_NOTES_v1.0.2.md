@@ -8,7 +8,7 @@
 
 ## 📋 Overview
 
-Version 1.0.2 is a major patch release that addresses kitchen and bartender order management issues, introduces a complete category management system with smart validation, and enhances UI/UX with dynamic grid layouts and improved workflows.
+Version 1.0.2 is a major patch release that addresses kitchen and bartender order management issues, introduces complete category and table management systems with smart validation, and enhances UI/UX with dynamic grid layouts and improved workflows.
 
 ---
 
@@ -190,7 +190,86 @@ Version 1.0.2 is a major patch release that addresses kitchen and bartender orde
 
 ---
 
-### 6. Enhanced Order Status Workflow
+### 6. Complete Table Management System
+**Description:** Full CRUD system for managing restaurant tables with edit functionality and custom area creation.
+
+**Core Features:**
+- ✅ **Edit Tables** - Update table number, capacity, area, and notes
+- ✅ **Create Tables** - Add new tables with validation
+- ✅ **Deactivate/Reactivate Tables** - Soft delete functionality
+- ✅ **Custom Area Creation** - Create unlimited custom area names
+- ✅ **Smart Validation** - Case-insensitive duplicate prevention
+
+**Custom Area Features:**
+- **Flexible Area Names** - Not limited to predefined options (Indoor, Outdoor, VIP, Bar, Patio, Terrace)
+- **Create Custom Areas** - "+ Create New Area" option in dropdown
+- **Dynamic Input** - Input field appears when custom option selected
+- **Duplicate Prevention** - Case-insensitive validation ("Garden" = "garden")
+- **Predefined Conflicts** - Blocks custom areas matching predefined names
+- **Data Consistency** - All custom areas normalized to lowercase
+- **Database Integration** - Fetches existing areas on dialog open
+
+**EditTableDialog Component:**
+- Pre-populated form with current table data
+- Edit all table properties (number, capacity, area, notes)
+- Custom area detection - auto-switches to custom mode for non-predefined areas
+- Real-time validation with clear error messages
+- Manager/Admin only access
+- Optimistic UI updates
+
+**Tables Module Cleanup:**
+- ⚡ **Focused Purpose** - Tables page purely for table management
+- ❌ **Removed SessionSelector** - No more tab selection sidebar
+- ✅ **Full-Width Display** - Better space utilization with full-width TableGrid
+- 🔀 **Clear Separation** - Tab operations moved to dedicated Tabs module
+- 📐 **SOLID Principles** - Single Responsibility Principle applied
+
+**UI Components:**
+- **Edit button** - Pencil icon on table cards (Manager/Admin only)
+- **EditTableDialog** - Reusable modal for editing tables
+- **Custom area input** - Dynamic field in Add/Edit dialogs
+- **Area dropdown** - Enhanced with "+ Create New Area" option
+
+**API Enhancements:**
+- Updated `PATCH /api/tables/[tableId]` to use `TableService.updateTableDetails()`
+- Service layer validation with duplicate checking
+- Repository layer already supported updates (no changes needed)
+
+**Benefits:**
+- Flexibility - Create unlimited custom areas beyond 7 predefined options
+- Data Integrity - Case-insensitive validation prevents duplicates
+- Consistency - All custom areas normalized to lowercase
+- User-Friendly - Clear validation messages and intuitive UI
+- Backward Compatible - No impact on existing tables or areas
+
+**Validation Rules:**
+- ✅ Table number: Required, alphanumeric + spaces/hyphens, must be unique
+- ✅ Capacity: Between 1 and 50 persons
+- ✅ Area: Optional, alphanumeric + spaces/hyphens
+- ✅ Custom areas: No duplicates (case-insensitive), no predefined conflicts
+- ✅ Notes: Optional, free text
+
+**Examples:**
+```typescript
+// Valid custom areas
+"garden" ✅
+"rooftop bar" ✅
+"second-floor" ✅
+"vip lounge 2" ✅
+
+// Blocked - duplicates (case-insensitive)
+"Garden" ❌ (if "garden" exists)
+"ROOFTOP BAR" ❌ (if "rooftop bar" exists)
+
+// Blocked - predefined conflicts
+"Indoor" ❌
+"vip" ❌
+"Outdoor" ❌
+```
+
+---
+
+### 7. Enhanced Order Status Workflow
 **Description:** Streamlined order lifecycle for better kitchen/bartender operations.
 
 **Changes:**
@@ -271,21 +350,27 @@ ALTER COLUMN order_item_id DROP NOT NULL;
 4. `src/lib/utils/categoryNameValidator.ts` - Smart validation utility (~280 lines)
 5. `src/views/inventory/CategoryDialog.tsx` - Reusable category dialog component (~400 lines)
 
+**Table Management:**
+6. `src/views/tables/EditTableDialog.tsx` - Edit table dialog component (~375 lines)
+
 **UI/UX Enhancements:**
-6. `src/lib/hooks/useSessionStorage.ts` - Session storage hook for preference persistence
-7. `src/views/shared/ui/GridColumnSelector.tsx` - Dynamic grid selector component
+7. `src/lib/hooks/useSessionStorage.ts` - Session storage hook for preference persistence
+8. `src/views/shared/ui/GridColumnSelector.tsx` - Dynamic grid selector component
 
 **Documentation:**
-8. `docs/release-v1.0.2/EDIT_CATEGORY_FEATURE.md` - Category edit feature guide
-9. `docs/release-v1.0.2/DELETE_CATEGORY_FEATURE.md` - Category deletion guide
-10. `docs/release-v1.0.2/CATEGORY_DELETION_PROTECTION.md` - Usage protection docs
-11. `docs/release-v1.0.2/CATEGORY_DUPLICATE_VALIDATION.md` - Smart validation docs
-12. `summary/release-v1.0.2/EDIT_CATEGORY_IMPLEMENTATION.md` - Technical summary
-13. `summary/release-v1.0.2/SMART_PLURAL_DETECTION.md` - Validation algorithm docs
-14. `summary/release-v1.0.2/CATEGORY_MANAGEMENT_COMPLETE.md` - Complete system overview
+9. `docs/release-v1.0.2/EDIT_CATEGORY_FEATURE.md` - Category edit feature guide
+10. `docs/release-v1.0.2/DELETE_CATEGORY_FEATURE.md` - Category deletion guide
+11. `docs/release-v1.0.2/CATEGORY_DELETION_PROTECTION.md` - Usage protection docs
+12. `docs/release-v1.0.2/CATEGORY_DUPLICATE_VALIDATION.md` - Smart validation docs
+13. `docs/EDIT_TABLE_FEATURE.md` - Edit table feature guide
+14. `docs/CUSTOM_AREA_FEATURE.md` - Custom area creation guide
+15. `docs/TABLES_MODULE_CLEANUP.md` - Tables module separation docs
+16. `summary/release-v1.0.2/EDIT_CATEGORY_IMPLEMENTATION.md` - Technical summary
+17. `summary/release-v1.0.2/SMART_PLURAL_DETECTION.md` - Validation algorithm docs
+18. `summary/release-v1.0.2/CATEGORY_MANAGEMENT_COMPLETE.md` - Complete system overview
 
 **Database:**
-15. `migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql` - Database migration
+19. `migrations/release-v1.0.2/fix_kitchen_orders_cascade_delete.sql` - Database migration
 
 ### Modified Files
 
@@ -302,12 +387,20 @@ ALTER COLUMN order_item_id DROP NOT NULL;
 8. `src/app/api/categories/route.ts` - Enhanced with smart validation
 9. `src/views/inventory/ProductForm.tsx` - Integrated category edit/delete UI
 
+**Table Management:**
+10. `src/app/api/tables/[tableId]/route.ts` - Updated to use TableService.updateTableDetails()
+11. `src/core/services/tables/TableService.ts` - Added updateTableDetails() method with validation
+12. `src/views/tables/TableGrid.tsx` - Integrated EditTableDialog and handlers
+13. `src/views/tables/TableCard.tsx` - Added edit button with pencil icon
+14. `src/views/tables/AddTableDialog.tsx` - Added custom area creation support
+15. `src/app/(dashboard)/tables/page.tsx` - Removed SessionSelector, simplified to TableGrid only
+
 **UI/UX:**
-10. `src/views/pos/SessionProductSelector.tsx` - Added grid selector and layout reorganization
-11. `src/views/pos/POSInterface.tsx` - Consolidated header with grid selector
-12. `src/views/pos/components/TabProductCard.tsx` - Added animations
-13. `src/views/pos/components/ProductCard.tsx` - Added animations
-14. `src/app/(dashboard)/order-sessions/[sessionId]/close/page.tsx` - Fixed navigation
+16. `src/views/pos/SessionProductSelector.tsx` - Added grid selector and layout reorganization
+17. `src/views/pos/POSInterface.tsx` - Consolidated header with grid selector
+18. `src/views/pos/components/TabProductCard.tsx` - Added animations
+19. `src/views/pos/components/ProductCard.tsx` - Added animations
+20. `src/app/(dashboard)/order-sessions/[sessionId]/close/page.tsx` - Fixed navigation
 
 ---
 
@@ -432,6 +525,49 @@ This is a backward-compatible patch release with no breaking changes to existing
 8. Click "Delete Category"
 9. **Expected:** Category deleted successfully
 
+#### Scenario 9: Edit Table
+1. Go to Tables module (`/tables`)
+2. Click pencil icon on a table card
+3. **Expected:** EditTableDialog opens with pre-filled data
+4. Change table number to a unique value
+5. Update capacity to a different number (1-50)
+6. Click "Save Changes"
+7. **Expected:** Table updated, card refreshes with new data
+8. Try to change table number to an existing one
+9. **Expected:** Error - duplicate table number
+
+#### Scenario 10: Custom Area Creation
+1. Click "Add Table" button
+2. Fill in table number and capacity
+3. Open Area dropdown
+4. Select "+ Create New Area"
+5. **Expected:** Input field appears below dropdown
+6. Type "garden terrace"
+7. Click "Add Table"
+8. **Expected:** Table created with area "garden terrace"
+9. Try to create another table with area "Garden Terrace"
+10. **Expected:** Error - duplicate area (case-insensitive)
+11. Try to create table with area "Indoor" (custom)
+12. **Expected:** Error - conflicts with predefined area
+
+#### Scenario 11: Edit Table with Custom Area
+1. Edit a table that has a predefined area (e.g., "indoor")
+2. **Expected:** Dropdown shows "Indoor" selected
+3. Change to "+ Create New Area"
+4. Type "rooftop bar"
+5. Save changes
+6. **Expected:** Table now has area "rooftop bar"
+7. Edit the same table again
+8. **Expected:** Dropdown shows "+ Create New Area", input shows "rooftop bar"
+
+#### Scenario 12: Tables Module Separation
+1. Go to `/tables`
+2. **Expected:** Full-width TableGrid, no SessionSelector sidebar
+3. **Expected:** Header says "Manage restaurant tables, update status..."
+4. Click on a table
+5. **Expected:** No tab selection panel appears
+6. To open tabs, navigate to dedicated `/tabs` module
+
 ---
 
 ## 📊 Performance Impact
@@ -491,6 +627,15 @@ If you encounter any problems with this release:
 - Category import/export (CSV/Excel)
 - Category templates for quick setup
 
+**Table Management:**
+- Bulk table edit (change multiple tables at once)
+- Table usage analytics (occupancy rates, revenue per table)
+- Area management page (rename, merge, delete areas)
+- Visual floor plan with drag-and-drop table placement
+- Table QR codes for customer access
+- Table reservation system integration
+- Area templates for different restaurant types
+
 ---
 
 ## 👥 Credits
@@ -512,7 +657,7 @@ If you encounter any problems with this release:
 
 | Version | Date | Type | Summary |
 |---------|------|------|---------|
-| 1.0.2 | 2025-10-20 | Patch | Cancelled orders, category management, grid layouts |
+| 1.0.2 | 2025-10-20 | Patch | Cancelled orders, category/table management, grid layouts |
 | 1.0.1 | 2025-10-15 | Patch | Minor bug fixes |
 | 1.0.0 | 2025-10-09 | Major | Initial production release |
 
