@@ -97,6 +97,7 @@ export class OrderService {
             orderId,
             order.order_items.map((item: any) => ({
               product_id: item.product_id,
+              package_id: item.package_id,
               quantity: item.quantity,
             })),
             performedBy

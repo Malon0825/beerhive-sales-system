@@ -43,12 +43,12 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { productId: string } }
+  { params }: { params: Promise<{ productId: string }> }
 ) {
   const startTime = Date.now();
 
   try {
-    const productId = params.productId;
+    const { productId } = await params;
 
     console.log('[API] GET /api/inventory/package-impact/:productId', {
       productId,

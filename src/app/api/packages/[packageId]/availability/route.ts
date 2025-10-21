@@ -46,12 +46,12 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { packageId: string } }
+  { params }: { params: Promise<{ packageId: string }> }
 ) {
   const startTime = Date.now();
 
   try {
-    const packageId = params.packageId;
+    const { packageId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const forceRefresh = searchParams.get('forceRefresh') === 'true';
 

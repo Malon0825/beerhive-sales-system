@@ -244,10 +244,9 @@ export default function PackageDetailPage() {
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Details</h2>
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Users className="w-4 h-4 text-gray-500" />
-                <span className="text-gray-600">Max per transaction:</span>
-                <span className="font-medium text-gray-900">{packageData.max_quantity_per_transaction}</span>
+                <span>Quantity controlled by component stock availability</span>
               </div>
               
               {packageData.is_addon_eligible && (

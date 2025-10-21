@@ -11,10 +11,10 @@ export const dynamic = 'force-dynamic';
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const { orderId } = params;
+    const { orderId } = await params;
 
     console.log(`🗑️  [DELETE Kitchen Order] Deleting order: ${orderId}`);
 

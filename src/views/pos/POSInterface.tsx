@@ -21,6 +21,7 @@ import { TableSelector } from './TableSelector';
 import { PaymentPanel } from './PaymentPanel';
 import { SalesReceipt } from './SalesReceipt';
 import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
+import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
 
 /**
  * POSInterface - Main POS Component
@@ -66,6 +67,19 @@ export function POSInterface() {
   
   // Grid columns with session storage persistence (default: 5 columns)
   const [gridColumns, setGridColumns] = useSessionStorage<number>('pos-product-grid-columns', 5);
+  
+  // Alert dialog state for stock warnings
+  const [alertDialog, setAlertDialog] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    details?: string[];
+    variant: 'error' | 'warning' | 'success' | 'info' | 'stock-error';
+  }>({
+    open: false,
+    title: '',
+    variant: 'info',
+  });
   
   // Context hooks
   const cart = useCart();
@@ -269,7 +283,12 @@ export function POSInterface() {
     
     // Check if product has stock
     if (!stockTracker.hasStock(product.id, 1)) {
-      alert(`${product.name} is out of stock`);
+      setAlertDialog({
+        open: true,
+        title: 'Out of Stock',
+        description: `${product.name} is currently out of stock.`,
+        variant: 'stock-error',
+      });
       return;
     }
     
@@ -291,7 +310,12 @@ export function POSInterface() {
    */
   const handleAddPackage = (pkg: Package & { items?: any[] }) => {
     if (!pkg.items || pkg.items.length === 0) {
-      alert('This package has no items configured. Please contact management.');
+      setAlertDialog({
+        open: true,
+        title: 'Package Configuration Error',
+        description: 'This package has no items configured. Please contact management.',
+        variant: 'error',
+      });
       return;
     }
 
@@ -308,9 +332,15 @@ export function POSInterface() {
       }
     }
 
-    // If any items are out of stock, show alert and don't add
+    // If any items are out of stock, show detailed error and don't add
     if (stockIssues.length > 0) {
-      alert(`Cannot add package. Insufficient stock:\n\n${stockIssues.join('\n')}`);
+      setAlertDialog({
+        open: true,
+        title: 'Insufficient Stock',
+        description: `Cannot add package "${pkg.name}" to cart. The following components don't have enough stock:`,
+        details: stockIssues,
+        variant: 'stock-error',
+      });
       return;
     }
 
@@ -380,7 +410,14 @@ export function POSInterface() {
     if (quantityDiff > 0) {
       // Increasing quantity - reserve more stock
       if (!stockTracker.hasStock(item.product.id, quantityDiff)) {
-        alert(`Insufficient stock for ${item.product.name}`);
+        const available = stockTracker.getCurrentStock(item.product.id);
+        setAlertDialog({
+          open: true,
+          title: 'Insufficient Stock',
+          description: `Cannot increase quantity for "${item.product.name}".`,
+          details: [`Available: ${available}, Requested: ${quantityDiff} more`],
+          variant: 'stock-error',
+        });
         return;
       }
       stockTracker.reserveStock(item.product.id, quantityDiff);
@@ -858,6 +895,16 @@ export function POSInterface() {
           </div>
         </div>
       )}
+
+      {/* Alert Dialog for Warnings and Errors */}
+      <AlertDialogSimple
+        open={alertDialog.open}
+        onOpenChange={(open) => setAlertDialog({ ...alertDialog, open })}
+        title={alertDialog.title}
+        description={alertDialog.description}
+        details={alertDialog.details}
+        variant={alertDialog.variant}
+      />
     </div>
   );
 }

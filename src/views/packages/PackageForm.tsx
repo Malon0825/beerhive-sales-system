@@ -36,7 +36,6 @@ export default function PackageForm({
     vip_price: existingPackage?.vip_price || undefined,
     valid_from: existingPackage?.valid_from || undefined,
     valid_until: existingPackage?.valid_until || undefined,
-    max_quantity_per_transaction: existingPackage?.max_quantity_per_transaction || 1,
     is_addon_eligible: existingPackage?.is_addon_eligible || false,
     items: existingPackage?.items?.map(item => ({
       product_id: item.product_id,
@@ -218,7 +217,7 @@ export default function PackageForm({
         </div>
 
         {/* Validity Period */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label htmlFor="valid_from">Valid From</Label>
             <Input
@@ -238,17 +237,14 @@ export default function PackageForm({
               onChange={(e) => setFormData({ ...formData, valid_until: e.target.value || undefined })}
             />
           </div>
+        </div>
 
-          <div>
-            <Label htmlFor="max_quantity">Max Quantity/Transaction</Label>
-            <Input
-              id="max_quantity"
-              type="number"
-              min="1"
-              value={formData.max_quantity_per_transaction}
-              onChange={(e) => setFormData({ ...formData, max_quantity_per_transaction: parseInt(e.target.value) || 1 })}
-            />
-          </div>
+        {/* Info: Dynamic Quantity Limits */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <p className="text-sm text-blue-900">
+            <strong>ℹ️ Quantity Limits:</strong> Package quantities are now controlled dynamically based on 
+            component product stock availability. The system automatically calculates maximum sellable packages.
+          </p>
         </div>
 
         {/* Add-on Eligible */}
