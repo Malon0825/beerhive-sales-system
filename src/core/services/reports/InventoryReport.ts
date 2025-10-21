@@ -1,6 +1,7 @@
 /**
  * Inventory Report Service
  * Business logic for generating inventory reports
+ * Includes package-aware consumption analysis for smart reorder recommendations
  */
 
 import { getLowStockItems, getInventoryTurnover } from '@/data/queries/reports.queries';
@@ -42,6 +43,59 @@ export interface InventorySummary {
   out_of_stock_count: number;
   total_inventory_value: number;
   average_turnover_rate: number;
+}
+
+/**
+ * Package component consumption tracking
+ */
+export interface PackageComponentConsumption {
+  product_id: string;
+  product_name: string;
+  quantity_consumed: number;
+  package_id: string;
+  package_name: string;
+  package_sales: number;
+}
+
+/**
+ * Product consumption aggregated from all sources
+ */
+export interface ProductConsumption {
+  product_id: string;
+  product_name: string;
+  current_stock: number;
+  direct_sales: number;
+  package_consumption: number;
+  total_consumed: number;
+  package_breakdown: Array<{
+    package_id: string;
+    package_name: string;
+    quantity_consumed: number;
+    package_sales: number;
+  }>;
+}
+
+/**
+ * Smart reorder recommendation with package awareness
+ */
+export interface SmartReorderRecommendation {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  current_stock: number;
+  direct_sales: number;
+  package_consumption: number;
+  total_consumed: number;
+  daily_velocity: number;
+  days_until_stockout: number;
+  recommended_reorder: number;
+  priority: 'urgent' | 'high' | 'normal';
+  usage_breakdown: Array<{
+    package_id: string;
+    package_name: string;
+    quantity_consumed: number;
+    percentage: number;
+  }>;
 }
 
 export class InventoryReportService {
@@ -297,5 +351,310 @@ export class InventoryReportService {
         recommendation,
       };
     });
+  }
+
+  /**
+   * Get package sales with component product breakdown (Task 3.1.1)
+   * 
+   * Queries order items sold as packages and expands them to show
+   * which component products were consumed
+   * 
+   * @param startDate - Start of date range
+   * @param endDate - End of date range
+   * @returns Array of package component consumption
+   */
+  static async getPackageSalesWithComponents(
+    startDate: string,
+    endDate: string
+  ): Promise<PackageComponentConsumption[]> {
+    // Query: Get all package sales and join with package_items to get components
+    const { data, error } = await supabaseAdmin.rpc('get_package_component_consumption', {
+      p_start_date: startDate,
+      p_end_date: endDate,
+    });
+
+    if (error) {
+      // Fallback to manual query if RPC doesn't exist
+      console.warn('RPC not available, using fallback query:', error.message);
+      return await this.getPackageSalesWithComponentsFallback(startDate, endDate);
+    }
+
+    return data || [];
+  }
+
+  /**
+   * Fallback method for package component consumption (manual query)
+   */
+  private static async getPackageSalesWithComponentsFallback(
+    startDate: string,
+    endDate: string
+  ): Promise<PackageComponentConsumption[]> {
+    // Get all order items that are packages within date range
+    const { data: packageOrders, error: orderError } = await supabaseAdmin
+      .from('order_items')
+      .select(`
+        package_id,
+        quantity,
+        order:orders!inner(
+          completed_at,
+          status
+        ),
+        package:packages!inner(
+          id,
+          name,
+          items:package_items(
+            product_id,
+            quantity,
+            product:products(
+              id,
+              name,
+              sku
+            )
+          )
+        )
+      `)
+      .not('package_id', 'is', null)
+      .gte('order.completed_at', startDate)
+      .lte('order.completed_at', endDate)
+      .eq('order.status', 'completed');
+
+    if (orderError) throw orderError;
+
+    // Aggregate consumption by product
+    const consumptionMap = new Map<string, PackageComponentConsumption[]>();
+
+    packageOrders?.forEach((orderItem: any) => {
+      const package_sales = parseFloat(orderItem.quantity || 0);
+      const packageData = orderItem.package;
+
+      if (!packageData || !packageData.items) return;
+
+      packageData.items.forEach((item: any) => {
+        if (!item.product) return;
+
+        const key = `${item.product.id}-${packageData.id}`;
+        const quantity_consumed = package_sales * parseFloat(item.quantity || 0);
+
+        if (!consumptionMap.has(key)) {
+          consumptionMap.set(key, []);
+        }
+
+        const existing = consumptionMap.get(key)!;
+        const found = existing.find(
+          (c) => c.product_id === item.product.id && c.package_id === packageData.id
+        );
+
+        if (found) {
+          found.quantity_consumed += quantity_consumed;
+          found.package_sales += package_sales;
+        } else {
+          existing.push({
+            product_id: item.product.id,
+            product_name: item.product.name,
+            quantity_consumed,
+            package_id: packageData.id,
+            package_name: packageData.name,
+            package_sales,
+          });
+        }
+      });
+    });
+
+    // Flatten the map
+    const result: PackageComponentConsumption[] = [];
+    consumptionMap.forEach((items) => {
+      result.push(...items);
+    });
+
+    return result;
+  }
+
+  /**
+   * Aggregate product consumption from direct sales and package components
+   */
+  private static aggregateConsumption(
+    directSales: Map<string, { product_id: string; product_name: string; sku: string; quantity: number; current_stock: number }>,
+    packageConsumption: PackageComponentConsumption[]
+  ): ProductConsumption[] {
+    const consumptionMap = new Map<string, ProductConsumption>();
+
+    // Add direct sales
+    directSales.forEach((sale) => {
+      consumptionMap.set(sale.product_id, {
+        product_id: sale.product_id,
+        product_name: sale.product_name,
+        current_stock: sale.current_stock,
+        direct_sales: sale.quantity,
+        package_consumption: 0,
+        total_consumed: sale.quantity,
+        package_breakdown: [],
+      });
+    });
+
+    // Add package consumption
+    packageConsumption.forEach((item) => {
+      if (!consumptionMap.has(item.product_id)) {
+        consumptionMap.set(item.product_id, {
+          product_id: item.product_id,
+          product_name: item.product_name,
+          current_stock: 0, // Will be fetched separately
+          direct_sales: 0,
+          package_consumption: 0,
+          total_consumed: 0,
+          package_breakdown: [],
+        });
+      }
+
+      const consumption = consumptionMap.get(item.product_id)!;
+      consumption.package_consumption += item.quantity_consumed;
+      consumption.total_consumed += item.quantity_consumed;
+      consumption.package_breakdown.push({
+        package_id: item.package_id,
+        package_name: item.package_name,
+        quantity_consumed: item.quantity_consumed,
+        package_sales: item.package_sales,
+      });
+    });
+
+    return Array.from(consumptionMap.values());
+  }
+
+  /**
+   * Get smart reorder recommendations (Task 3.1.2)
+   * 
+   * Calculates reorder quantities considering both direct product sales
+   * and package component consumption for accurate demand forecasting
+   * 
+   * @param params - Report parameters with date range and buffer days
+   * @returns Array of smart reorder recommendations sorted by urgency
+   */
+  static async getSmartReorderRecommendations(
+    params: InventoryReportParams & { bufferDays?: number } = {}
+  ): Promise<SmartReorderRecommendation[]> {
+    const endDate = params.endDate || new Date().toISOString();
+    const startDate = params.startDate || subDays(new Date(endDate), 30).toISOString();
+    const bufferDays = params.bufferDays || 14; // 2 weeks default buffer
+
+    // Calculate date range in days
+    const daysDiff = Math.ceil(
+      (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    // 1. Get direct product sales
+    const { data: directSalesData, error: salesError } = await supabaseAdmin
+      .from('order_items')
+      .select(`
+        product_id,
+        quantity,
+        order:orders!inner(
+          completed_at,
+          status
+        ),
+        product:products!inner(
+          id,
+          name,
+          sku,
+          current_stock
+        )
+      `)
+      .not('product_id', 'is', null)
+      .gte('order.completed_at', startDate)
+      .lte('order.completed_at', endDate)
+      .eq('order.status', 'completed');
+
+    if (salesError) throw salesError;
+
+    // Aggregate direct sales by product
+    const directSalesMap = new Map<string, any>();
+    directSalesData?.forEach((item: any) => {
+      if (!item.product) return;
+
+      if (!directSalesMap.has(item.product.id)) {
+        directSalesMap.set(item.product.id, {
+          product_id: item.product.id,
+          product_name: item.product.name,
+          sku: item.product.sku,
+          quantity: 0,
+          current_stock: parseFloat(item.product.current_stock || 0),
+        });
+      }
+
+      const product = directSalesMap.get(item.product.id)!;
+      product.quantity += parseFloat(item.quantity || 0);
+    });
+
+    // 2. Get package component consumption
+    const packageConsumption = await this.getPackageSalesWithComponents(startDate, endDate);
+
+    // 3. Combine consumption data
+    const aggregatedConsumption = this.aggregateConsumption(directSalesMap, packageConsumption);
+
+    // 4. Fetch current stock for products only in package consumption
+    const productIds = aggregatedConsumption
+      .filter((c) => c.current_stock === 0)
+      .map((c) => c.product_id);
+
+    if (productIds.length > 0) {
+      const { data: stockData } = await supabaseAdmin
+        .from('products')
+        .select('id, current_stock')
+        .in('id', productIds);
+
+      stockData?.forEach((product: any) => {
+        const consumption = aggregatedConsumption.find((c) => c.product_id === product.id);
+        if (consumption) {
+          consumption.current_stock = parseFloat(product.current_stock || 0);
+        }
+      });
+    }
+
+    // 5. Calculate recommendations
+    const recommendations: SmartReorderRecommendation[] = aggregatedConsumption.map((item) => {
+      const daily_velocity = item.total_consumed / daysDiff;
+      const days_until_stockout = daily_velocity > 0 ? item.current_stock / daily_velocity : Infinity;
+      const recommended_reorder = Math.ceil(daily_velocity * bufferDays);
+
+      // Calculate priority
+      let priority: 'urgent' | 'high' | 'normal' = 'normal';
+      if (days_until_stockout < 7) {
+        priority = 'urgent';
+      } else if (days_until_stockout < 14) {
+        priority = 'high';
+      }
+
+      // Calculate usage breakdown percentages
+      const usage_breakdown = item.package_breakdown.map((pkg) => ({
+        package_id: pkg.package_id,
+        package_name: pkg.package_name,
+        quantity_consumed: pkg.quantity_consumed,
+        percentage: item.total_consumed > 0 ? (pkg.quantity_consumed / item.total_consumed) * 100 : 0,
+      }));
+
+      return {
+        product_id: item.product_id,
+        product_name: item.product_name,
+        sku: '', // Will be filled from direct sales if available
+        current_stock: item.current_stock,
+        direct_sales: item.direct_sales,
+        package_consumption: item.package_consumption,
+        total_consumed: item.total_consumed,
+        daily_velocity,
+        days_until_stockout: days_until_stockout === Infinity ? 9999 : days_until_stockout,
+        recommended_reorder,
+        priority,
+        usage_breakdown,
+      };
+    });
+
+    // Fill SKUs from direct sales map
+    recommendations.forEach((rec) => {
+      const directSale = directSalesMap.get(rec.product_id);
+      if (directSale) {
+        rec.sku = directSale.sku;
+      }
+    });
+
+    // Sort by urgency (days until stockout ascending)
+    return recommendations.sort((a, b) => a.days_until_stockout - b.days_until_stockout);
   }
 }

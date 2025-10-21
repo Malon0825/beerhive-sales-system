@@ -21,6 +21,12 @@ export enum NotificationType {
   OUT_OF_STOCK = 'out_of_stock',
   REORDER_POINT = 'reorder_point',
   
+  // Package inventory notifications (Phase 4)
+  PACKAGE_UNAVAILABLE = 'package_unavailable',
+  PACKAGE_LOW_STOCK = 'package_low_stock',
+  PACKAGE_BOTTLENECK = 'package_bottleneck',
+  STOCKOUT_PREDICTED = 'stockout_predicted',
+  
   // System notifications
   SYSTEM_ALERT = 'system_alert',
 }

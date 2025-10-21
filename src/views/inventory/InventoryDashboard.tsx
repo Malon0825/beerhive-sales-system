@@ -1,14 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, lazy, Suspense } from 'react';
 import Link from 'next/link';
 import { Product } from '@/models/entities/Product';
 import InventoryListResponsive from './InventoryListResponsive';
-import InventoryAnalytics from './InventoryAnalytics';
-import LowStockAlert from './LowStockAlert';
 import AddProductDialog from './AddProductDialog';
 import { Button } from '../shared/ui/button';
-import { Package, FileBarChart, BarChart3 } from 'lucide-react';
+import { Package, FileBarChart, BarChart3, Boxes, TrendingUp, Loader2 } from 'lucide-react';
+
+/**
+ * Code Splitting: Heavy analytics components loaded on-demand
+ * Phase 4.3.3: Frontend Optimization
+ */
+const InventoryAnalytics = lazy(() => import('./InventoryAnalytics'));
+const LowStockAlert = lazy(() => import('./LowStockAlert'));
+const PackageStockStatus = lazy(() => import('./PackageStockStatus'));
+const ReorderRecommendations = lazy(() => import('./ReorderRecommendations'));
 
 /**
  * InventoryDashboard Component
@@ -25,7 +32,7 @@ import { Package, FileBarChart, BarChart3 } from 'lucide-react';
  * - Tab-based navigation for All Products vs Low Stock
  */
 export default function InventoryDashboard() {
-  const [activeTab, setActiveTab] = useState<'all' | 'analytics' | 'low-stock'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'analytics' | 'low-stock' | 'package-status' | 'reorder'>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
@@ -39,17 +46,19 @@ export default function InventoryDashboard() {
   /**
    * Handle successful product creation
    * Refreshes the product list
+   * Optimized with useCallback to prevent unnecessary re-renders
    */
-  const handleProductAdded = () => {
+  const handleProductAdded = useCallback(() => {
     setRefreshKey(prev => prev + 1);
-  };
+  }, []);
 
   /**
    * Handle products loaded from InventoryList
+   * Optimized with useCallback to prevent unnecessary re-renders
    */
-  const handleProductsLoad = (loadedProducts: Product[]) => {
+  const handleProductsLoad = useCallback((loadedProducts: Product[]) => {
     setProducts(loadedProducts);
-  };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -127,6 +136,32 @@ export default function InventoryDashboard() {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setActiveTab('package-status')}
+              className={`px-4 py-2 font-medium text-sm transition-colors rounded-t-lg ${
+                activeTab === 'package-status'
+                  ? 'bg-gray-50 text-purple-600 border-b-2 border-purple-600'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Boxes className="w-4 h-4" />
+                Package Status
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('reorder')}
+              className={`px-4 py-2 font-medium text-sm transition-colors rounded-t-lg ${
+                activeTab === 'reorder'
+                  ? 'bg-gray-50 text-green-600 border-b-2 border-green-600'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" />
+                Reorder
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -142,13 +177,29 @@ export default function InventoryDashboard() {
         )}
         
         {activeTab === 'analytics' && (
-          <InventoryAnalytics products={products} />
+          <Suspense fallback={<TabLoadingFallback label="Analytics" />}>
+            <InventoryAnalytics products={products} />
+          </Suspense>
         )}
         
         {activeTab === 'low-stock' && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <LowStockAlert />
-          </div>
+          <Suspense fallback={<TabLoadingFallback label="Low Stock Alerts" />}>
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <LowStockAlert />
+            </div>
+          </Suspense>
+        )}
+        
+        {activeTab === 'package-status' && (
+          <Suspense fallback={<TabLoadingFallback label="Package Status" />}>
+            <PackageStockStatus />
+          </Suspense>
+        )}
+        
+        {activeTab === 'reorder' && (
+          <Suspense fallback={<TabLoadingFallback label="Reorder Recommendations" />}>
+            <ReorderRecommendations />
+          </Suspense>
         )}
       </div>
 
@@ -158,6 +209,24 @@ export default function InventoryDashboard() {
         onOpenChange={setIsAddDialogOpen}
         onSuccess={handleProductAdded}
       />
+    </div>
+  );
+}
+
+/**
+ * Loading Fallback Component for Lazy-Loaded Tabs
+ * Phase 4.3.3: Provides smooth UX during code splitting
+ */
+function TabLoadingFallback({ label }: { label: string }) {
+  return (
+    <div className="bg-white rounded-lg shadow-md p-12">
+      <div className="flex flex-col items-center justify-center gap-4 text-gray-500">
+        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+        <div className="text-center">
+          <p className="text-lg font-medium">Loading {label}...</p>
+          <p className="text-sm text-gray-400 mt-1">Optimizing performance</p>
+        </div>
+      </div>
     </div>
   );
 }

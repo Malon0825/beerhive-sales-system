@@ -12,6 +12,12 @@ import GridColumnSelector from '@/views/shared/ui/GridColumnSelector';
 import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
 import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
 import { formatCurrency } from '@/lib/utils/formatters';
+import { 
+  fetchAllPackageAvailability,
+  getAvailabilityStatus,
+  getAvailabilityColor,
+  type PackageAvailabilityItem
+} from '@/data/queries/package-availability.queries';
 
 /**
  * SessionProductSelector Component
@@ -91,6 +97,32 @@ export default function SessionProductSelector({
   
   // Access stock tracker context
   const stockTracker = useStockTracker();
+
+  // Fetch package availability (Phase 4 - POS Integration)
+  const [packageAvailability, setPackageAvailability] = useState<PackageAvailabilityItem[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+
+  // Load package availability on mount and refresh every 30 seconds
+  useEffect(() => {
+    const loadAvailability = async () => {
+      try {
+        setAvailabilityLoading(true);
+        const data = await fetchAllPackageAvailability();
+        setPackageAvailability(data);
+      } catch (error) {
+        console.error('Failed to load package availability:', error);
+      } finally {
+        setAvailabilityLoading(false);
+      }
+    };
+
+    loadAvailability();
+
+    // Refresh every 30 seconds for real-time updates
+    const intervalId = setInterval(loadAvailability, 30000);
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   /**
    * Generate dynamic grid class based on selected columns
@@ -319,7 +351,16 @@ export default function SessionProductSelector({
   };
 
   /**
-   * Handle package selection
+   * Get package availability data
+   * Phase 4 - Real-time availability checking
+   */
+  const getPackageAvailabilityData = (packageId: string): PackageAvailabilityItem | undefined => {
+    return packageAvailability?.find((p: PackageAvailabilityItem) => p.package_id === packageId);
+  };
+
+  /**
+   * Handle package selection with availability validation
+   * Phase 4 - Enhanced with availability check
    */
   const handlePackageClick = (pkg: Package) => {
     if (!onPackageSelect) {
@@ -333,6 +374,14 @@ export default function SessionProductSelector({
     
     if (isVIPOnly && !customerIsVIP) {
       alert('This package is only available for VIP members');
+      return;
+    }
+
+    // Phase 4: Check package availability
+    const availability = getPackageAvailabilityData(pkg.id);
+    if (availability && availability.max_sellable === 0) {
+      const bottleneck = availability.bottleneck?.product_name || 'a component';
+      alert(`This package is currently unavailable due to insufficient ${bottleneck} stock.`);
       return;
     }
 
