@@ -129,12 +129,24 @@ export class InventoryReportService {
 
   /**
    * Get inventory turnover report
+   * 
+   * If dates are provided, they are passed through directly to preserve timezone info.
    */
   static async getInventoryTurnoverReport(
     params: InventoryReportParams = {}
   ): Promise<InventoryTurnoverItem[]> {
-    const endDate = params.endDate || new Date().toISOString();
-    const startDate = params.startDate || subDays(new Date(endDate), 30).toISOString();
+    // If dates are provided, use them directly (preserves timezone offset like +08:00)
+    let endDate: string;
+    let startDate: string;
+    
+    if (params.startDate && params.endDate) {
+      startDate = params.startDate;
+      endDate = params.endDate;
+    } else {
+      // Fallback: generate default dates (last 30 days)
+      endDate = new Date().toISOString();
+      startDate = subDays(new Date(endDate), 30).toISOString();
+    }
 
     const turnoverData = await getInventoryTurnover(startDate, endDate);
 
@@ -531,8 +543,18 @@ export class InventoryReportService {
   static async getSmartReorderRecommendations(
     params: InventoryReportParams & { bufferDays?: number } = {}
   ): Promise<SmartReorderRecommendation[]> {
-    const endDate = params.endDate || new Date().toISOString();
-    const startDate = params.startDate || subDays(new Date(endDate), 30).toISOString();
+    // If dates are provided, use them directly (preserves timezone offset like +08:00)
+    let endDate: string;
+    let startDate: string;
+    
+    if (params.startDate && params.endDate) {
+      startDate = params.startDate;
+      endDate = params.endDate;
+    } else {
+      // Fallback: generate default dates (last 30 days)
+      endDate = new Date().toISOString();
+      startDate = subDays(new Date(endDate), 30).toISOString();
+    }
     const bufferDays = params.bufferDays || 14; // 2 weeks default buffer
 
     // Calculate date range in days

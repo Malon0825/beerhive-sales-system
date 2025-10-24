@@ -41,8 +41,22 @@ export interface SalesSummary {
 export class SalesReportService {
   /**
    * Get date range based on period
+   * 
+   * For custom periods, timestamp strings are passed through directly to preserve
+   * explicit timezone information (e.g., +08:00). This prevents timezone conversion
+   * bugs and maintains precision for custom date range queries.
    */
   private static getDateRange(params: SalesReportParams): { startDate: string; endDate: string } {
+    // If startDate and endDate are provided as strings (custom range with timezone),
+    // pass them through directly without parsing/converting
+    if (params.startDate && params.endDate && (params.period === 'custom' || !params.period)) {
+      return {
+        startDate: params.startDate,
+        endDate: params.endDate,
+      };
+    }
+
+    // For period-based ranges, calculate dates and convert to ISO
     const now = new Date();
     let startDate: Date;
     let endDate: Date;
@@ -64,10 +78,9 @@ export class SalesReportService {
         startDate = startOfDay(subDays(now, 30));
         endDate = endOfDay(now);
         break;
-      case 'custom':
       default:
-        startDate = params.startDate ? new Date(params.startDate) : startOfDay(subDays(now, 30));
-        endDate = params.endDate ? new Date(params.endDate) : endOfDay(now);
+        startDate = startOfDay(subDays(now, 30));
+        endDate = endOfDay(now);
     }
 
     return {
