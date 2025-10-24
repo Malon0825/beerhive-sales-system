@@ -2,9 +2,21 @@
  * Receipt Template Component (PDF)
  * PDF receipt template using @react-pdf/renderer
  * 
- * IMPORTANT: This component should ONLY be dynamically imported on the server-side
- * to prevent build-time conflicts with Next.js static page generation.
- * Use dynamic imports: const { ReceiptTemplate } = await import('@/views/receipts/ReceiptTemplate');
+ * ⚠️ DEPRECATED - October 2025
+ * This component is NO LONGER USED and can be safely deleted.
+ * 
+ * REASON FOR DEPRECATION:
+ * Removed to fix Netlify deployment timeout caused by @react-pdf/renderer
+ * bloating serverless function bundle to 50MB+.
+ * 
+ * REPLACEMENT:
+ * Use browser's native print-to-PDF functionality on HTML receipts instead.
+ * See: /api/orders/[orderId]/receipt?format=html
+ * 
+ * If you need to restore PDF functionality, consider:
+ * 1. Netlify Edge Functions (see .windsurf/workflows/netlify-pdf-edge-function.md)
+ * 2. Third-party PDF services (PDFShift, DocRaptor)
+ * 3. Client-side PDF generation libraries (jsPDF, pdfmake)
  */
 
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';

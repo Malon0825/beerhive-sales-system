@@ -4,13 +4,11 @@
 
 [build]
   # Specifies the command to build the Next.js application
-  # Clean ALL cache directories (including Netlify's .netlify directory) 
-  # to prevent false positive secret scanning of webpack cache
-  command = "rm -rf .next/cache .netlify/.next/cache && npm run build"
+  command = "npm run build"
   
   # Directory where the build output is stored
-  # When using @netlify/plugin-nextjs, the plugin handles the publish directory
-  # Set to .next for Next.js builds (plugin will manage the actual deployment)
+  # For standalone output mode, use .next/standalone
+  # The @netlify/plugin-nextjs plugin will handle the deployment
   publish = ".next"
   
   # Node.js version requirement (must match package.json engines)
@@ -28,6 +26,9 @@
   # Set NETLIFY flag to true (used in next.config.js to disable caching)
   # This prevents webpack cache from triggering false positive secret scanning
   NETLIFY = "true"
+  
+  # Increase Node memory limit for large builds
+  NODE_OPTIONS = "--max-old-space-size=4096"
 
 # Plugin configuration for Next.js on Netlify
 # The @netlify/plugin-nextjs plugin provides Next.js optimizations
@@ -38,6 +39,11 @@
 # - Manages rewrites, redirects, and middleware
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Functions configuration for serverless bundle optimization
+[functions]
+  # Use Node File Trace bundler for optimal Next.js serverless function size
+  node_bundler = "nft"
 
 # ===================================
 # SECRET SCANNING CONFIGURATION

@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Standalone output for optimized serverless deployment on Netlify
+  // This dramatically reduces the function bundle size by creating
+  // a minimal standalone server with only necessary dependencies
+  output: 'standalone',
+  
   images: {
     remotePatterns: [
       {
@@ -19,7 +24,18 @@ const nextConfig = {
       bodySizeLimit: '2mb',
     },
     // Optimize package imports - tree-shake large libraries
-    optimizePackageImports: ['lucide-react', 'date-fns', 'recharts'],
+    // This reduces bundle size by only importing used components
+    optimizePackageImports: [
+      'lucide-react',
+      'date-fns', 
+      'recharts',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-popover',
+      '@radix-ui/react-select',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-toast',
+    ],
   },
   
   // Note: serverActions allowedOrigins removed to support Vercel/Netlify deployment
@@ -43,25 +59,16 @@ const nextConfig = {
   
   // Webpack configuration for optimizations and bundle analysis
   webpack: (config, { isServer }) => {
-    // Don't bundle @react-pdf/renderer on client-side
-    // It's only used in API routes (server-side)
-    if (!isServer) {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        '@react-pdf/renderer': false,
-      };
-      
-      // Enable bundle analyzer when ANALYZE=true
-      if (process.env.ANALYZE === 'true') {
-        const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
-        config.plugins.push(
-          new BundleAnalyzerPlugin({
-            analyzerMode: 'static',
-            reportFilename: './analyze.html',
-            openAnalyzer: true,
-          })
-        );
-      }
+    // Enable bundle analyzer when ANALYZE=true
+    if (!isServer && process.env.ANALYZE === 'true') {
+      const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+      config.plugins.push(
+        new BundleAnalyzerPlugin({
+          analyzerMode: 'static',
+          reportFilename: './analyze.html',
+          openAnalyzer: true,
+        })
+      );
     }
     
     // Disable filesystem caching for production builds to prevent
