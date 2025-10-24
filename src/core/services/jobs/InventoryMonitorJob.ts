@@ -48,8 +48,9 @@ export class InventoryMonitorJob {
    * 
    * @example
    * ```typescript
-   * // Set up with node-cron
-   * cron.schedule('*/5 * * * *', async () => {
+   * // Set up with node-cron (runs every 5 minutes)
+   * const cronExpression = '* /5 * * * *'.replace(' ', '');
+   * cron.schedule(cronExpression, async () => {
    *   const result = await InventoryMonitorJob.run();
    *   console.log('Job completed:', result);
    * });
