@@ -150,7 +150,7 @@ function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProp
           
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Users className="w-4 h-4" />
-            <span>Max {pkg.max_quantity_per_transaction} per transaction</span>
+            <span>Quantity based on stock availability</span>
           </div>
         </div>
 

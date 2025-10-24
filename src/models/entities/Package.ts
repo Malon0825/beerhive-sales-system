@@ -12,7 +12,7 @@ export interface Package {
   vip_price: number | null;
   valid_from: string | null;
   valid_until: string | null;
-  max_quantity_per_transaction: number;
+  // max_quantity_per_transaction: REMOVED - Use PackageAvailabilityService for dynamic limits
   is_addon_eligible: boolean;
   time_restrictions: Record<string, any> | null; // JSON object
   is_active: boolean;
@@ -41,7 +41,7 @@ export interface CreatePackageInput {
   vip_price?: number;
   valid_from?: string;
   valid_until?: string;
-  max_quantity_per_transaction?: number;
+  // max_quantity_per_transaction: REMOVED - Replaced by dynamic stock availability
   is_addon_eligible?: boolean;
   time_restrictions?: Record<string, any>;
   items: CreatePackageItemInput[];
@@ -63,7 +63,7 @@ export interface UpdatePackageInput {
   vip_price?: number;
   valid_from?: string;
   valid_until?: string;
-  max_quantity_per_transaction?: number;
+  // max_quantity_per_transaction: REMOVED - Replaced by dynamic stock availability
   is_addon_eligible?: boolean;
   time_restrictions?: Record<string, any>;
   is_active?: boolean;

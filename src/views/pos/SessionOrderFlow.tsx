@@ -22,6 +22,7 @@ import SessionProductSelector from './SessionProductSelector';
 import { CustomerSearch } from './CustomerSearch';
 import { CustomerTier } from '@/models/enums/CustomerTier';
 import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
+import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
 
 /**
  * SessionOrderFlow Component
@@ -58,6 +59,12 @@ interface CartItem {
   is_vip_price?: boolean;
   is_package?: boolean;
   notes?: string;
+  // Store package component details for stock release
+  package_components?: Array<{
+    product_id: string;
+    product_name: string;
+    quantity: number;
+  }>;
 }
 
 interface Package {
@@ -72,7 +79,9 @@ interface Package {
     product_id: string;
     quantity: number;
     product?: {
+      id: string;
       name: string;
+      current_stock: number;
     };
   }>;
 }
@@ -87,6 +96,19 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [headerContainer, setHeaderContainer] = useState<HTMLElement | null>(null);
+  
+  // Alert dialog state for stock warnings
+  const [alertDialog, setAlertDialog] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    details?: string[];
+    variant: 'error' | 'warning' | 'success' | 'info' | 'stock-error';
+  }>({
+    open: false,
+    title: '',
+    variant: 'info',
+  });
   
   // Access stock tracker context
   const stockTracker = useStockTracker();
@@ -222,8 +244,69 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
   /**
    * Add package to cart
    * Packages are always added as new items (no quantity increment)
+   * 
+   * CRITICAL: Validates and reserves stock for ALL component products
+   * This prevents overselling when multiple packages/products share inventory
    */
   const addPackageToCart = (pkg: Package, price: number) => {
+    // Validate package has items
+    if (!pkg.items || pkg.items.length === 0) {
+      setAlertDialog({
+        open: true,
+        title: 'Package Configuration Error',
+        description: `Package "${pkg.name}" has no items configured. Please contact management.`,
+        variant: 'error',
+      });
+      console.error('📦 [SessionOrderFlow] Package has no items:', pkg);
+      return;
+    }
+
+    // Check stock availability for ALL package components
+    const stockIssues: string[] = [];
+    for (const packageItem of pkg.items) {
+      const product = packageItem.product;
+      if (!product) {
+        console.warn('📦 [SessionOrderFlow] Package item missing product data:', packageItem);
+        continue;
+      }
+
+      const requiredQuantity = packageItem.quantity;
+      if (!stockTracker.hasStock(product.id, requiredQuantity)) {
+        const availableStock = stockTracker.getCurrentStock(product.id);
+        stockIssues.push(`${product.name}: Need ${requiredQuantity}, Available ${availableStock}`);
+      }
+    }
+
+    // If any items are out of stock, show detailed error and don't add
+    if (stockIssues.length > 0) {
+      setAlertDialog({
+        open: true,
+        title: 'Insufficient Stock',
+        description: `Cannot add "${pkg.name}" to cart. The following components don't have enough stock:`,
+        details: stockIssues,
+        variant: 'stock-error',
+      });
+      console.warn('📦 [SessionOrderFlow] Package blocked due to insufficient stock:', stockIssues);
+      return;
+    }
+
+    // All items have sufficient stock - reserve them in StockTracker
+    for (const packageItem of pkg.items) {
+      const product = packageItem.product;
+      if (!product) continue;
+      
+      stockTracker.reserveStock(product.id, packageItem.quantity);
+      console.log(`📦 [SessionOrderFlow] Reserved ${packageItem.quantity}x ${product.name} for package`);
+    }
+
+    // Store package component details for stock release later
+    const packageComponents = pkg.items.map(packageItem => ({
+      product_id: packageItem.product_id,
+      product_name: packageItem.product?.name || 'Unknown Product',
+      quantity: packageItem.quantity,
+    }));
+
+    // Create cart item
     const item: CartItem = {
       package_id: pkg.id,
       item_name: pkg.name,
@@ -233,19 +316,31 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
       total: price,
       is_vip_price: session?.customer?.tier !== 'regular' && pkg.vip_price ? true : false,
       is_package: true,
+      package_components: packageComponents,
     };
+    
     setCart([...cart, item]);
-    console.log('📦 [SessionOrderFlow] Package added to cart:', pkg.name);
+    console.log('✅ [SessionOrderFlow] Package added to cart with all stock reserved:', pkg.name);
   };
 
   /**
    * Remove item from cart with stock restoration
+   * 
+   * For products: Releases reserved stock
+   * For packages: Releases reserved stock for ALL component products
    */
   const removeFromCart = (index: number) => {
     const item = cart[index];
     
-    // Release reserved stock back to memory (only for products, not packages)
-    if (item.product_id && !item.is_package) {
+    if (item.is_package && item.package_components) {
+      // Release stock for all package components
+      for (const component of item.package_components) {
+        stockTracker.releaseStock(component.product_id, component.quantity);
+        console.log(`📦 [SessionOrderFlow] Stock released for package component: ${component.product_name} qty: ${component.quantity}`);
+      }
+      console.log('✅ [SessionOrderFlow] All package component stock released:', item.item_name);
+    } else if (item.product_id && !item.is_package) {
+      // Release stock for individual product
       stockTracker.releaseStock(item.product_id, item.quantity);
       console.log('📦 [SessionOrderFlow] Stock released:', item.item_name, 'qty:', item.quantity);
     }
@@ -267,7 +362,12 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
     
     // Packages cannot have quantity adjusted (fixed quantity)
     if (item.is_package) {
-      alert('Package quantity cannot be changed. Remove and re-add to adjust.');
+      setAlertDialog({
+        open: true,
+        title: 'Package Quantity Fixed',
+        description: 'Package quantity cannot be changed. Please remove the package and add it again if needed.',
+        variant: 'warning',
+      });
       return;
     }
     
@@ -278,7 +378,14 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
       if (quantityDiff > 0) {
         // Increasing quantity - check and reserve more stock
         if (!stockTracker.hasStock(item.product_id, quantityDiff)) {
-          alert(`Insufficient stock for ${item.item_name}`);
+          const available = stockTracker.getCurrentStock(item.product_id);
+          setAlertDialog({
+            open: true,
+            title: 'Insufficient Stock',
+            description: `Cannot increase quantity for "${item.item_name}".`,
+            details: [`Available: ${available}, Requested: ${quantityDiff} more`],
+            variant: 'stock-error',
+          });
           return;
         }
         stockTracker.reserveStock(item.product_id, quantityDiff);
@@ -301,7 +408,12 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
    */
   const createDraftOrder = async () => {
     if (cart.length === 0) {
-      alert('Please add items to cart');
+      setAlertDialog({
+        open: true,
+        title: 'Empty Cart',
+        description: 'Please add items to cart before creating an order.',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -330,11 +442,21 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
         setCart([]); // Clear cart
         return data.data.id;
       } else {
-        alert(data.error || 'Failed to create order');
+        setAlertDialog({
+          open: true,
+          title: 'Order Creation Failed',
+          description: data.error || 'Failed to create order. Please try again.',
+          variant: 'error',
+        });
       }
     } catch (error) {
       console.error('Failed to create order:', error);
-      alert('Failed to create order');
+      setAlertDialog({
+        open: true,
+        title: 'Order Creation Error',
+        description: 'Failed to create order. Please try again.',
+        variant: 'error',
+      });
     }
 
     return null;
@@ -389,11 +511,21 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
         // Refresh session data
         fetchSession();
       } else {
-        alert(data.error || 'Failed to confirm order');
+        setAlertDialog({
+          open: true,
+          title: 'Order Confirmation Failed',
+          description: data.error || 'Failed to confirm order. Please try again.',
+          variant: 'error',
+        });
       }
     } catch (error) {
       console.error('❌ [SessionOrderFlow] Failed to confirm order:', error);
-      alert('Failed to confirm order. Please try again.');
+      setAlertDialog({
+        open: true,
+        title: 'Order Confirmation Error',
+        description: 'Failed to confirm order. Please try again.',
+        variant: 'error',
+      });
     } finally {
       setConfirming(false);
     }
@@ -660,6 +792,16 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
             )}
           </Button>
         </div>
+
+        {/* Alert Dialog for Warnings and Errors */}
+        <AlertDialogSimple
+          open={alertDialog.open}
+          onOpenChange={(open) => setAlertDialog({ ...alertDialog, open })}
+          title={alertDialog.title}
+          description={alertDialog.description}
+          details={alertDialog.details}
+          variant={alertDialog.variant}
+        />
       </div>
     );
   }

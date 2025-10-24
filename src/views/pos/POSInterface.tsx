@@ -21,6 +21,7 @@ import { TableSelector } from './TableSelector';
 import { PaymentPanel } from './PaymentPanel';
 import { SalesReceipt } from './SalesReceipt';
 import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
+import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
 
 /**
  * POSInterface - Main POS Component
@@ -61,11 +62,23 @@ export function POSInterface() {
   const [receiptData, setReceiptData] = useState<any>(null);
   const [categories, setCategories] = useState<Array<{id: string; name: string; color_code?: string}>>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
-  const [cartRestored, setCartRestored] = useState(false);
   const [topSellingMap, setTopSellingMap] = useState<Record<string, number>>({});
   
   // Grid columns with session storage persistence (default: 5 columns)
   const [gridColumns, setGridColumns] = useSessionStorage<number>('pos-product-grid-columns', 5);
+  
+  // Alert dialog state for stock warnings
+  const [alertDialog, setAlertDialog] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    details?: string[];
+    variant: 'error' | 'warning' | 'success' | 'info' | 'stock-error';
+  }>({
+    open: false,
+    title: '',
+    variant: 'info',
+  });
   
   // Context hooks
   const cart = useCart();
@@ -85,32 +98,157 @@ export function POSInterface() {
     return `grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 ${colMap[gridColumns] || 'lg:grid-cols-5'}`;
   };
   
-  // Show loading message if cart items were restored
+  // Show loading message if cart items were restored AND re-reserve stock
   useEffect(() => {
-    // Wait for cart to finish loading before checking
-    if (!cart.isLoadingCart && !cartRestored && cart.items.length > 0) {
-      setSuccessMessage(`Welcome back! Your cart has been restored with ${cart.items.length} item(s).`);
-      setCartRestored(true);
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 4000);
+    // Wait for products and cart to finish loading before re-reserving
+    if (
+      loading ||
+      cart.isLoadingCart ||
+      cartRestorationCompleteRef.current ||
+      cart.items.length === 0 ||
+      products.length === 0
+    ) {
+      return;
     }
-  }, [cart.isLoadingCart, cart.items.length, cartRestored]);
+
+    let isCancelled = false;
+
+    const reReserveStockForRestoredCart = async () => {
+      // Ensure every product in the restored cart is already tracked.
+      // If products are still initializing, wait for next render cycle.
+      const untrackedProductIds: string[] = [];
+
+      cart.items.forEach(item => {
+        const collectUntracked = (productId: string | undefined) => {
+          if (!productId) {
+            return;
+          }
+          if (!stockTracker.isProductTracked(productId)) {
+            untrackedProductIds.push(productId);
+          }
+        };
+
+        if (item.product) {
+          collectUntracked(item.product.id);
+        }
+
+        if (item.package?.items) {
+          item.package.items.forEach((pkgItem: any) => {
+            collectUntracked(pkgItem.product?.id);
+          });
+        }
+      });
+
+      if (untrackedProductIds.length > 0) {
+        console.log('⏳ [POSInterface] Stock tracker not ready for products:', untrackedProductIds);
+        return;
+      }
+
+      // CRITICAL FIX: Re-reserve stock for all items in restored cart
+      // When cart is loaded from IndexedDB, stock tracker is fresh (memory-based)
+      // We must re-reserve the stock to prevent double-selling
+      console.log('🔄 [POSInterface] Re-reserving stock for', cart.items.length, 'restored cart items');
+      
+      for (const item of cart.items) {
+        if (isCancelled) {
+          return;
+        }
+
+        if (item.product) {
+          // Regular product - reserve stock
+          stockTracker.reserveStock(item.product.id, item.quantity);
+          console.log(`  ✅ Reserved ${item.quantity}x ${item.product.name} (product)`);
+        } else if (item.package) {
+          // Package - need to fetch full package data if items not loaded
+          if (!item.package.items || item.package.items.length === 0) {
+            console.log(`  🔄 Fetching package data for "${item.package.name}"...`);
+            try {
+              const response = await fetch(`/api/packages/${item.package.id}`);
+              const result = await response.json();
+              if (result.success && result.data) {
+                const fullPackage = result.data;
+                // Update cart item with full package data (including items)
+                item.package = fullPackage;
+                
+                // Now reserve stock for components
+                if (fullPackage.items && fullPackage.items.length > 0) {
+                  fullPackage.items.forEach((pkgItem: any) => {
+                    if (pkgItem.product) {
+                      const requiredQty = pkgItem.quantity * item.quantity;
+                      stockTracker.reserveStock(pkgItem.product.id, requiredQty);
+                      console.log(`    ✅ Reserved ${requiredQty}x ${pkgItem.product.name} (package component)`);
+                    }
+                  });
+                }
+              }
+            } catch (error) {
+              console.error(`  ❌ Failed to fetch package data for "${item.package?.name || 'Unknown'}":`, error);
+              console.warn('   Stock cannot be reserved. Package should be removed and re-added.');
+            }
+          } else {
+            // Package with items already loaded - reserve stock
+            item.package.items.forEach((pkgItem: any) => {
+              if (pkgItem.product) {
+                const requiredQty = pkgItem.quantity * item.quantity;
+                stockTracker.reserveStock(pkgItem.product.id, requiredQty);
+                console.log(`  ✅ Reserved ${requiredQty}x ${pkgItem.product.name} (package component)`);
+              }
+            });
+          }
+        }
+      }
+      
+      if (!isCancelled) {
+        setSuccessMessage(`Welcome back! Your cart has been restored with ${cart.items.length} item(s).`);
+        setTimeout(() => {
+          setSuccessMessage(null);
+        }, 4000);
+        cartRestorationCompleteRef.current = true;
+      }
+    };
+    
+    reReserveStockForRestoredCart()
+      .catch(error => {
+        console.error('❌ [POSInterface] Failed to re-reserve stock for restored cart:', error);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    loading,
+    cart.isLoadingCart,
+    cart.items.length,
+    products.length,
+  ]);
   
   // Refs to prevent duplicate API calls
   const fetchingProductsRef = useRef(false);
   const fetchingPackagesRef = useRef(false);
   const hasFetchedRef = useRef(false);
+  const cartRestorationCompleteRef = useRef(false);
 
   /**
-   * Track component mount/unmount for debugging
+   * Track component mount/unmount for debugging and reset restoration flag
    */
   useEffect(() => {
     console.log('🎬 [POSInterface] Component mounted');
     return () => {
       console.log('🔚 [POSInterface] Component unmounted');
+      cartRestorationCompleteRef.current = false;
     };
   }, []);
+
+  /**
+   * Reset restoration flag when cart is cleared
+   */
+  useEffect(() => {
+    if (cart.items.length === 0 && cartRestorationCompleteRef.current) {
+      console.log('🔄 [POSInterface] Cart cleared, resetting restoration flag');
+      cartRestorationCompleteRef.current = false;
+    }
+  }, [cart.items.length]);
 
   /**
    * Fetch top selling products (last 30 days by default via 'month' period)
@@ -269,7 +407,12 @@ export function POSInterface() {
     
     // Check if product has stock
     if (!stockTracker.hasStock(product.id, 1)) {
-      alert(`${product.name} is out of stock`);
+      setAlertDialog({
+        open: true,
+        title: 'Out of Stock',
+        description: `${product.name} is currently out of stock.`,
+        variant: 'stock-error',
+      });
       return;
     }
     
@@ -291,7 +434,12 @@ export function POSInterface() {
    */
   const handleAddPackage = (pkg: Package & { items?: any[] }) => {
     if (!pkg.items || pkg.items.length === 0) {
-      alert('This package has no items configured. Please contact management.');
+      setAlertDialog({
+        open: true,
+        title: 'Package Configuration Error',
+        description: 'This package has no items configured. Please contact management.',
+        variant: 'error',
+      });
       return;
     }
 
@@ -308,9 +456,15 @@ export function POSInterface() {
       }
     }
 
-    // If any items are out of stock, show alert and don't add
+    // If any items are out of stock, show detailed error and don't add
     if (stockIssues.length > 0) {
-      alert(`Cannot add package. Insufficient stock:\n\n${stockIssues.join('\n')}`);
+      setAlertDialog({
+        open: true,
+        title: 'Insufficient Stock',
+        description: `Cannot add package "${pkg.name}" to cart. The following components don't have enough stock:`,
+        details: stockIssues,
+        variant: 'stock-error',
+      });
       return;
     }
 
@@ -380,7 +534,14 @@ export function POSInterface() {
     if (quantityDiff > 0) {
       // Increasing quantity - reserve more stock
       if (!stockTracker.hasStock(item.product.id, quantityDiff)) {
-        alert(`Insufficient stock for ${item.product.name}`);
+        const available = stockTracker.getCurrentStock(item.product.id);
+        setAlertDialog({
+          open: true,
+          title: 'Insufficient Stock',
+          description: `Cannot increase quantity for "${item.product.name}".`,
+          details: [`Available: ${available}, Requested: ${quantityDiff} more`],
+          variant: 'stock-error',
+        });
         return;
       }
       stockTracker.reserveStock(item.product.id, quantityDiff);
@@ -858,6 +1019,16 @@ export function POSInterface() {
           </div>
         </div>
       )}
+
+      {/* Alert Dialog for Warnings and Errors */}
+      <AlertDialogSimple
+        open={alertDialog.open}
+        onOpenChange={(open) => setAlertDialog({ ...alertDialog, open })}
+        title={alertDialog.title}
+        description={alertDialog.description}
+        details={alertDialog.details}
+        variant={alertDialog.variant}
+      />
     </div>
   );
 }

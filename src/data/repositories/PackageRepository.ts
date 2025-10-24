@@ -31,6 +31,7 @@ export class PackageRepository {
               name,
               sku,
               base_price,
+              current_stock,
               image_url,
               category:product_categories(
                 id,
@@ -83,6 +84,7 @@ export class PackageRepository {
               sku,
               base_price,
               vip_price,
+              current_stock,
               image_url,
               unit_of_measure,
               category:product_categories(
@@ -154,6 +156,7 @@ export class PackageRepository {
               sku,
               base_price,
               vip_price,
+              current_stock,
               image_url,
               unit_of_measure,
               category:product_categories(
@@ -207,7 +210,6 @@ export class PackageRepository {
           vip_price: input.vip_price,
           valid_from: input.valid_from,
           valid_until: input.valid_until,
-          max_quantity_per_transaction: input.max_quantity_per_transaction ?? 1,
           is_addon_eligible: input.is_addon_eligible ?? false,
           time_restrictions: input.time_restrictions,
           is_active: true,
@@ -262,7 +264,6 @@ export class PackageRepository {
           vip_price: input.vip_price,
           valid_from: input.valid_from,
           valid_until: input.valid_until,
-          max_quantity_per_transaction: input.max_quantity_per_transaction,
           is_addon_eligible: input.is_addon_eligible,
           time_restrictions: input.time_restrictions,
           is_active: input.is_active,

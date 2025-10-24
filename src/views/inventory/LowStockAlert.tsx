@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react';
 import { getUrgencyColor, getUrgencyLabel } from '@/core/utils/inventory/stockAlertUtils';
 import { Badge } from '../shared/ui/badge';
 import { Button } from '../shared/ui/button';
-import { AlertTriangle, ShoppingCart, TrendingDown } from 'lucide-react';
+import { AlertTriangle, ShoppingCart, TrendingDown, Package, ChevronDown, ChevronUp } from 'lucide-react';
+import { usePackageImpact } from '@/lib/hooks/usePackageAvailability';
+import { StockStatusBadge, getStockStatusFromQuantity } from '../shared/ui/StockStatusBadge';
 
 /**
  * Filter types for low stock alerts
@@ -225,22 +227,37 @@ export default function LowStockAlert() {
 
 /**
  * AlertCard Component
- * Displays individual low stock alert with urgency indicator
+ * Displays individual low stock alert with urgency indicator and package impact
  */
 function AlertCard({ alert }: { alert: any }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const urgencyColor = getUrgencyColor(alert.urgency);
   const urgencyLabel = getUrgencyLabel(alert.urgency);
+  
+  // Fetch package impact
+  const { impact, loading: impactLoading } = usePackageImpact(alert.product.id, { enabled: true });
 
   return (
     <div className="bg-white border-l-4 rounded-lg shadow p-6" style={{ borderLeftColor: urgencyColor }}>
       <div className="flex justify-between items-start">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-3 mb-2 flex-wrap">
             <AlertTriangle className="w-5 h-5" style={{ color: urgencyColor }} />
             <h3 className="text-lg font-semibold text-gray-900">{alert.product.name}</h3>
             <Badge variant="secondary" style={{ backgroundColor: urgencyColor + '20', color: urgencyColor }}>
               {urgencyLabel}
             </Badge>
+            
+            {/* Package Impact Badge */}
+            {impact && impact.total_packages_impacted > 0 && (
+              <Badge 
+                variant="secondary" 
+                className="bg-purple-100 text-purple-700 flex items-center gap-1"
+              >
+                <Package className="w-3 h-3" />
+                Affects {impact.total_packages_impacted} pkg{impact.total_packages_impacted !== 1 ? 's' : ''}
+              </Badge>
+            )}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -266,6 +283,81 @@ function AlertCard({ alert }: { alert: any }) {
             </div>
           </div>
 
+          {/* Package Impact Warning */}
+          {impact && impact.total_packages_impacted > 0 && impact.minimum_package_availability !== undefined && impact.minimum_package_availability <= 20 && (
+            <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-orange-900">
+                    Package Availability Impact
+                  </p>
+                  <p className="text-sm text-orange-700 mt-1">
+                    This low stock affects <strong>{impact.total_packages_impacted} package{impact.total_packages_impacted !== 1 ? 's' : ''}</strong>.
+                    {impact.minimum_package_availability === 0 ? (
+                      <span className="font-semibold"> All affected packages are out of stock.</span>
+                    ) : (
+                      <span> Minimum availability: <strong>{impact.minimum_package_availability} packages</strong></span>
+                    )}
+                  </p>
+                  <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="mt-2 text-sm text-orange-700 hover:text-orange-900 font-medium flex items-center gap-1"
+                  >
+                    {isExpanded ? (
+                      <>
+                        <ChevronUp className="w-4 h-4" />
+                        Hide affected packages
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-4 h-4" />
+                        View affected packages
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Expandable Package List */}
+          {isExpanded && impact && impact.affected_packages.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <h4 className="text-sm font-medium text-gray-900">Affected Packages:</h4>
+              {impact.affected_packages.map((pkg) => {
+                const pkgStatus = getStockStatusFromQuantity(pkg.max_sellable);
+                return (
+                  <div
+                    key={pkg.package_id}
+                    className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <Package className="w-4 h-4 text-gray-400" />
+                      <div>
+                        <p className="font-medium text-sm text-gray-900">{pkg.package_name}</p>
+                        <p className="text-xs text-gray-500">
+                          Uses {pkg.quantity_per_package} unit{pkg.quantity_per_package !== 1 ? 's' : ''} per package
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StockStatusBadge status={pkgStatus} size="sm" />
+                      <span className={`text-lg font-bold ${
+                        pkgStatus === 'out' ? 'text-red-600' :
+                        pkgStatus === 'critical' ? 'text-orange-600' :
+                        pkgStatus === 'low' ? 'text-yellow-600' :
+                        'text-green-600'
+                      }`}>
+                        {pkg.max_sellable}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {alert.reorderQuantity > 0 && (
             <div className="mt-4 p-3 bg-blue-50 rounded-md">
               <div className="flex items-center justify-between">
@@ -279,6 +371,12 @@ function AlertCard({ alert }: { alert: any }) {
                   {alert.product.cost_price && (
                     <div className="text-sm text-blue-700">
                       Estimated Cost: ₱{(alert.reorderQuantity * alert.product.cost_price).toFixed(2)}
+                    </div>
+                  )}
+                  {/* Package Impact Note */}
+                  {impact && impact.total_packages_impacted > 0 && (
+                    <div className="text-xs text-blue-600 mt-1">
+                      Will enable {Math.floor(alert.reorderQuantity / (impact.affected_packages[0]?.quantity_per_package || 1))} additional packages
                     </div>
                   )}
                 </div>

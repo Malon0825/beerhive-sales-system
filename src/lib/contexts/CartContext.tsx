@@ -161,7 +161,6 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
               vip_price: null,
               valid_from: null,
               valid_until: null,
-              max_quantity_per_transaction: 1,
               is_addon_eligible: false,
               time_restrictions: null,
               is_active: true,

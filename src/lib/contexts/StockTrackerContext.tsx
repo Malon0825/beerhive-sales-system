@@ -58,6 +58,12 @@ interface StockTrackerContextType {
    * @returns true if stock is sufficient
    */
   hasStock: (productId: string, quantity: number) => boolean;
+
+  /**
+   * Determine if the tracker already has an entry for the given product
+   * Useful for ensuring initialization completed before reserving stock
+   */
+  isProductTracked: (productId: string) => boolean;
 }
 
 const StockTrackerContext = createContext<StockTrackerContextType | undefined>(undefined);
@@ -85,16 +91,46 @@ export function StockTrackerProvider({ children }: { children: React.ReactNode }
    */
   const initializeStock = useCallback((products: Product[]) => {
     console.log('📊 [StockTracker] Initializing stock for', products.length, 'products');
-    
-    const initialState: StockState = {};
-    products.forEach(product => {
-      initialState[product.id] = {
-        originalStock: product.current_stock,
-        currentStock: product.current_stock,
-      };
+
+    setStockState(prev => {
+      const nextState: StockState = {};
+
+      let hasDifference = false;
+
+      products.forEach(product => {
+        const existing = prev[product.id];
+        const originalStock = product.current_stock;
+
+        // Preserve any in-flight reservations by carrying over the diff between
+        // original and current stock. This avoids giving the UI extra stock when
+        // the catalog refetches (e.g. navigating away and back to POS).
+        const reservedQuantity = existing
+          ? Math.max(0, existing.originalStock - existing.currentStock)
+          : 0;
+
+        const computedState = {
+          originalStock,
+          currentStock: Math.max(0, originalStock - reservedQuantity),
+        };
+
+        nextState[product.id] = computedState;
+
+        if (!existing) {
+          hasDifference = true;
+        } else if (
+          existing.originalStock !== computedState.originalStock ||
+          existing.currentStock !== computedState.currentStock
+        ) {
+          hasDifference = true;
+        }
+      });
+
+      if (!hasDifference) {
+        return prev;
+      }
+
+      return nextState;
     });
-    
-    setStockState(initialState);
   }, []);
 
   /**
@@ -199,6 +235,13 @@ export function StockTrackerProvider({ children }: { children: React.ReactNode }
     return current.currentStock >= quantity;
   }, [stockState]);
 
+  /**
+   * Check whether a product already exists in the stock snapshot
+   */
+  const isProductTracked = useCallback((productId: string): boolean => {
+    return Boolean(stockState[productId]);
+  }, [stockState]);
+
   const value: StockTrackerContextType = {
     initializeStock,
     getCurrentStock,
@@ -206,6 +249,7 @@ export function StockTrackerProvider({ children }: { children: React.ReactNode }
     releaseStock,
     resetAllStock,
     hasStock,
+    isProductTracked,
   };
 
   return (

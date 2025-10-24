@@ -12,6 +12,13 @@ import GridColumnSelector from '@/views/shared/ui/GridColumnSelector';
 import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
 import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
 import { formatCurrency } from '@/lib/utils/formatters';
+import { 
+  fetchAllPackageAvailability,
+  getAvailabilityStatus,
+  getAvailabilityColor,
+  type PackageAvailabilityItem
+} from '@/data/queries/package-availability.queries';
+import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
 
 /**
  * SessionProductSelector Component
@@ -61,7 +68,9 @@ interface Package {
     product_id: string;
     quantity: number;
     product?: {
+      id: string;
       name: string;
+      current_stock: number;
     };
   }>;
 }
@@ -89,8 +98,47 @@ export default function SessionProductSelector({
   // Grid columns with session storage persistence (default: 5 columns)
   const [gridColumns, setGridColumns] = useSessionStorage<number>('tab-product-grid-columns', 5);
   
+  // Alert dialog state
+  const [alertDialog, setAlertDialog] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    details?: string[];
+    variant: 'error' | 'warning' | 'success' | 'info' | 'stock-error';
+  }>({
+    open: false,
+    title: '',
+    variant: 'info',
+  });
+  
   // Access stock tracker context
   const stockTracker = useStockTracker();
+
+  // Fetch package availability (Phase 4 - POS Integration)
+  const [packageAvailability, setPackageAvailability] = useState<PackageAvailabilityItem[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+
+  // Load package availability on mount and refresh every 30 seconds
+  useEffect(() => {
+    const loadAvailability = async () => {
+      try {
+        setAvailabilityLoading(true);
+        const data = await fetchAllPackageAvailability();
+        setPackageAvailability(data);
+      } catch (error) {
+        console.error('Failed to load package availability:', error);
+      } finally {
+        setAvailabilityLoading(false);
+      }
+    };
+
+    loadAvailability();
+
+    // Refresh every 30 seconds for real-time updates
+    const intervalId = setInterval(loadAvailability, 30000);
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   /**
    * Generate dynamic grid class based on selected columns
@@ -305,7 +353,12 @@ export default function SessionProductSelector({
     
     // Check if product has stock
     if (!stockTracker.hasStock(product.id, 1)) {
-      alert(`${product.name} is out of stock`);
+      setAlertDialog({
+        open: true,
+        title: 'Out of Stock',
+        description: `${product.name} is currently out of stock.`,
+        variant: 'stock-error',
+      });
       return;
     }
     
@@ -319,7 +372,16 @@ export default function SessionProductSelector({
   };
 
   /**
-   * Handle package selection
+   * Get package availability data
+   * Phase 4 - Real-time availability checking
+   */
+  const getPackageAvailabilityData = (packageId: string): PackageAvailabilityItem | undefined => {
+    return packageAvailability?.find((p: PackageAvailabilityItem) => p.package_id === packageId);
+  };
+
+  /**
+   * Handle package selection with availability validation
+   * Phase 4 - Enhanced with availability check
    */
   const handlePackageClick = (pkg: Package) => {
     if (!onPackageSelect) {
@@ -332,7 +394,26 @@ export default function SessionProductSelector({
     const customerIsVIP = customerTier !== 'regular';
     
     if (isVIPOnly && !customerIsVIP) {
-      alert('This package is only available for VIP members');
+      setAlertDialog({
+        open: true,
+        title: 'VIP Package',
+        description: 'This package is only available for VIP members. Please upgrade your membership to access VIP packages.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    // Phase 4: Check package availability
+    const availability = getPackageAvailabilityData(pkg.id);
+    if (availability && availability.max_sellable === 0) {
+      const bottleneck = availability.bottleneck?.product_name || 'a component';
+      setAlertDialog({
+        open: true,
+        title: 'Package Unavailable',
+        description: `This package is currently unavailable due to insufficient stock.`,
+        details: [`Missing: ${bottleneck}`],
+        variant: 'stock-error',
+      });
       return;
     }
 
@@ -682,6 +763,16 @@ export default function SessionProductSelector({
           )}
         </div>
       </CardContent>
+
+      {/* Alert Dialog for Warnings and Errors */}
+      <AlertDialogSimple
+        open={alertDialog.open}
+        onOpenChange={(open) => setAlertDialog({ ...alertDialog, open })}
+        title={alertDialog.title}
+        description={alertDialog.description}
+        details={alertDialog.details}
+        variant={alertDialog.variant}
+      />
     </Card>
   );
 }

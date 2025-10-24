@@ -93,19 +93,23 @@ export class OrderItemService {
         console.log(`✅ [OrderItemService.removeOrderItem] Marked kitchen order ${kitchenOrder.id} (${kitchenOrder.status}) as CANCELLED`);
       }
 
-      // 6. Return stock if item has product_id
-      if (orderItem.product_id) {
-        console.log(`📦 [OrderItemService.removeOrderItem] Returning ${orderItem.quantity} units of product ${orderItem.product_id} to stock`);
+      // 6. Return stock if item has product_id or package_id
+      if (orderItem.product_id || orderItem.package_id) {
+        console.log(`📦 [OrderItemService.removeOrderItem] Returning ${orderItem.quantity} units of ${orderItem.package_id ? 'package' : 'product'} ${orderItem.product_id || orderItem.package_id} to stock`);
         
         await StockDeduction.returnForVoidedOrder(
           orderId,
-          [{ product_id: orderItem.product_id, quantity: orderItem.quantity }],
+          [{ 
+            product_id: orderItem.product_id, 
+            package_id: orderItem.package_id,
+            quantity: orderItem.quantity 
+          }],
           userId
         );
         
         console.log(`✅ [OrderItemService.removeOrderItem] Stock returned successfully`);
       } else {
-        console.log(`⏭️  [OrderItemService.removeOrderItem] No product_id, skipping stock return (likely a package)`);
+        console.log(`⏭️  [OrderItemService.removeOrderItem] No product_id or package_id, skipping stock return`);
       }
 
       // 7. Delete the order item
@@ -252,14 +256,18 @@ export class OrderItemService {
 
       console.log(`📊 [OrderItemService.updateOrderItemQuantity] Old: ${oldQuantity}, New: ${newQuantity}, Diff: ${quantityDifference}`);
 
-      // Handle stock adjustment if item has product_id
-      if (orderItem.product_id && quantityDifference !== 0) {
+      // Handle stock adjustment if item has product_id or package_id
+      if ((orderItem.product_id || orderItem.package_id) && quantityDifference !== 0) {
         if (quantityDifference < 0) {
           // Returning stock
           console.log(`📦 [OrderItemService.updateOrderItemQuantity] Returning ${Math.abs(quantityDifference)} units to stock`);
           await StockDeduction.returnForVoidedOrder(
             orderId,
-            [{ product_id: orderItem.product_id, quantity: Math.abs(quantityDifference) }],
+            [{ 
+              product_id: orderItem.product_id, 
+              package_id: orderItem.package_id,
+              quantity: Math.abs(quantityDifference) 
+            }],
             userId
           );
         } else {
@@ -267,16 +275,20 @@ export class OrderItemService {
           console.log(`📦 [OrderItemService.updateOrderItemQuantity] Deducting additional ${quantityDifference} units from stock`);
           
           // Note: Stock deduction happens at payment, but we should check availability
-          const stockCheck = await StockDeduction.checkStockAvailability([
-            { product_id: orderItem.product_id, quantity: quantityDifference }
-          ]);
+          // For packages, this only checks if configured (package stock check not yet implemented)
+          if (orderItem.product_id) {
+            const stockCheck = await StockDeduction.checkStockAvailability([
+              { product_id: orderItem.product_id, quantity: quantityDifference }
+            ]);
 
-          if (!stockCheck.available) {
-            throw new AppError(
-              `Insufficient stock. Available: ${stockCheck.insufficientItems[0]?.available || 0}`,
-              400
-            );
+            if (!stockCheck.available) {
+              throw new AppError(
+                `Insufficient stock. Available: ${stockCheck.insufficientItems[0]?.available || 0}`,
+                400
+              );
+            }
           }
+          // TODO: Implement package availability check using PackageAvailabilityService
         }
       }
 

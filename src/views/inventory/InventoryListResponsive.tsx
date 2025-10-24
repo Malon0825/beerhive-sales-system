@@ -8,11 +8,12 @@ import { Badge } from '../shared/ui/badge';
 import { Button } from '../shared/ui/button';
 import { 
   Edit, AlertCircle, CheckCircle, XCircle, Power, Eye, EyeOff,
-  LayoutGrid, List, Package, DollarSign, Filter
+  LayoutGrid, List, Package, DollarSign, Filter, ChevronDown, ChevronUp
 } from 'lucide-react';
 import StockAdjustmentDialog from './StockAdjustmentDialog';
 import EditProductDialog from './EditProductDialog';
 import { toast } from '@/lib/hooks/useToast';
+import { PackageImpactSection, PackageImpactBadge } from './components/PackageImpactSection';
 
 interface InventoryListResponsiveProps {
   onStatsUpdate?: (stats: {
@@ -44,6 +45,7 @@ export default function InventoryListResponsive({
   const [isAdjustDialogOpen, setIsAdjustDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadCategories();
@@ -206,6 +208,21 @@ export default function InventoryListResponsive({
     loadProducts();
   };
 
+  /**
+   * Toggle package impact section for a product
+   */
+  const togglePackageImpact = (productId: string) => {
+    setExpandedProductIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(productId)) {
+        newSet.delete(productId);
+      } else {
+        newSet.add(productId);
+      }
+      return newSet;
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -315,6 +332,8 @@ export default function InventoryListResponsive({
             );
             const isInactive = product.is_active === false;
 
+            const isExpanded = expandedProductIds.has(product.id);
+
             return (
               <div
                 key={product.id}
@@ -336,6 +355,13 @@ export default function InventoryListResponsive({
                         {product.name}
                       </h3>
                       <p className="text-sm text-gray-500">{product.sku}</p>
+                      {/* Package Impact Badge */}
+                      <div className="mt-2">
+                        <PackageImpactBadge 
+                          productId={product.id}
+                          onClick={() => togglePackageImpact(product.id)}
+                        />
+                      </div>
                     </div>
                     <StockStatusBadge status={status} />
                   </div>
@@ -412,6 +438,16 @@ export default function InventoryListResponsive({
                     <Power className="w-4 h-4" />
                   </Button>
                 </div>
+
+                {/* Expandable Package Impact Section */}
+                {isExpanded && (
+                  <div className="p-4 bg-gray-50 border-t border-gray-200">
+                    <PackageImpactSection 
+                      productId={product.id}
+                      productName={product.name}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -425,6 +461,7 @@ export default function InventoryListResponsive({
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="w-8"></th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Product
                   </th>
@@ -459,30 +496,52 @@ export default function InventoryListResponsive({
                     product.cost_price || 0
                   );
                   const isInactive = product.is_active === false;
+                  const isExpanded = expandedProductIds.has(product.id);
 
                   return (
-                    <tr 
-                      key={product.id} 
-                      className={`transition-colors ${
-                        isInactive 
-                          ? 'bg-gray-100 opacity-60' 
-                          : status === 'out_of_stock'
-                          ? 'bg-red-50 hover:bg-red-100'
-                          : status === 'low_stock'
-                          ? 'bg-orange-50 hover:bg-orange-100'
-                          : 'bg-white hover:bg-gray-50'
-                      }`}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                          {isInactive && (
-                            <Badge variant="secondary" className="bg-gray-500 text-white text-xs">
-                              Inactive
-                            </Badge>
-                          )}
-                        </div>
-                      </td>
+                    <>
+                      <tr 
+                        key={product.id} 
+                        className={`transition-colors ${
+                          isInactive 
+                            ? 'bg-gray-100 opacity-60' 
+                            : status === 'out_of_stock'
+                            ? 'bg-red-50 hover:bg-red-100'
+                            : status === 'low_stock'
+                            ? 'bg-orange-50 hover:bg-orange-100'
+                            : 'bg-white hover:bg-gray-50'
+                        }`}
+                      >
+                        <td className="px-2 py-4">
+                          <button
+                            onClick={() => togglePackageImpact(product.id)}
+                            className="p-1 hover:bg-gray-200 rounded transition-colors"
+                            title="Toggle package impact"
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4 text-gray-600" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-600" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-medium text-gray-900">{product.name}</div>
+                              {isInactive && (
+                                <Badge variant="secondary" className="bg-gray-500 text-white text-xs">
+                                  Inactive
+                                </Badge>
+                              )}
+                            </div>
+                            {/* Package Impact Badge */}
+                            <PackageImpactBadge 
+                              productId={product.id}
+                              onClick={() => togglePackageImpact(product.id)}
+                            />
+                          </div>
+                        </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-500">{product.sku}</div>
                       </td>
@@ -541,6 +600,19 @@ export default function InventoryListResponsive({
                         </div>
                       </td>
                     </tr>
+
+                    {/* Expandable Package Impact Row */}
+                    {isExpanded && (
+                      <tr key={`${product.id}-expanded`}>
+                        <td colSpan={8} className="px-6 py-4 bg-gray-50">
+                          <PackageImpactSection 
+                            productId={product.id}
+                            productName={product.name}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </>
                   );
                 })}
               </tbody>

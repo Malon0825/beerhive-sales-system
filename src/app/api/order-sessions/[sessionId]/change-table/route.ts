@@ -11,10 +11,10 @@ import { supabaseAdmin } from '@/data/supabase/server-client';
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    const { sessionId } = params;
+    const { sessionId } = await params;
     const { newTableId } = await request.json();
 
     console.log(`🔄 [ChangeTable] Request to move session ${sessionId} to table ${newTableId}`);
