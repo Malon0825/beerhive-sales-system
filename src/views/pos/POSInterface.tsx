@@ -62,7 +62,6 @@ export function POSInterface() {
   const [receiptData, setReceiptData] = useState<any>(null);
   const [categories, setCategories] = useState<Array<{id: string; name: string; color_code?: string}>>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
-  const [cartRestored, setCartRestored] = useState(false);
   const [topSellingMap, setTopSellingMap] = useState<Record<string, number>>({});
   
   // Grid columns with session storage persistence (default: 5 columns)
@@ -101,84 +100,155 @@ export function POSInterface() {
   
   // Show loading message if cart items were restored AND re-reserve stock
   useEffect(() => {
-    // Wait for cart to finish loading before checking
-    if (!cart.isLoadingCart && !cartRestored && cart.items.length > 0) {
+    // Wait for products and cart to finish loading before re-reserving
+    if (
+      loading ||
+      cart.isLoadingCart ||
+      cartRestorationCompleteRef.current ||
+      cart.items.length === 0 ||
+      products.length === 0
+    ) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const reReserveStockForRestoredCart = async () => {
+      // Ensure every product in the restored cart is already tracked.
+      // If products are still initializing, wait for next render cycle.
+      const untrackedProductIds: string[] = [];
+
+      cart.items.forEach(item => {
+        const collectUntracked = (productId: string | undefined) => {
+          if (!productId) {
+            return;
+          }
+          if (!stockTracker.isProductTracked(productId)) {
+            untrackedProductIds.push(productId);
+          }
+        };
+
+        if (item.product) {
+          collectUntracked(item.product.id);
+        }
+
+        if (item.package?.items) {
+          item.package.items.forEach((pkgItem: any) => {
+            collectUntracked(pkgItem.product?.id);
+          });
+        }
+      });
+
+      if (untrackedProductIds.length > 0) {
+        console.log('⏳ [POSInterface] Stock tracker not ready for products:', untrackedProductIds);
+        return;
+      }
+
       // CRITICAL FIX: Re-reserve stock for all items in restored cart
       // When cart is loaded from IndexedDB, stock tracker is fresh (memory-based)
       // We must re-reserve the stock to prevent double-selling
-      const reReserveStockForRestoredCart = async () => {
-        console.log('🔄 [POSInterface] Re-reserving stock for', cart.items.length, 'restored cart items');
-        
-        for (const item of cart.items) {
-          if (item.product) {
-            // Regular product - reserve stock
-            stockTracker.reserveStock(item.product.id, item.quantity);
-            console.log(`  ✅ Reserved ${item.quantity}x ${item.product.name} (product)`);
-          } else if (item.package) {
-            // Package - need to fetch full package data if items not loaded
-            if (!item.package.items || item.package.items.length === 0) {
-              console.log(`  🔄 Fetching package data for "${item.package.name}"...`);
-              try {
-                const response = await fetch(`/api/packages/${item.package.id}`);
-                const result = await response.json();
-                if (result.success && result.data) {
-                  const fullPackage = result.data;
-                  // Update cart item with full package data (including items)
-                  item.package = fullPackage;
-                  
-                  // Now reserve stock for components
-                  if (fullPackage.items && fullPackage.items.length > 0) {
-                    fullPackage.items.forEach((pkgItem: any) => {
-                      if (pkgItem.product) {
-                        const requiredQty = pkgItem.quantity * item.quantity;
-                        stockTracker.reserveStock(pkgItem.product.id, requiredQty);
-                        console.log(`    ✅ Reserved ${requiredQty}x ${pkgItem.product.name} (package component)`);
-                      }
-                    });
-                  }
+      console.log('🔄 [POSInterface] Re-reserving stock for', cart.items.length, 'restored cart items');
+      
+      for (const item of cart.items) {
+        if (isCancelled) {
+          return;
+        }
+
+        if (item.product) {
+          // Regular product - reserve stock
+          stockTracker.reserveStock(item.product.id, item.quantity);
+          console.log(`  ✅ Reserved ${item.quantity}x ${item.product.name} (product)`);
+        } else if (item.package) {
+          // Package - need to fetch full package data if items not loaded
+          if (!item.package.items || item.package.items.length === 0) {
+            console.log(`  🔄 Fetching package data for "${item.package.name}"...`);
+            try {
+              const response = await fetch(`/api/packages/${item.package.id}`);
+              const result = await response.json();
+              if (result.success && result.data) {
+                const fullPackage = result.data;
+                // Update cart item with full package data (including items)
+                item.package = fullPackage;
+                
+                // Now reserve stock for components
+                if (fullPackage.items && fullPackage.items.length > 0) {
+                  fullPackage.items.forEach((pkgItem: any) => {
+                    if (pkgItem.product) {
+                      const requiredQty = pkgItem.quantity * item.quantity;
+                      stockTracker.reserveStock(pkgItem.product.id, requiredQty);
+                      console.log(`    ✅ Reserved ${requiredQty}x ${pkgItem.product.name} (package component)`);
+                    }
+                  });
                 }
-              } catch (error) {
-                console.error(`  ❌ Failed to fetch package data for "${item.package?.name || 'Unknown'}":`, error);
-                console.warn('   Stock cannot be reserved. Package should be removed and re-added.');
               }
-            } else {
-              // Package with items already loaded - reserve stock
-              item.package.items.forEach((pkgItem: any) => {
-                if (pkgItem.product) {
-                  const requiredQty = pkgItem.quantity * item.quantity;
-                  stockTracker.reserveStock(pkgItem.product.id, requiredQty);
-                  console.log(`  ✅ Reserved ${requiredQty}x ${pkgItem.product.name} (package component)`);
-                }
-              });
+            } catch (error) {
+              console.error(`  ❌ Failed to fetch package data for "${item.package?.name || 'Unknown'}":`, error);
+              console.warn('   Stock cannot be reserved. Package should be removed and re-added.');
             }
+          } else {
+            // Package with items already loaded - reserve stock
+            item.package.items.forEach((pkgItem: any) => {
+              if (pkgItem.product) {
+                const requiredQty = pkgItem.quantity * item.quantity;
+                stockTracker.reserveStock(pkgItem.product.id, requiredQty);
+                console.log(`  ✅ Reserved ${requiredQty}x ${pkgItem.product.name} (package component)`);
+              }
+            });
           }
         }
-        
+      }
+      
+      if (!isCancelled) {
         setSuccessMessage(`Welcome back! Your cart has been restored with ${cart.items.length} item(s).`);
         setTimeout(() => {
           setSuccessMessage(null);
         }, 4000);
-      };
-      
-      reReserveStockForRestoredCart();
-      setCartRestored(true);
-    }
-  }, [cart.isLoadingCart, cart.items.length, cartRestored, cart.items, stockTracker]);
+        cartRestorationCompleteRef.current = true;
+      }
+    };
+    
+    reReserveStockForRestoredCart()
+      .catch(error => {
+        console.error('❌ [POSInterface] Failed to re-reserve stock for restored cart:', error);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    loading,
+    cart.isLoadingCart,
+    cart.items.length,
+    products.length,
+  ]);
   
   // Refs to prevent duplicate API calls
   const fetchingProductsRef = useRef(false);
   const fetchingPackagesRef = useRef(false);
   const hasFetchedRef = useRef(false);
+  const cartRestorationCompleteRef = useRef(false);
 
   /**
-   * Track component mount/unmount for debugging
+   * Track component mount/unmount for debugging and reset restoration flag
    */
   useEffect(() => {
     console.log('🎬 [POSInterface] Component mounted');
     return () => {
       console.log('🔚 [POSInterface] Component unmounted');
+      cartRestorationCompleteRef.current = false;
     };
   }, []);
+
+  /**
+   * Reset restoration flag when cart is cleared
+   */
+  useEffect(() => {
+    if (cart.items.length === 0 && cartRestorationCompleteRef.current) {
+      console.log('🔄 [POSInterface] Cart cleared, resetting restoration flag');
+      cartRestorationCompleteRef.current = false;
+    }
+  }, [cart.items.length]);
 
   /**
    * Fetch top selling products (last 30 days by default via 'month' period)
