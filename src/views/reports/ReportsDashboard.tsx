@@ -54,10 +54,14 @@ export function ReportsDashboard() {
     setError(null);
 
     try {
+      // URL-encode dates to preserve special characters like + in timezone offsets
+      const encodedStart = encodeURIComponent(startDate);
+      const encodedEnd = encodeURIComponent(endDate);
+      
       const [salesRes, inventoryRes, customersRes] = await Promise.all([
-        fetch(`/api/reports/sales?type=comprehensive&startDate=${startDate}&endDate=${endDate}`),
-        fetch(`/api/reports/inventory?type=summary&startDate=${startDate}&endDate=${endDate}`),
-        fetch(`/api/reports/customers?type=summary&startDate=${startDate}&endDate=${endDate}`),
+        fetch(`/api/reports/sales?type=comprehensive&startDate=${encodedStart}&endDate=${encodedEnd}`),
+        fetch(`/api/reports/inventory?type=summary&startDate=${encodedStart}&endDate=${encodedEnd}`),
+        fetch(`/api/reports/customers?type=summary&startDate=${encodedStart}&endDate=${encodedEnd}`),
       ]);
 
       if (!salesRes.ok || !inventoryRes.ok || !customersRes.ok) {
@@ -92,6 +96,8 @@ export function ReportsDashboard() {
     // Initialize with default week period aligned to business hours
     // Business operates 5pm to 5pm next day
     // Last 7 Days = 5pm 8 days ago to 5pm today
+    // 
+    // Timezone Fix (v1.0.3): Append explicit timezone to prevent PostgreSQL misinterpretation
     const formatLocalDateTime = (date: Date): string => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -99,7 +105,7 @@ export function ReportsDashboard() {
       const hours = String(date.getHours()).padStart(2, '0');
       const minutes = String(date.getMinutes()).padStart(2, '0');
       const seconds = String(date.getSeconds()).padStart(2, '0');
-      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+08:00`;
     };
     
     const endDate = new Date();

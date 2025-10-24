@@ -43,12 +43,21 @@ export interface TierDistribution {
 export class CustomerReportService {
   /**
    * Get customer visit frequency and spending patterns
+   * 
+   * If dates are provided, they are passed through directly to preserve timezone info.
+   * Otherwise, generates default dates with UTC conversion (legacy behavior).
    */
   static async getCustomerAnalytics(
     params: CustomerReportParams = {}
   ): Promise<CustomerAnalytics[]> {
-    const endDate = params.endDate || new Date().toISOString();
-    const startDate = params.startDate || subDays(new Date(endDate), 30).toISOString();
+    // If dates are provided, use them directly (preserves timezone offset like +08:00)
+    if (params.startDate && params.endDate) {
+      return await getCustomerVisitFrequency(params.startDate, params.endDate);
+    }
+    
+    // Fallback: generate default dates (last 30 days)
+    const endDate = new Date().toISOString();
+    const startDate = subDays(new Date(endDate), 30).toISOString();
 
     return await getCustomerVisitFrequency(startDate, endDate);
   }

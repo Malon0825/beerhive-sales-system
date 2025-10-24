@@ -37,6 +37,10 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
    * - Yesterday: 5pm 2 days ago → 5pm yesterday (previous business day)
    * - Last 7 Days: 5pm 8 days ago → 5pm today (7 complete business days)
    * - Last 30 Days: 5pm 31 days ago → 5pm today (30 complete business days)
+   * 
+   * Timezone Fix (v1.0.3):
+   * Appends explicit timezone offset (+08:00 for Philippines) to prevent PostgreSQL
+   * from misinterpreting timestamps when database timezone differs from app timezone.
    */
   const handlePeriodChange = (newPeriod: DatePeriod) => {
     setPeriod(newPeriod);
@@ -44,8 +48,8 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
     let start: Date;
     let end: Date;
 
-    // Format as local datetime string (YYYY-MM-DDTHH:mm:ss)
-    // Do NOT use .toISOString() as it converts to UTC, causing 8-hour shift
+    // Format as local datetime string with explicit timezone offset
+    // Format: "YYYY-MM-DDTHH:mm:ss+08:00" (Philippines/Manila timezone)
     const formatLocalDateTime = (date: Date): string => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -53,7 +57,7 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
       const hours = String(date.getHours()).padStart(2, '0');
       const minutes = String(date.getMinutes()).padStart(2, '0');
       const seconds = String(date.getSeconds()).padStart(2, '0');
-      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}+08:00`;
     };
 
     switch (newPeriod) {
@@ -142,17 +146,23 @@ export function DateRangeFilter({ onDateRangeChange, defaultPeriod = 'week' }: D
   /**
    * Combine date-only and time into datetime strings and propagate to parent
    * 
-   * IMPORTANT: We pass local datetime strings directly without timezone conversion.
-   * Database is configured in Philippines timezone (UTC+8), so local times are preserved.
+   * CRITICAL FIX: Append explicit timezone offset to prevent PostgreSQL misinterpretation.
+   * Without timezone, PostgreSQL interprets timestamps based on database timezone setting,
+   * which may differ from application timezone, causing 8-hour shifts in query results.
    * 
-   * Bug Fix (v1.0.2): Previously used .toISOString() which converted local time to UTC,
-   * causing an 8-hour shift in query results (e.g., 8pm became 12pm UTC).
+   * Philippines Time = UTC+8, so we append '+08:00' to make timezone explicit.
+   * Format: "YYYY-MM-DDTHH:mm:ss+08:00"
+   * 
+   * Bug History:
+   * - v1.0.1: Used .toISOString() → forced UTC conversion (wrong)
+   * - v1.0.2: Removed .toISOString() → timezone-naive strings (still wrong if DB in UTC)
+   * - v1.0.3: Append explicit timezone offset → correct interpretation guaranteed
    */
   const handleCustomDateChange = () => {
     if (startDateOnly && endDateOnly) {
-      // Format: "YYYY-MM-DDTHH:mm:ss" in local time
-      const startStr = `${startDateOnly}T${(startTime || '00:00')}:00`;
-      const endStr = `${endDateOnly}T${(endTime || '23:59')}:59`;
+      // Format: "YYYY-MM-DDTHH:mm:ss+08:00" with explicit Philippines timezone
+      const startStr = `${startDateOnly}T${(startTime || '00:00')}:00+08:00`;
+      const endStr = `${endDateOnly}T${(endTime || '23:59')}:59+08:00`;
       setStartDate(startStr);
       setEndDate(endStr);
       onDateRangeChange(startStr, endStr, 'custom');
