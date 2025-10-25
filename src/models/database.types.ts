@@ -726,6 +726,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"] | null
           status: Database["public"]["Enums"]["order_status"] | null
           subtotal: number
+          session_id: string | null
           table_id: string | null
           tax_amount: number | null
           total_amount: number
@@ -749,6 +750,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           status?: Database["public"]["Enums"]["order_status"] | null
           subtotal?: number
+          session_id?: string | null
           table_id?: string | null
           tax_amount?: number | null
           total_amount?: number
@@ -772,6 +774,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           status?: Database["public"]["Enums"]["order_status"] | null
           subtotal?: number
+          session_id?: string | null
           table_id?: string | null
           tax_amount?: number | null
           total_amount?: number
@@ -803,8 +806,101 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "orders_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "order_sessions"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orders_voided_by_fkey"
             columns: ["voided_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_sessions: {
+        Row: {
+          id: string
+          session_number: string
+          table_id: string | null
+          customer_id: string | null
+          subtotal: number
+          discount_amount: number
+          tax_amount: number
+          total_amount: number
+          status: Database["public"]["Enums"]["session_status"] | null
+          opened_at: string | null
+          closed_at: string | null
+          opened_by: string | null
+          closed_by: string | null
+          notes: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          session_number?: string
+          table_id?: string | null
+          customer_id?: string | null
+          subtotal?: number
+          discount_amount?: number
+          tax_amount?: number
+          total_amount?: number
+          status?: Database["public"]["Enums"]["session_status"] | null
+          opened_at?: string | null
+          closed_at?: string | null
+          opened_by?: string | null
+          closed_by?: string | null
+          notes?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          session_number?: string
+          table_id?: string | null
+          customer_id?: string | null
+          subtotal?: number
+          discount_amount?: number
+          tax_amount?: number
+          total_amount?: number
+          status?: Database["public"]["Enums"]["session_status"] | null
+          opened_at?: string | null
+          closed_at?: string | null
+          opened_by?: string | null
+          closed_by?: string | null
+          notes?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_sessions_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "restaurant_tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_sessions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_sessions_opened_by_fkey"
+            columns: ["opened_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_sessions_closed_by_fkey"
+            columns: ["closed_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -1712,7 +1808,7 @@ export type Database = {
       event_type: "birthday" | "anniversary" | "custom"
       kitchen_order_status: "pending" | "preparing" | "ready" | "served" | "cancelled"
       order_destination: "kitchen" | "bartender" | "both"
-      order_status: "pending" | "completed" | "voided" | "on_hold"
+      order_status: "pending" | "completed" | "voided" | "on_hold" | "draft" | "confirmed" | "preparing" | "ready" | "served"
       package_type: "vip_only" | "regular" | "promotional"
       payment_method:
         | "cash"
@@ -1721,6 +1817,7 @@ export type Database = {
         | "paymaya"
         | "bank_transfer"
         | "split"
+      session_status: "open" | "closed" | "abandoned"
       table_status: "available" | "occupied" | "reserved" | "cleaning"
       user_role: "admin" | "manager" | "cashier" | "kitchen" | "bartender"
     }
@@ -1875,7 +1972,17 @@ export const Constants = {
       event_type: ["birthday", "anniversary", "custom"],
       kitchen_order_status: ["pending", "preparing", "ready", "served", "cancelled"],
       order_destination: ["kitchen", "bartender", "both"],
-      order_status: ["pending", "completed", "voided", "on_hold"],
+      order_status: [
+        "pending",
+        "completed",
+        "voided",
+        "on_hold",
+        "draft",
+        "confirmed",
+        "preparing",
+        "ready",
+        "served",
+      ],
       package_type: ["vip_only", "regular", "promotional"],
       payment_method: [
         "cash",
@@ -1885,6 +1992,7 @@ export const Constants = {
         "bank_transfer",
         "split",
       ],
+      session_status: ["open", "closed", "abandoned"],
       table_status: ["available", "occupied", "reserved", "cleaning"],
       user_role: ["admin", "manager", "cashier", "kitchen", "bartender"],
     },

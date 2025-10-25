@@ -12,6 +12,8 @@ import {
   getSalesByCategory,
   getSalesByCashier,
   getAllProductsSold as queryGetAllProductsSold,
+  getAllProductsAndPackagesSold,
+  getAllProductsSoldCombined,
 } from '@/data/queries/reports.queries';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 
@@ -47,9 +49,9 @@ export class SalesReportService {
    * bugs and maintains precision for custom date range queries.
    */
   private static getDateRange(params: SalesReportParams): { startDate: string; endDate: string } {
-    // If startDate and endDate are provided as strings (custom range with timezone),
-    // pass them through directly without parsing/converting
-    if (params.startDate && params.endDate && (params.period === 'custom' || !params.period)) {
+    // If startDate and endDate are provided as strings (with explicit timezone),
+    // pass them through directly without parsing/converting, regardless of period.
+    if (params.startDate && params.endDate) {
       return {
         startDate: params.startDate,
         endDate: params.endDate,
@@ -222,7 +224,7 @@ export class SalesReportService {
    * Get comprehensive sales report
    */
   static async getComprehensiveReport(params: SalesReportParams = {}) {
-    const [summary, dailySales, topProducts, paymentMethods, categories, cashiers, allProductsSold] =
+    const [summary, dailySales, topProducts, paymentMethods, categories, cashiers, allProductsSold, allProductsAndPackagesSold, allProductsSoldCombined] =
       await Promise.all([
         this.getSalesSummary(params),
         this.getDailySales(params),
@@ -231,6 +233,14 @@ export class SalesReportService {
         this.getSalesByCategory(params),
         this.getSalesByCashier(params),
         this.getAllProductsSold(params),
+        (async () => {
+          const { startDate, endDate } = this.getDateRange(params);
+          return await getAllProductsAndPackagesSold(startDate, endDate);
+        })(),
+        (async () => {
+          const { startDate, endDate } = this.getDateRange(params);
+          return await getAllProductsSoldCombined(startDate, endDate);
+        })(),
       ]);
 
     return {
@@ -240,7 +250,9 @@ export class SalesReportService {
       payment_methods: paymentMethods,
       categories,
       cashiers,
-      all_products_sold: allProductsSold,
+      all_products_sold: allProductsAndPackagesSold,
+      all_products_sold_standalone: allProductsAndPackagesSold,
+      all_products_sold_combined: allProductsSoldCombined,
     };
   }
 }
