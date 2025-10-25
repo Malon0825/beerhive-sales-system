@@ -83,24 +83,23 @@ export default function SettingsDashboard() {
         </Link>
 
         {/* General Settings */}
-        <Card className="p-6 opacity-50 cursor-not-allowed border-2">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-green-100 rounded-lg">
-              <Settings className="w-8 h-8 text-green-600" />
+        <Link href="/settings/general">
+          <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-amber-500">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-green-100 rounded-lg">
+                <Settings className="w-8 h-8 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  General Settings
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  Configure business information, tax rates, and system preferences.
+                </p>
+              </div>
             </div>
-            <div className="flex-1">
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                General Settings
-              </h3>
-              <p className="text-gray-600 text-sm">
-                Configure business information, tax rates, and system preferences.
-              </p>
-              <span className="inline-block mt-2 text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded">
-                Coming Soon
-              </span>
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </Link>
 
         {/* Security Settings */}
         <Card className="p-6 opacity-50 cursor-not-allowed border-2">

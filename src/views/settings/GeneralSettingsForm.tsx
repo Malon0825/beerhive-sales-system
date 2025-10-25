@@ -10,10 +10,20 @@ export default function GeneralSettingsForm() {
   const [settings, setSettings] = useState({
     // Business
     'business.name': '',
-    'business.address': '',
+    'business.legal_name': '',
+    'business.registration_number': '',
+    'business.tax_id': '',
+    'business.address_line1': '',
+    'business.address_line2': '',
+    'business.city': '',
+    'business.province': '',
+    'business.postal_code': '',
+    'business.country': 'Philippines',
     'business.phone': '',
     'business.email': '',
-    'business.tax_id': '',
+    'business.website': '',
+    'business.support_contact': '',
+    'business.additional_notes': '',
 
     // Tax
     'tax.enabled': true,
@@ -227,57 +237,172 @@ function TabButton({ active, onClick, icon: Icon, label }: any) {
 function BusinessSettings({ settings, setSettings }: any) {
   return (
     <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900">Business Information</h3>
-
-      <div>
-        <Label htmlFor="business.name">Business Name</Label>
-        <Input
-          id="business.name"
-          value={settings['business.name']}
-          onChange={(e) => setSettings({ ...settings, 'business.name': e.target.value })}
-        />
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold text-gray-900">Business Information</h3>
+        <p className="text-sm text-gray-500">
+          Details saved here automatically flow into printed receipts. Keep this information
+          up to date to stay compliant with invoicing requirements.
+        </p>
       </div>
 
-      <div>
-        <Label htmlFor="business.address">Address</Label>
+      <section className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="business.name">Display Name</Label>
+            <Input
+              id="business.name"
+              value={settings['business.name']}
+              onChange={(e) => setSettings({ ...settings, 'business.name': e.target.value })}
+              placeholder="BeerHive Pub"
+            />
+          </div>
+          <div>
+            <Label htmlFor="business.legal_name">Registered / Legal Name</Label>
+            <Input
+              id="business.legal_name"
+              value={settings['business.legal_name']}
+              onChange={(e) => setSettings({ ...settings, 'business.legal_name': e.target.value })}
+              placeholder="BeerHive Hospitality Inc."
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="business.registration_number">Business Registration No.</Label>
+            <Input
+              id="business.registration_number"
+              value={settings['business.registration_number']}
+              onChange={(e) => setSettings({ ...settings, 'business.registration_number': e.target.value })}
+              placeholder="SEC / DTI Registration"
+            />
+          </div>
+          <div>
+            <Label htmlFor="business.tax_id">Tax ID / TIN</Label>
+            <Input
+              id="business.tax_id"
+              value={settings['business.tax_id']}
+              onChange={(e) => setSettings({ ...settings, 'business.tax_id': e.target.value })}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <Label htmlFor="business.address_line1">Address</Label>
+          <Input
+            id="business.address_line1"
+            value={settings['business.address_line1']}
+            onChange={(e) => setSettings({ ...settings, 'business.address_line1': e.target.value })}
+            placeholder="Street, Building, Barangay"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="business.address_line2">Address Line 2 (Optional)</Label>
+            <Input
+              id="business.address_line2"
+              value={settings['business.address_line2']}
+              onChange={(e) => setSettings({ ...settings, 'business.address_line2': e.target.value })}
+              placeholder="Suite / Floor / Landmark"
+            />
+          </div>
+          <div>
+            <Label htmlFor="business.city">City / Municipality</Label>
+            <Input
+              id="business.city"
+              value={settings['business.city']}
+              onChange={(e) => setSettings({ ...settings, 'business.city': e.target.value })}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Label htmlFor="business.province">Province / State</Label>
+            <Input
+              id="business.province"
+              value={settings['business.province']}
+              onChange={(e) => setSettings({ ...settings, 'business.province': e.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor="business.postal_code">Postal Code</Label>
+            <Input
+              id="business.postal_code"
+              value={settings['business.postal_code']}
+              onChange={(e) => setSettings({ ...settings, 'business.postal_code': e.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor="business.country">Country</Label>
+            <Input
+              id="business.country"
+              value={settings['business.country']}
+              onChange={(e) => setSettings({ ...settings, 'business.country': e.target.value })}
+            />
+          </div>
+        </div>
+      </section>
+
+        <section className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="business.phone">Primary Phone</Label>
+            <Input
+              id="business.phone"
+              value={settings['business.phone']}
+              onChange={(e) => setSettings({ ...settings, 'business.phone': e.target.value })}
+              placeholder="(+63) 900 000 0000"
+            />
+          </div>
+          <div>
+            <Label htmlFor="business.support_contact">Support / Hotline</Label>
+            <Input
+              id="business.support_contact"
+              value={settings['business.support_contact']}
+              onChange={(e) => setSettings({ ...settings, 'business.support_contact': e.target.value })}
+              placeholder="support@beerhive.ph / (+63) 900 000 0001"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="business.email">Email</Label>
+            <Input
+              id="business.email"
+              type="email"
+              value={settings['business.email']}
+              onChange={(e) => setSettings({ ...settings, 'business.email': e.target.value })}
+              placeholder="hello@beerhive.ph"
+            />
+          </div>
+          <div>
+            <Label htmlFor="business.website">Website</Label>
+            <Input
+              id="business.website"
+              value={settings['business.website']}
+              onChange={(e) => setSettings({ ...settings, 'business.website': e.target.value })}
+              placeholder="https://beerhive.ph"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <Label htmlFor="business.additional_notes">Receipt Notes</Label>
         <textarea
-          id="business.address"
-          value={settings['business.address']}
-          onChange={(e) => setSettings({ ...settings, 'business.address': e.target.value })}
+          id="business.additional_notes"
+          value={settings['business.additional_notes']}
+          onChange={(e) => setSettings({ ...settings, 'business.additional_notes': e.target.value })}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           rows={3}
+          placeholder="Operating hours, pickup instructions, VAT exemption wording, etc."
         />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="business.phone">Phone</Label>
-          <Input
-            id="business.phone"
-            value={settings['business.phone']}
-            onChange={(e) => setSettings({ ...settings, 'business.phone': e.target.value })}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="business.email">Email</Label>
-          <Input
-            id="business.email"
-            type="email"
-            value={settings['business.email']}
-            onChange={(e) => setSettings({ ...settings, 'business.email': e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="business.tax_id">Tax ID / TIN</Label>
-        <Input
-          id="business.tax_id"
-          value={settings['business.tax_id']}
-          onChange={(e) => setSettings({ ...settings, 'business.tax_id': e.target.value })}
-        />
-      </div>
+      </section>
     </div>
   );
 }
