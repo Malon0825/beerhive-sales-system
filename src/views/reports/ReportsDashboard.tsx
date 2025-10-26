@@ -134,6 +134,12 @@ export function ReportsDashboard() {
     return new Intl.NumberFormat('en-PH').format(value);
   };
 
+  // Compute total net income from standalone all products sold (individual products only)
+  const netIncomeTotal = (() => {
+    const items = (dashboardData?.sales?.all_products_sold_standalone || dashboardData?.sales?.all_products_sold || []) as any[];
+    return items.reduce((sum, it) => sum + (typeof it?.net_income === 'number' ? it.net_income : 0), 0);
+  })();
+
   /**
    * Define Excel headers for sales data export
    */
@@ -157,6 +163,7 @@ export function ReportsDashboard() {
     { key: 'product_name', label: 'Product Name', width: 25 },
     { key: 'total_quantity', label: 'Quantity Sold', width: 15, format: 'number' },
     { key: 'total_revenue', label: 'Revenue', width: 15, format: 'currency' },
+    { key: 'net_income', label: 'Net Income', width: 15, format: 'currency' },
     { key: 'order_count', label: 'Orders', width: 12, format: 'number' },
   ];
 
@@ -282,7 +289,7 @@ export function ReportsDashboard() {
       ) : dashboardData ? (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
             {/* Total Revenue */}
             <div className="bg-white p-6 rounded-lg shadow-sm border">
               <div className="flex items-center justify-between">
@@ -299,6 +306,22 @@ export function ReportsDashboard() {
               <p className="text-sm text-gray-600 mt-4">
                 Avg: {formatCurrency(dashboardData.sales.summary.average_transaction_value || 0)}
               </p>
+            </div>
+
+            {/* Net Income */}
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Net Income</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-2">
+                    {formatCurrency(netIncomeTotal || 0)}
+                  </p>
+                </div>
+                <div className="p-3 bg-indigo-100 rounded-lg">
+                  <TrendingUp className="w-6 h-6 text-indigo-600" />
+                </div>
+              </div>
+              <p className="text-sm text-gray-600 mt-4">Set cost price for accurate net income</p>
             </div>
 
             {/* Total Transactions */}

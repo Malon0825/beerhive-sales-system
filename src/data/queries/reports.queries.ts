@@ -111,7 +111,8 @@ export async function getDailySalesSummary(startDate: string, endDate: string) {
         total_revenue: 0,
         transaction_count: 0,
         total_discounts: 0,
-        unique_customers: new Set()
+        unique_customers: new Set(),
+        total_net_income: 0,
       });
     }
     const daily = dailyMap.get(date);
@@ -121,6 +122,43 @@ export async function getDailySalesSummary(startDate: string, endDate: string) {
     if (order.customer?.id) {
       daily.unique_customers.add(order.customer.id);
     }
+  });
+
+  // Compute daily net income from individual product sales only
+  const supabase = supabaseAdmin;
+  const { data: items, error: itemsError } = await supabase
+    .from('order_items')
+    .select(`
+      quantity,
+      order:order_id(completed_at, status),
+      product:product_id(base_price, cost_price)
+    `)
+    .gte('order.completed_at', startDate)
+    .lte('order.completed_at', endDate)
+    .eq('order.status', 'completed')
+    .not('product_id', 'is', null);
+
+  if (itemsError) throw itemsError;
+
+  items?.forEach((row: any) => {
+    if (!row.order) return;
+    const date = row.order.completed_at.split('T')[0];
+    const base = row.product?.base_price;
+    const cost = row.product?.cost_price;
+    if (base === undefined || cost === null || cost === undefined) return;
+    if (!dailyMap.has(date)) {
+      dailyMap.set(date, {
+        date,
+        total_revenue: 0,
+        transaction_count: 0,
+        total_discounts: 0,
+        unique_customers: new Set(),
+        total_net_income: 0,
+      });
+    }
+    const daily = dailyMap.get(date);
+    const qty = parseFloat(row.quantity || '1');
+    daily.total_net_income += (parseFloat(base) - parseFloat(cost)) * qty;
   });
 
   return Array.from(dailyMap.values()).map(d => ({
@@ -296,7 +334,8 @@ export async function getAllProductsAndPackagesSold(startDate: string, endDate: 
       item_name,
       quantity,
       total,
-      order:order_id(completed_at, status)
+      order:order_id(completed_at, status),
+      product:product_id(base_price, cost_price)
     `)
     .gte('order.completed_at', startDate)
     .lte('order.completed_at', endDate)
@@ -305,7 +344,7 @@ export async function getAllProductsAndPackagesSold(startDate: string, endDate: 
 
   if (productError) throw productError;
 
-  const byId: Map<string, { product_id: string; product_name: string; total_quantity: number; total_revenue: number; order_count: number; item_type: 'product' | 'package' }>
+  const byId: Map<string, { product_id: string; product_name: string; total_quantity: number; total_revenue: number; order_count: number; item_type: 'product' | 'package'; base_price?: number; cost_price?: number | null; net_income?: number | null }>
     = new Map();
 
   productItems.forEach((item: any) => {
@@ -319,6 +358,8 @@ export async function getAllProductsAndPackagesSold(startDate: string, endDate: 
         total_revenue: 0,
         order_count: 0,
         item_type: 'product',
+        base_price: item.product?.base_price,
+        cost_price: item.product?.cost_price,
       });
     }
     const acc = byId.get(key)!;
@@ -361,6 +402,17 @@ export async function getAllProductsAndPackagesSold(startDate: string, endDate: 
     acc.total_quantity += parseFloat(item.quantity);
     acc.total_revenue += parseFloat(item.total);
     acc.order_count += 1;
+  });
+
+  // Compute net income for individual products only
+  byId.forEach((val) => {
+    if (val.item_type === 'product') {
+      if (val.cost_price === null || val.cost_price === undefined || val.base_price === undefined) {
+        val.net_income = null;
+      } else {
+        val.net_income = (val.base_price - val.cost_price) * val.order_count;
+      }
+    }
   });
 
   return Array.from(byId.values()).sort((a, b) => b.total_revenue - a.total_revenue);

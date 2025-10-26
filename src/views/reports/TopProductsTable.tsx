@@ -17,6 +17,8 @@ interface ProductData {
   total_revenue: number;
   order_count: number;
   item_type?: 'product' | 'package';
+  net_income?: number | null;
+  cost_price?: number | null;
 }
 
 interface TopProductsTableProps {
@@ -91,6 +93,11 @@ export function TopProductsTable({ products, title = 'Top Selling Products', lim
               {!hideRevenue && (
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-50 z-10">
                   Revenue
+                </th>
+              )}
+              {!hideRevenue && (
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-50 z-10">
+                  Net Income
                 </th>
               )}
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-50 z-10">
@@ -222,6 +229,25 @@ export function TopProductsTable({ products, title = 'Top Selling Products', lim
                         <div className="text-sm font-medium text-gray-900">
                           {formatCurrency(product.total_revenue)}
                         </div>
+                      </td>
+                    )}
+                    {!hideRevenue && (
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        {product.item_type === 'product' ? (
+                          product.cost_price === null || product.cost_price === undefined ? (
+                            <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded">
+                              Cost Price not set
+                            </span>
+                          ) : (
+                            <div className="text-sm font-medium text-gray-900">
+                              {product.net_income !== null && product.net_income !== undefined
+                                ? formatCurrency(product.net_income)
+                                : '-'}
+                            </div>
+                          )
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap text-right">
