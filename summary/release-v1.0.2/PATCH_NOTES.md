@@ -83,6 +83,26 @@ Manage restaurant tables with comprehensive CRUD functionality:
 - **Cleaner design** - removed redundant UI elements
 - **Improved navigation** - fixed payment dialog redirect issues
 
+### 📈 Reports & Analytics (All Products Sold)
+
+- Standalone vs Combined toggle
+  - Standalone: products and packages as standalone items; includes revenue
+  - Combined: merges package component consumption into products; revenue hidden
+- Polished interactions
+  - Directional slide on toggle (Combined → from left, Standalone → from right)
+  - Header remains static; only table body animates
+  - Inline package details use smooth expand/collapse (grid row + fade/slide)
+  - Subtle border on expand button with hover
+- Table usability
+  - Sticky table header during scroll
+  - Fixed Rank column width for consistent alignment across modes
+- Excel Export (Export All)
+  - Removed Top Products sheet
+  - All Products Sold sheet reflects active toggle with correct headers and sheet name
+  - Combined mode excludes revenue column; Standalone includes it
+- Minor backend
+  - `getSalesByPaymentMethod` lint/type fixes and safer numeric parsing
+
 ---
 
 ## 🔧 Technical Updates

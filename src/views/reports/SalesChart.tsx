@@ -55,6 +55,7 @@ export function SalesChart({ data, chartType = 'line', title = 'Sales Overview',
           item.hour !== undefined ? `${item.hour}:00` : 
           item.category_name || item.payment_method || 'N/A',
     revenue: parseFloat(item.total_revenue || item.total_amount || item.total_sales || 0),
+    netIncome: parseFloat(item.total_net_income || item.net_income || 0),
     transactions: parseInt(item.transaction_count || item.count || 0),
   }));
 
@@ -73,7 +74,7 @@ export function SalesChart({ data, chartType = 'line', title = 'Sales Overview',
           <p className="font-semibold text-gray-900">{label}</p>
           {payload.map((entry: any, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {entry.name}: {entry.name === 'Revenue' ? formatCurrency(entry.value) : entry.value}
+              {entry.name}: {['Revenue', 'Net Income'].includes(entry.name) ? formatCurrency(entry.value) : entry.value}
             </p>
           ))}
         </div>
@@ -127,6 +128,15 @@ export function SalesChart({ data, chartType = 'line', title = 'Sales Overview',
               dot={{ fill: '#3b82f6', r: 4 }}
               activeDot={{ r: 6 }}
             />
+            <Line
+              type="monotone"
+              dataKey="netIncome"
+              name="Net Income"
+              stroke="#6366f1"
+              strokeWidth={2}
+              dot={{ fill: '#6366f1', r: 4 }}
+              activeDot={{ r: 6 }}
+            />
             {formattedData[0]?.transactions !== undefined && (
               <Line
                 type="monotone"
@@ -158,6 +168,13 @@ export function SalesChart({ data, chartType = 'line', title = 'Sales Overview',
               dataKey="revenue"
               name="Revenue"
               fill="#3b82f6"
+              radius={[4, 4, 0, 0]}
+              maxBarSize={60}
+            />
+            <Bar
+              dataKey="netIncome"
+              name="Net Income"
+              fill="#6366f1"
               radius={[4, 4, 0, 0]}
               maxBarSize={60}
             />

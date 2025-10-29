@@ -12,10 +12,20 @@ export class SettingsService {
   private static readonly DEFAULT_SETTINGS = {
     // Business Information
     'business.name': { value: 'BeerHive', dataType: 'string' as const, category: 'business' },
-    'business.address': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.legal_name': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.registration_number': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.tax_id': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.address_line1': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.address_line2': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.city': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.province': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.postal_code': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.country': { value: 'Philippines', dataType: 'string' as const, category: 'business' },
     'business.phone': { value: '', dataType: 'string' as const, category: 'business' },
     'business.email': { value: '', dataType: 'string' as const, category: 'business' },
-    'business.tax_id': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.website': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.support_contact': { value: '', dataType: 'string' as const, category: 'business' },
+    'business.additional_notes': { value: '', dataType: 'string' as const, category: 'business' },
 
     // Tax Settings
     'tax.enabled': { value: 'true', dataType: 'boolean' as const, category: 'tax' },
@@ -37,6 +47,17 @@ export class SettingsService {
     'currency.symbol': { value: '₱', dataType: 'string' as const, category: 'currency' },
     'currency.decimal_places': { value: '2', dataType: 'number' as const, category: 'currency' },
   };
+
+  private static readonly UUID_REGEX =
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+  private static sanitizeUpdatedBy(updatedBy?: string): string | null {
+    if (!updatedBy) {
+      return null;
+    }
+
+    return this.UUID_REGEX.test(updatedBy) ? updatedBy : null;
+  }
 
   /**
    * Get setting value
@@ -76,11 +97,12 @@ export class SettingsService {
         throw new AppError(validation.error || 'Invalid setting value', 400);
       }
 
+      const sanitizedUpdatedBy = this.sanitizeUpdatedBy(updatedBy);
       const setting = await SettingsRepository.get(key);
       const stringValue = SettingsRepository.stringifyValue(value);
 
       if (setting) {
-        await SettingsRepository.update(key, stringValue, updatedBy);
+        await SettingsRepository.update(key, stringValue, sanitizedUpdatedBy ?? undefined);
       } else {
         // Create new setting
         const defaultSetting = this.DEFAULT_SETTINGS[key as keyof typeof this.DEFAULT_SETTINGS];
@@ -90,7 +112,7 @@ export class SettingsService {
           key,
           stringValue,
           dataType,
-          updatedBy,
+          sanitizedUpdatedBy ?? undefined,
           undefined,
           defaultSetting?.category
         );
@@ -145,6 +167,17 @@ export class SettingsService {
       }
     }
 
+    if (key === 'business.website' && value) {
+      try {
+        const url = new URL(value.startsWith('http') ? value : `https://${value}`);
+        if (!['http:', 'https:'].includes(url.protocol)) {
+          return { valid: false, error: 'Website must use http or https' };
+        }
+      } catch {
+        return { valid: false, error: 'Invalid website URL' };
+      }
+    }
+
     // Decimal places validation
     if (key === 'currency.decimal_places') {
       const places = Number(value);
@@ -178,6 +211,7 @@ export class SettingsService {
    */
   static async initializeDefaults(updatedBy?: string): Promise<void> {
     try {
+      const sanitizedUpdatedBy = this.sanitizeUpdatedBy(updatedBy);
       for (const [key, config] of Object.entries(this.DEFAULT_SETTINGS)) {
         const existing = await SettingsRepository.get(key);
         if (!existing) {
@@ -185,7 +219,7 @@ export class SettingsService {
             key,
             config.value,
             config.dataType,
-            updatedBy,
+            sanitizedUpdatedBy ?? undefined,
             `Default ${key} setting`,
             config.category,
             false

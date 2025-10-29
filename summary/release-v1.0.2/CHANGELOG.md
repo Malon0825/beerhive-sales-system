@@ -277,6 +277,21 @@ All notable changes to this project in version 1.0.2 are documented in this file
   - Clear visual indicators for cancelled items
   - Staff can easily identify and manage cancelled orders
 
+#### Reports & Analytics
+- All Products Sold view reworked with two modes and polished UX:
+  - Standalone mode: products + packages as distinct items; includes revenue column.
+  - Combined mode: merges package component consumption into product quantities; revenue hidden.
+- Toggle animations: directional slide (Combined → from left, Standalone → from right).
+- Header remains static; only table body animates during toggles.
+- Inline package items: smooth expand/collapse (grid row + fade/slide); subtle button border.
+- Rank column fixed width for consistent alignment across modes.
+- Sticky table header during scroll.
+- Export All (Excel):
+  - Removed Top Products sheet.
+  - All Products Sold sheet reflects active toggle with appropriate headers and sheet name.
+  - Combined mode excludes revenue column; Standalone includes it.
+- Query robustness: `getSalesByPaymentMethod` lint/type fixes and safer parsing.
+
 - **Tab payment dialog navigation**
   - Fixed white screen issue when closing payment dialog
   - Now properly redirects to /tabs when dialog is closed

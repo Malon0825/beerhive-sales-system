@@ -18,7 +18,8 @@ import {
   Trash2,
   Layout,
   FolderEdit,
-  Table2
+  Table2,
+  BarChart3,
 } from 'lucide-react';
 
 interface PatchNotesDialogProps {
@@ -180,6 +181,41 @@ export function PatchNotesDialog({ open, onOpenChange }: PatchNotesDialogProps) 
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                           <span>Smooth animations when switching layouts</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Reports & Analytics (All Products Sold) */}
+                <div className="rounded-lg border bg-card p-4">
+                  <div className="flex items-start gap-3">
+                    <BarChart3 className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <h3 className="font-semibold mb-2">Reports & Analytics: All Products Sold</h3>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Improved clarity and export alignment when analyzing sold products.
+                      </p>
+                      <ul className="space-y-1.5 text-sm">
+                        <li className="flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                          <span>Standalone vs Combined toggle (revenue shown only in Standalone)</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                          <span>Directional slide on toggle; header stays fixed while body animates</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                          <span>Inline package details with smooth expand/collapse</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                          <span>Sticky table header and fixed Rank column for consistent layout</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                          <span>Export All reflects toggle; removed Top Products sheet; Combined export excludes revenue</span>
                         </li>
                       </ul>
                     </div>

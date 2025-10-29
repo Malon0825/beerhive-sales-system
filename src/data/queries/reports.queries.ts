@@ -111,7 +111,8 @@ export async function getDailySalesSummary(startDate: string, endDate: string) {
         total_revenue: 0,
         transaction_count: 0,
         total_discounts: 0,
-        unique_customers: new Set()
+        unique_customers: new Set(),
+        total_net_income: 0,
       });
     }
     const daily = dailyMap.get(date);
@@ -121,6 +122,43 @@ export async function getDailySalesSummary(startDate: string, endDate: string) {
     if (order.customer?.id) {
       daily.unique_customers.add(order.customer.id);
     }
+  });
+
+  // Compute daily net income from individual product sales only
+  const supabase = supabaseAdmin;
+  const { data: items, error: itemsError } = await supabase
+    .from('order_items')
+    .select(`
+      quantity,
+      order:order_id(completed_at, status),
+      product:product_id(base_price, cost_price)
+    `)
+    .gte('order.completed_at', startDate)
+    .lte('order.completed_at', endDate)
+    .eq('order.status', 'completed')
+    .not('product_id', 'is', null);
+
+  if (itemsError) throw itemsError;
+
+  items?.forEach((row: any) => {
+    if (!row.order) return;
+    const date = row.order.completed_at.split('T')[0];
+    const base = row.product?.base_price;
+    const cost = row.product?.cost_price;
+    if (base === undefined || cost === null || cost === undefined) return;
+    if (!dailyMap.has(date)) {
+      dailyMap.set(date, {
+        date,
+        total_revenue: 0,
+        transaction_count: 0,
+        total_discounts: 0,
+        unique_customers: new Set(),
+        total_net_income: 0,
+      });
+    }
+    const daily = dailyMap.get(date);
+    const qty = parseFloat(row.quantity || '1');
+    daily.total_net_income += (parseFloat(base) - parseFloat(cost)) * qty;
   });
 
   return Array.from(dailyMap.values()).map(d => ({
@@ -282,6 +320,201 @@ export async function getAllProductsSold(startDate: string, endDate: string) {
 }
 
 /**
+ * Get all products and packages sold within a date range
+ * Treats packages as standalone items and includes them alongside products
+ */
+export async function getAllProductsAndPackagesSold(startDate: string, endDate: string) {
+  const supabase = supabaseAdmin;
+
+  // 1) Direct product sales (reuse logic similar to getAllProductsSold)
+  const { data: productItems, error: productError } = await supabase
+    .from('order_items')
+    .select(`
+      product_id,
+      item_name,
+      quantity,
+      total,
+      order:order_id(completed_at, status),
+      product:product_id(base_price, cost_price)
+    `)
+    .gte('order.completed_at', startDate)
+    .lte('order.completed_at', endDate)
+    .eq('order.status', 'completed')
+    .not('product_id', 'is', null);
+
+  if (productError) throw productError;
+
+  const byId: Map<string, { product_id: string; product_name: string; total_quantity: number; total_revenue: number; order_count: number; item_type: 'product' | 'package'; base_price?: number; cost_price?: number | null; net_income?: number | null }>
+    = new Map();
+
+  productItems.forEach((item: any) => {
+    if (!item.order) return;
+    const key = item.product_id as string;
+    if (!byId.has(key)) {
+      byId.set(key, {
+        product_id: key,
+        product_name: item.item_name,
+        total_quantity: 0,
+        total_revenue: 0,
+        order_count: 0,
+        item_type: 'product',
+        base_price: item.product?.base_price,
+        cost_price: item.product?.cost_price,
+      });
+    }
+    const acc = byId.get(key)!;
+    acc.total_quantity += parseFloat(item.quantity);
+    acc.total_revenue += parseFloat(item.total);
+    acc.order_count += 1;
+  });
+
+  // 2) Package sales - treat as standalone items
+  const { data: packageItems, error: packageError } = await supabase
+    .from('order_items')
+    .select(`
+      package_id,
+      item_name,
+      quantity,
+      total,
+      order:order_id(completed_at, status)
+    `)
+    .gte('order.completed_at', startDate)
+    .lte('order.completed_at', endDate)
+    .eq('order.status', 'completed')
+    .not('package_id', 'is', null);
+
+  if (packageError) throw packageError;
+
+  packageItems.forEach((item: any) => {
+    if (!item.order) return;
+    const key = item.package_id as string;
+    if (!byId.has(key)) {
+      byId.set(key, {
+        product_id: key, // Use package_id as identifier for list purposes
+        product_name: item.item_name,
+        total_quantity: 0,
+        total_revenue: 0,
+        order_count: 0,
+        item_type: 'package',
+      });
+    }
+    const acc = byId.get(key)!;
+    acc.total_quantity += parseFloat(item.quantity);
+    acc.total_revenue += parseFloat(item.total);
+    acc.order_count += 1;
+  });
+
+  // Compute net income for individual products only
+  byId.forEach((val) => {
+    if (val.item_type === 'product') {
+      if (val.cost_price === null || val.cost_price === undefined || val.base_price === undefined) {
+        val.net_income = null;
+      } else {
+        val.net_income = (val.base_price - val.cost_price) * val.order_count;
+      }
+    }
+  });
+
+  return Array.from(byId.values()).sort((a, b) => b.total_revenue - a.total_revenue);
+}
+
+/**
+ * Get combined product consumption: direct product sales + package component consumption
+ * Revenue is intentionally not computed to avoid assumptions; consumers may hide revenue column.
+ */
+export async function getAllProductsSoldCombined(startDate: string, endDate: string) {
+  const supabase = supabaseAdmin;
+
+  // A) Direct product sales (quantities only)
+  const { data: directData, error: directError } = await supabase
+    .from('order_items')
+    .select(`
+      product_id,
+      item_name,
+      quantity,
+      order:order_id(completed_at, status)
+    `)
+    .gte('order.completed_at', startDate)
+    .lte('order.completed_at', endDate)
+    .eq('order.status', 'completed')
+    .not('product_id', 'is', null);
+
+  if (directError) throw directError;
+
+  const combined: Map<string, { product_id: string; product_name: string; total_quantity: number; total_revenue: number; order_count: number }>
+    = new Map();
+
+  directData.forEach((item: any) => {
+    if (!item.order) return;
+    const key = item.product_id as string;
+    if (!combined.has(key)) {
+      combined.set(key, {
+        product_id: key,
+        product_name: item.item_name,
+        total_quantity: 0,
+        total_revenue: 0,
+        order_count: 0,
+      });
+    }
+    const acc = combined.get(key)!;
+    acc.total_quantity += parseFloat(item.quantity);
+    acc.order_count += 1;
+  });
+
+  // B) Package-derived consumption: expand packages into component products
+  const { data: packageOrders, error: pkgErr } = await supabase
+    .from('order_items')
+    .select(`
+      quantity,
+      order:order_id(completed_at, status),
+      package:packages!inner(
+        id,
+        name,
+        items:package_items!inner(
+          product_id,
+          quantity,
+          product:products(id, name)
+        )
+      )
+    `)
+    .not('package_id', 'is', null)
+    .gte('order.completed_at', startDate)
+    .lte('order.completed_at', endDate)
+    .eq('order.status', 'completed');
+
+  if (pkgErr) throw pkgErr;
+
+  packageOrders?.forEach((orderItem: any) => {
+    if (!orderItem.order) return;
+    const packageQty = parseFloat(orderItem.quantity || '0');
+    const pkg = orderItem.package;
+    if (!pkg || !pkg.items) return;
+
+    pkg.items.forEach((pkgItem: any) => {
+      const productId = pkgItem.product_id as string;
+      const perPackageQty = parseFloat(pkgItem.quantity || '0');
+      const consumed = packageQty * perPackageQty;
+
+      if (!combined.has(productId)) {
+        combined.set(productId, {
+          product_id: productId,
+          product_name: pkgItem.product?.name || 'Unknown Product',
+          total_quantity: 0,
+          total_revenue: 0,
+          order_count: 0,
+        });
+      }
+      const acc = combined.get(productId)!;
+      acc.total_quantity += consumed;
+      // Count each package unit as a contributing order for this product
+      acc.order_count += packageQty;
+    });
+  });
+
+  return Array.from(combined.values()).sort((a, b) => b.total_quantity - a.total_quantity);
+}
+
+/**
  * Get sales by payment method
  * Handles both POS orders and closed sessions
  */
@@ -290,7 +523,7 @@ export async function getSalesByPaymentMethod(startDate: string, endDate: string
 
   // Get POS orders
   const { data: posOrders, error: posError } = await supabase
-    .from('orders')
+    .from('orders') 
     .select('payment_method, total_amount')
     .is('session_id', null)
     .gte('completed_at', startDate)

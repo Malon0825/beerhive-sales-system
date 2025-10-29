@@ -308,6 +308,35 @@ Version 1.0.2 is a major patch release that addresses kitchen and bartender orde
 
 ---
 
+### Reports & Analytics (All Products Sold)
+
+**Overview:** The All Products Sold board received a UX and data alignment overhaul.
+
+**Modes:**
+- Standalone: lists products and packages as standalone items; revenue included.
+- Combined: merges package component consumption into product quantities; revenue hidden.
+
+**Interactions:**
+- Directional slide animation on toggle (Combined → from left, Standalone → from right).
+- Header stays fixed; only the table body animates for clarity.
+- Inline package details use smooth grid-row expand/collapse with subtle fade/slide.
+- Subtle border on package expand button; hover-enhanced.
+
+**Usability:**
+- Sticky table header remains visible while scrolling.
+- Fixed Rank column width for consistent column alignment across modes.
+
+**Export Alignment:**
+- Export All (Excel) now reflects the active mode:
+  - Sheet name includes mode (Standalone/Combined).
+  - Removed Top Products sheet.
+  - Combined mode exports without revenue column; Standalone includes revenue.
+
+**Technical:**
+- `getSalesByPaymentMethod` refactor for lint/type safety and robust numeric parsing.
+
+---
+
 ## 🗄️ Database Changes
 
 ### Required Migration
