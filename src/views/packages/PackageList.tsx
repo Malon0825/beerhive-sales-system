@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { Package, PackageItem } from '@/models/entities/Package';
 import { Badge } from '../shared/ui/badge';
 import { Button } from '../shared/ui/button';
+import { ConfirmDialog } from '../shared/ui/confirm-dialog';
 import { Edit, Trash2, Package as PackageIcon, Users, Calendar, DollarSign } from 'lucide-react';
 
 interface PackageListProps {
@@ -69,6 +71,8 @@ interface PackageCardProps {
  * Displays individual package information
  */
 function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProps) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  
   const isValid = () => {
     const today = new Date().toISOString().split('T')[0];
     const validFrom = pkg.valid_from || '1900-01-01';
@@ -99,6 +103,7 @@ function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProp
   };
 
   return (
+    <>
     <div 
       className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all cursor-pointer overflow-hidden"
       onClick={() => onView(pkg.id)}
@@ -181,9 +186,7 @@ function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProp
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
-              if (confirm(`Are you sure you want to delete "${pkg.name}"?`)) {
-                onDelete(pkg.id);
-              }
+              setShowDeleteDialog(true);
             }}
             className="flex items-center gap-1"
           >
@@ -192,5 +195,21 @@ function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProp
         </div>
       </div>
     </div>
+
+    {/* Delete Confirmation Dialog */}
+    <ConfirmDialog
+      open={showDeleteDialog}
+      onOpenChange={setShowDeleteDialog}
+      title="Permanently Delete Package"
+      description={`Are you sure you want to permanently delete "${pkg.name}"? This action cannot be undone and will remove the package and all its items from the database.`}
+      confirmText="Delete Permanently"
+      cancelText="Cancel"
+      variant="destructive"
+      onConfirm={() => {
+        onDelete(pkg.id);
+        setShowDeleteDialog(false);
+      }}
+    />
+    </>
   );
 }

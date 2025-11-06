@@ -8,6 +8,7 @@ import PackageForm from './PackageForm';
 import { Button } from '../shared/ui/button';
 import { Plus, Filter } from 'lucide-react';
 import { Badge } from '../shared/ui/badge';
+import { toast } from '@/lib/hooks/useToast';
 
 /**
  * PackageManager Component
@@ -151,13 +152,31 @@ export default function PackageManager() {
       const result = await response.json();
 
       if (result.success) {
+        // Show success notification
+        toast({
+          title: '✅ Package Permanently Deleted',
+          description: 'Package and all its items have been permanently removed from the database.',
+          variant: 'default',
+        });
+        
         loadPackages();
       } else {
-        alert(result.error || 'Failed to delete package');
+        // Show error notification
+        toast({
+          title: '❌ Delete Failed',
+          description: result.error || 'Failed to delete package. Please try again.',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Delete package error:', error);
-      alert('Failed to delete package');
+      
+      // Show error notification
+      toast({
+        title: '❌ Error',
+        description: 'An unexpected error occurred while deleting the package.',
+        variant: 'destructive',
+      });
     }
   };
 

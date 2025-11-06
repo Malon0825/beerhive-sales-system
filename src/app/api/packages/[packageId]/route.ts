@@ -105,7 +105,8 @@ export async function PATCH(
 
 /**
  * DELETE /api/packages/[packageId]
- * Delete package (soft delete - sets is_active to false)
+ * Permanently delete package and all its items from database
+ * This is a hard delete operation and cannot be undone
  */
 export async function DELETE(
   request: NextRequest,
@@ -126,7 +127,7 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      message: 'Package deleted successfully',
+      message: 'Package permanently deleted from database',
     });
   } catch (error) {
     console.error('DELETE /api/packages/[packageId] error:', error);

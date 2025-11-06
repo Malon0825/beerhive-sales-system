@@ -281,16 +281,28 @@ export class PackageRepository {
   }
 
   /**
-   * Delete a package (soft delete by setting is_active to false)
+   * Delete a package (hard delete - permanently removes from database)
+   * Deletes package_items first, then the package itself
    */
   static async delete(id: string): Promise<void> {
     try {
-      const { error } = await supabaseAdmin
+      // Step 1: Delete all package items first to avoid foreign key constraint errors
+      const { error: itemsError } = await supabaseAdmin
+        .from('package_items')
+        .delete()
+        .eq('package_id', id);
+
+      if (itemsError) throw new AppError(itemsError.message, 500);
+
+      // Step 2: Delete the package itself
+      const { error: packageError } = await supabaseAdmin
         .from('packages')
-        .update({ is_active: false })
+        .delete()
         .eq('id', id);
 
-      if (error) throw new AppError(error.message, 500);
+      if (packageError) throw new AppError(packageError.message, 500);
+
+      console.log(`✅ Package ${id} and its items permanently deleted from database`);
     } catch (error) {
       console.error('Error deleting package:', error);
       throw error instanceof AppError ? error : new AppError('Failed to delete package', 500);
