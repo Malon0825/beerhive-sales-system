@@ -1,6 +1,7 @@
 import { OrderRepository } from '@/data/repositories/OrderRepository';
 import { AuthService } from '@/core/services/auth/AuthService';
 import { ProductRepository } from '@/data/repositories/ProductRepository';
+import { PackageRepository } from '@/data/repositories/PackageRepository';
 import { OrderStatus } from '@/models/enums/OrderStatus';
 import { UserRole } from '@/models/enums/UserRole';
 import { AppError } from '@/lib/errors/AppError';
@@ -74,6 +75,7 @@ export class VoidOrderService {
 
   /**
    * Return inventory for voided order
+   * Handles both individual products and package items
    */
   private static async returnInventoryForOrder(order: any) {
     try {
@@ -82,31 +84,83 @@ export class VoidOrderService {
       }
 
       for (const item of order.order_items) {
-        if (item.product_id && !item.is_complimentary) {
-          // Get current stock
-          const product = await ProductRepository.getById(item.product_id);
-          if (product) {
-            const newStock = (product.current_stock || 0) + item.quantity;
-            await ProductRepository.updateStock(item.product_id, newStock);
+        // Skip complimentary items
+        if (item.is_complimentary) {
+          continue;
+        }
 
-            // TODO: Create inventory movement record
-            // await InventoryRepository.logMovement({
-            //   product_id: item.product_id,
-            //   movement_type: 'void_return',
-            //   reason: 'void_return',
-            //   quantity_change: item.quantity,
-            //   quantity_before: product.current_stock,
-            //   quantity_after: newStock,
-            //   order_id: order.id,
-            //   performed_by: order.voided_by,
-            // });
-          }
+        // Handle individual product items
+        if (item.product_id && !item.package_id) {
+          await this.returnProductStock(item.product_id, item.quantity, order.id);
+        }
+        
+        // Handle package items - return stock for all products in the package
+        if (item.package_id && !item.product_id) {
+          await this.returnPackageStock(item.package_id, item.quantity, order.id);
         }
       }
     } catch (error) {
       console.error('Return inventory error:', error);
       // Don't throw error, just log it
       // Inventory return failure shouldn't prevent void
+    }
+  }
+
+  /**
+   * Return stock for a single product
+   */
+  private static async returnProductStock(productId: string, quantity: number, orderId: string) {
+    try {
+      const product = await ProductRepository.getById(productId);
+      if (product) {
+        const newStock = (product.current_stock || 0) + quantity;
+        await ProductRepository.updateStock(productId, newStock);
+        
+        console.log(`✅ Returned ${quantity} units of ${product.name} to inventory (${product.current_stock} → ${newStock})`);
+
+        // TODO: Create inventory movement record
+        // await InventoryRepository.logMovement({
+        //   product_id: productId,
+        //   movement_type: 'void_return',
+        //   reason: 'void_return',
+        //   quantity_change: quantity,
+        //   quantity_before: product.current_stock,
+        //   quantity_after: newStock,
+        //   order_id: orderId,
+        //   performed_by: order.voided_by,
+        // });
+      }
+    } catch (error) {
+      console.error(`Failed to return stock for product ${productId}:`, error);
+    }
+  }
+
+  /**
+   * Return stock for all products in a package
+   * Each product in the package has its stock returned based on the package quantity
+   */
+  private static async returnPackageStock(packageId: string, packageQuantity: number, orderId: string) {
+    try {
+      // Fetch package with its items
+      const packageData = await PackageRepository.getById(packageId);
+      
+      if (!packageData || !packageData.items || packageData.items.length === 0) {
+        console.warn(`⚠️ Package ${packageId} not found or has no items`);
+        return;
+      }
+
+      console.log(`📦 Returning inventory for package: ${packageData.name} (qty: ${packageQuantity})`);
+
+      // Return stock for each product in the package
+      for (const packageItem of packageData.items) {
+        if (packageItem.product_id) {
+          // Calculate total quantity to return: package quantity × item quantity per package
+          const totalQuantity = packageQuantity * (packageItem.quantity || 1);
+          await this.returnProductStock(packageItem.product_id, totalQuantity, orderId);
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to return stock for package ${packageId}:`, error);
     }
   }
 
