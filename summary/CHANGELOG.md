@@ -1,6 +1,34 @@
-# Changelog - v1.0.2
+# Changelog
 
-All notable changes to this project in version 1.0.2 are documented in this file.
+All notable changes to the BeerHive Sales System are documented in this file.
+
+## [1.1.0] - 2025-11-06
+
+### Added
+
+#### UI/UX
+- **Order board success toast** now confirms when inventory restocking completes after voiding an order, highlighting that both standalone products and package contents were returned to stock.
+- **Package deletion confirmation dialog** uses the shared `ConfirmDialog` component with permanent deletion messaging for clarity.
+
+### Changed
+
+#### API Layer
+- **`POST /api/orders/[orderId]/void`**
+  - Accepts manager PINs that map to multiple accounts by using `maybeSingle()` with `limit(1)`.
+  - Responds with an `inventoryRestocked` flag so clients know if stock reconciliation occurred.
+
+#### Service Layer
+- **`VoidOrderService.returnInventoryForOrder()`**
+  - Returns stock for individual items and decomposes packages to restock each component product proportionally.
+  - Adds helper methods for product and package stock adjustments with detailed logging.
+
+#### Repository Layer
+- **`PackageRepository.delete()`** now performs a hard delete, removing related `package_items` before deleting the package record to maintain referential integrity.
+
+#### UI Components
+- **`ReturnOrderDialog`** displays inventory restock confirmation using the toast system with package-aware messaging.
+- **`PackageManager`** shows toast notifications on successful or failed deletions and refreshes the package list automatically.
+- **`PackageList`** replaces the browser `confirm()` with the shared `ConfirmDialog`, ensuring consistent styling and messaging for irreversible deletions.
 
 ## [1.0.2] - 2025-10-20
 
