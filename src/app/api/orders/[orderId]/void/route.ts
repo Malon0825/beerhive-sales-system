@@ -106,6 +106,7 @@ export async function POST(
       success: true,
       data: voidedOrder,
       message: body.isReturn ? 'Order returned successfully' : 'Order voided successfully',
+      inventoryRestocked: returnInventory,
     });
   } catch (error) {
     console.error('POST /api/orders/[orderId]/void error:', error);

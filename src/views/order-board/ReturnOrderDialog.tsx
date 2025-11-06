@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Button } from '@/views/shared/ui/button';
 import { Input } from '@/views/shared/ui/input';
 import { Label } from '@/views/shared/ui/label';
-import { X, AlertTriangle } from 'lucide-react';
+import { X, AlertTriangle, Package } from 'lucide-react';
+import { toast } from '@/lib/hooks/useToast';
 
 /**
  * ReturnOrderDialog Component
@@ -88,7 +89,27 @@ export default function ReturnOrderDialog({
         throw new Error(data.error || 'Failed to void order');
       }
 
-      // Success
+      // Success - Show toast notification with inventory restock confirmation
+      const inventoryRestocked = data.inventoryRestocked !== false;
+      
+      toast({
+        title: '✅ Order Voided Successfully',
+        description: inventoryRestocked ? (
+          <div className="flex items-start gap-2">
+            <Package className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-gray-900">Inventory Automatically Restocked</p>
+              <p className="text-xs text-gray-600 mt-1">
+                All items from this order (including package items) have been returned to inventory
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-700">Order has been voided</p>
+        ),
+        variant: 'default',
+      });
+
       onSuccess();
       onClose();
     } catch (err) {
