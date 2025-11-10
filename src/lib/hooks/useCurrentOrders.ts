@@ -263,6 +263,66 @@ export function useCurrentOrders(cashierId: string) {
     return await updateOrder(orderId, { isOnHold: false });
   }, [updateOrder]);
 
+  /**
+   * Apply discount to current order
+   * Calculates discount amount based on type and value
+   */
+  const applyDiscount = useCallback(async (
+    orderId: string,
+    discountType: 'percentage' | 'fixed_amount',
+    discountValue: number
+  ) => {
+    try {
+      const response = await fetch(
+        `/api/current-orders/${orderId}/discount`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cashierId,
+            discountType,
+            discountValue,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        await fetchOrders(); // Refresh to get updated totals
+        return result.data;
+      } else {
+        throw new Error(result.error || 'Failed to apply discount');
+      }
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    }
+  }, [cashierId, fetchOrders]);
+
+  /**
+   * Remove discount from current order
+   */
+  const removeDiscount = useCallback(async (orderId: string) => {
+    try {
+      const response = await fetch(
+        `/api/current-orders/${orderId}/discount?cashierId=${cashierId}`,
+        { method: 'DELETE' }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        await fetchOrders(); // Refresh to get updated totals
+      } else {
+        throw new Error(result.error || 'Failed to remove discount');
+      }
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    }
+  }, [cashierId, fetchOrders]);
+
   // Initial fetch
   useEffect(() => {
     if (cashierId) {
@@ -310,6 +370,8 @@ export function useCurrentOrders(cashierId: string) {
     clearItems,
     holdOrder,
     resumeOrder,
+    applyDiscount,
+    removeDiscount,
     refresh: fetchOrders,
   };
 }

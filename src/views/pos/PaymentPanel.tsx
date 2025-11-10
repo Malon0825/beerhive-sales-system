@@ -92,12 +92,47 @@ export function PaymentPanel({
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [referenceNumber, setReferenceNumber] = useState('');
+  
+  // Discount state
+  const [discountType, setDiscountType] = useState<'percentage' | 'fixed_amount'>('fixed_amount');
+  const [discountValue, setDiscountValue] = useState<string>('');
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
 
   // Get total from cart (POS mode) or session (close-tab mode)
-  const total = mode === 'pos' ? (cart?.getTotal() || 0) : (sessionTotal || 0);
+  const subtotal = mode === 'pos' ? (cart?.getTotal() || 0) : (sessionTotal || 0);
+  const total = subtotal - discountAmount; // Final total after discount
   const itemCount = mode === 'pos' ? (cart?.getItemCount() || 0) : (sessionItemCount || 0);
   const customer = mode === 'pos' ? cart?.customer : sessionCustomer;
   const table = mode === 'pos' ? cart?.table : sessionTable;
+
+  /**
+   * Calculate discount amount when discount value changes
+   */
+  useEffect(() => {
+    const value = parseFloat(discountValue);
+    
+    if (!discountValue || isNaN(value) || value <= 0) {
+      setDiscountAmount(0);
+      return;
+    }
+
+    if (discountType === 'percentage') {
+      // Percentage discount (0-100)
+      if (value > 100) {
+        setDiscountAmount(0);
+        return;
+      }
+      const calculated = Math.round((subtotal * value) / 100 * 100) / 100;
+      setDiscountAmount(calculated);
+    } else {
+      // Fixed amount discount
+      if (value > subtotal) {
+        setDiscountAmount(0);
+        return;
+      }
+      setDiscountAmount(Math.round(value * 100) / 100);
+    }
+  }, [discountValue, discountType, subtotal]);
 
   /**
    * Calculate change when amount tendered changes
@@ -229,6 +264,8 @@ export function PaymentPanel({
             ? parseFloat(amountTendered) 
             : total,
           change_amount: selectedMethod === PaymentMethod.CASH ? changeAmount : 0,
+          discount_amount: discountAmount > 0 ? discountAmount : undefined,
+          discount_type: discountAmount > 0 ? discountType : undefined,
           notes: referenceNumber ? `Ref: ${referenceNumber}` : undefined,
         };
 
@@ -292,8 +329,11 @@ export function PaymentPanel({
     setSelectedMethod(null);
     setAmountTendered('');
     setChangeAmount(0);
-    setReferenceNumber('');
     setError(null);
+    setReferenceNumber('');
+    setDiscountType('percentage');
+    setDiscountValue('');
+    setDiscountAmount(0);
   };
 
   /**
@@ -346,7 +386,7 @@ export function PaymentPanel({
             )}
             <div className="flex justify-between">
               <span>Items ({itemCount}):</span>
-              <span>₱{total.toFixed(2)}</span>
+              <span>₱{subtotal.toFixed(2)}</span>
             </div>
             {customer && (
               <div className="flex justify-between text-blue-600">
@@ -360,12 +400,85 @@ export function PaymentPanel({
                 <span>Table {table.table_number}</span>
               </div>
             )}
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-red-600">
+                <span>Discount:</span>
+                <span>-₱{discountAmount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="border-t pt-2 mt-2">
               <div className="flex justify-between font-bold text-lg">
                 <span>Total:</span>
                 <span className="text-amber-600">₱{total.toFixed(2)}</span>
               </div>
             </div>
+          </div>
+        </Card>
+
+        {/* Discount Section */}
+        <Card className="p-4 space-y-4">
+          <h3 className="font-semibold">Apply Discount (Optional)</h3>
+          
+          {/* Discount Type Selection */}
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={discountType === 'percentage' ? 'default' : 'outline'}
+              onClick={() => setDiscountType('percentage')}
+              disabled={processing}
+              className="flex-1"
+            >
+              Percentage (%)
+            </Button>
+            <Button
+              type="button"
+              variant={discountType === 'fixed_amount' ? 'default' : 'outline'}
+              onClick={() => setDiscountType('fixed_amount')}
+              disabled={processing}
+              className="flex-1"
+            >
+              Fixed Amount (₱)
+            </Button>
+          </div>
+
+          {/* Discount Value Input */}
+          <div className="space-y-2">
+            <Label htmlFor="discountValue">
+              {discountType === 'percentage' ? 'Discount Percentage (0-100%)' : 'Discount Amount (₱)'}
+            </Label>
+            <Input
+              id="discountValue"
+              type="number"
+              step="0.01"
+              min="0"
+              max={discountType === 'percentage' ? '100' : subtotal.toString()}
+              placeholder={discountType === 'percentage' ? 'e.g., 10' : 'e.g., 50.00'}
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+              disabled={processing}
+              className="text-lg"
+            />
+            {discountValue && (
+              <div className="text-sm">
+                {(() => {
+                  const value = parseFloat(discountValue);
+                  if (isNaN(value) || value <= 0) {
+                    return <span className="text-gray-500">Enter a valid discount value</span>;
+                  }
+                  if (discountType === 'percentage' && value > 100) {
+                    return <span className="text-red-600">⚠️ Percentage cannot exceed 100%</span>;
+                  }
+                  if (discountType === 'fixed_amount' && value > subtotal) {
+                    return <span className="text-red-600">⚠️ Discount cannot exceed subtotal</span>;
+                  }
+                  return (
+                    <span className="text-green-600">
+                      ✓ Discount: -₱{discountAmount.toFixed(2)} | New Total: ₱{total.toFixed(2)}
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         </Card>
 

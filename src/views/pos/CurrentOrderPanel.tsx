@@ -6,6 +6,7 @@ import { Card } from '@/views/shared/ui/card';
 import { Badge } from '@/views/shared/ui/badge';
 import { Button } from '@/views/shared/ui/button';
 import { LoadingSpinner } from '@/views/shared/feedback/LoadingSpinner';
+import { DiscountInput, DiscountType } from './DiscountInput';
 import {
   ShoppingCart,
   Trash2,
@@ -49,6 +50,8 @@ export function CurrentOrderPanel({ cashierId, onCheckout }: CurrentOrderPanelPr
     clearItems,
     holdOrder,
     createOrder,
+    applyDiscount,
+    removeDiscount,
   } = useCurrentOrders(cashierId);
 
   const [processingItem, setProcessingItem] = useState<string | null>(null);
@@ -160,6 +163,32 @@ export function CurrentOrderPanel({ cashierId, onCheckout }: CurrentOrderPanelPr
       await createOrder();
     } catch (err) {
       console.error('Error creating new order:', err);
+    }
+  };
+
+  /**
+   * Handle discount application
+   */
+  const handleApplyDiscount = async (discountType: DiscountType, discountValue: number) => {
+    if (!activeOrder?.id) return;
+    try {
+      await applyDiscount(activeOrder.id, discountType, discountValue);
+    } catch (err) {
+      console.error('Error applying discount:', err);
+      throw err; // Re-throw to let DiscountInput handle error display
+    }
+  };
+
+  /**
+   * Handle discount removal
+   */
+  const handleRemoveDiscount = async () => {
+    if (!activeOrder?.id) return;
+    try {
+      await removeDiscount(activeOrder.id);
+    } catch (err) {
+      console.error('Error removing discount:', err);
+      throw err; // Re-throw to let DiscountInput handle error display
     }
   };
 
@@ -344,6 +373,19 @@ export function CurrentOrderPanel({ cashierId, onCheckout }: CurrentOrderPanelPr
           ))
         )}
       </div>
+
+      {/* Discount Section */}
+      {hasItems && (
+        <div className="p-4 border-t">
+          <DiscountInput
+            subtotal={activeOrder.subtotal}
+            currentDiscount={activeOrder.discount_amount}
+            onApplyDiscount={handleApplyDiscount}
+            onRemoveDiscount={handleRemoveDiscount}
+            disabled={processingItem !== null}
+          />
+        </div>
+      )}
 
       {/* Order Summary */}
       <div className="border-t p-4 bg-gray-50">

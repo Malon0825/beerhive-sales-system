@@ -126,8 +126,10 @@ export function TopProductsTable({ products, title = 'Top Selling Products', lim
               const isOpen = pid && expanded[pid]?.open;
 
               return (
-                <>
-                  <tr key={(product.product_id || index) + '-main'} className="hover:bg-gray-50 transition-colors">
+                <tr
+                  key={(product.product_id ?? `index-${index}`) + '-main'}
+                  className="hover:bg-gray-50 transition-colors"
+                >
                     <td className="px-6 py-4 whitespace-nowrap w-20">
                       <div className="flex items-center">
                         <span className={`
@@ -271,8 +273,6 @@ export function TopProductsTable({ products, title = 'Top Selling Products', lim
                       </td>
                     )}
                   </tr>
-                  
-                </>
               );
             })}
           </tbody>

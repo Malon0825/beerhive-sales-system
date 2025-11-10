@@ -230,16 +230,21 @@ export class CurrentOrderRepository {
    */
   static async update(orderId: string, cashierId: string, updates: Partial<CurrentOrder>): Promise<CurrentOrder> {
     try {
+      const updateData: any = {
+        updated_at: new Date().toISOString(),
+      };
+
+      // Only include fields that are provided
+      if (updates.customer_id !== undefined) updateData.customer_id = updates.customer_id;
+      if (updates.table_id !== undefined) updateData.table_id = updates.table_id;
+      if (updates.order_notes !== undefined) updateData.order_notes = updates.order_notes;
+      if (updates.is_on_hold !== undefined) updateData.is_on_hold = updates.is_on_hold;
+      if (updates.applied_event_offer_id !== undefined) updateData.applied_event_offer_id = updates.applied_event_offer_id;
+      if (updates.discount_amount !== undefined) updateData.discount_amount = updates.discount_amount;
+
       const { data, error } = await supabaseAdmin
         .from('current_orders')
-        .update({
-          customer_id: updates.customer_id,
-          table_id: updates.table_id,
-          order_notes: updates.order_notes,
-          is_on_hold: updates.is_on_hold,
-          applied_event_offer_id: updates.applied_event_offer_id,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', orderId)
         .eq('cashier_id', cashierId)
         .select()
