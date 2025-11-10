@@ -254,20 +254,53 @@ export class PackageRepository {
    */
   static async update(id: string, input: UpdatePackageInput): Promise<Package> {
     try {
+      const updateData: Record<string, any> = {};
+
+      if ('name' in input) {
+        updateData.name = input.name;
+      }
+      if ('description' in input) {
+        updateData.description = input.description ?? null;
+      }
+      if ('package_type' in input) {
+        updateData.package_type = input.package_type;
+      }
+      if ('base_price' in input) {
+        updateData.base_price = input.base_price;
+      }
+      if ('vip_price' in input) {
+        updateData.vip_price = input.vip_price ?? null;
+      }
+      if ('valid_from' in input) {
+        updateData.valid_from = input.valid_from ?? null;
+      }
+      if ('valid_until' in input) {
+        updateData.valid_until = input.valid_until ?? null;
+      }
+      if ('is_addon_eligible' in input) {
+        updateData.is_addon_eligible = input.is_addon_eligible ?? false;
+      }
+      if ('time_restrictions' in input) {
+        updateData.time_restrictions = input.time_restrictions ?? null;
+      }
+      if ('is_active' in input) {
+        updateData.is_active = input.is_active;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        // Nothing to update; return the existing package record
+        const existing = await this.getById(id);
+        if (!existing) {
+          throw new AppError('Package not found', 404);
+        }
+        return existing;
+      }
+
+      updateData.updated_at = new Date().toISOString();
+
       const { data, error } = await supabaseAdmin
         .from('packages')
-        .update({
-          name: input.name,
-          description: input.description,
-          package_type: input.package_type,
-          base_price: input.base_price,
-          vip_price: input.vip_price,
-          valid_from: input.valid_from,
-          valid_until: input.valid_until,
-          is_addon_eligible: input.is_addon_eligible,
-          time_restrictions: input.time_restrictions,
-          is_active: input.is_active,
-        })
+        .update(updateData)
         .eq('id', id)
         .select()
         .single();

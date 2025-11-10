@@ -436,8 +436,14 @@ function TaxSettings({ settings, setSettings }: any) {
               step="0.01"
               min="0"
               max="100"
-              value={settings['tax.rate']}
-              onChange={(e) => setSettings({ ...settings, 'tax.rate': parseFloat(e.target.value) || 0 })}
+              value={settings['tax.rate'] ?? ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSettings({
+                  ...settings,
+                  'tax.rate': value === '' ? undefined : parseFloat(value),
+                });
+              }}
             />
           </div>
 
@@ -588,8 +594,14 @@ function CurrencySettings({ settings, setSettings }: any) {
           type="number"
           min="0"
           max="4"
-          value={settings['currency.decimal_places']}
-          onChange={(e) => setSettings({ ...settings, 'currency.decimal_places': parseInt(e.target.value) || 0 })}
+          value={settings['currency.decimal_places'] ?? ''}
+          onChange={(e) => {
+            const value = e.target.value;
+            setSettings({
+              ...settings,
+              'currency.decimal_places': value === '' ? undefined : parseInt(value, 10),
+            });
+          }}
         />
         <div className="text-sm text-gray-500 mt-1">Number of decimal places (0-4)</div>
       </div>
