@@ -1,7 +1,7 @@
-# POS Discount Feature - Implementation Summary
+# POS & Tab Discount Feature - Implementation Summary
 
-**Version:** 1.0.2  
-**Date:** 2025-01-15  
+**Version:** 1.1.0  
+**Date:** 2025-11-11  
 **Type:** Feature Addition  
 **Status:** ✅ Complete
 
@@ -9,7 +9,7 @@
 
 ## Overview
 
-Added comprehensive discount functionality to the POS system's payment box (CurrentOrderPanel). Cashiers can now apply percentage-based or fixed-amount discounts to orders with real-time validation and automatic total recalculation.
+Added comprehensive discount functionality to the POS system's payment box (CurrentOrderPanel) and extended the same capabilities to Tab closure payments. Cashiers can now apply percentage-based or fixed-amount discounts to both in-progress POS orders and existing tab sessions with real-time validation and automatic total recalculation.
 
 ---
 
@@ -49,7 +49,53 @@ Integrated DiscountInput into the payment box:
 
 ---
 
-### 3. API Endpoints ⭐ NEW
+### 3. Tab Management Parity ⭐ NEW (v1.1.0)
+
+#### Unified Payment Panel Enhancements
+
+**File:** `src/views/pos/PaymentPanel.tsx`
+
+- Added session-specific props (subtotal, existing discount) so close-tab mode mirrors POS calculations.
+- Displays existing tab discounts separate from the newly applied discount for clarity.
+- Sends `discount_type`, `discount_value`, and `discount_amount` when closing a session.
+- Discount input now uses a text field with `inputMode="decimal"`, preventing mouse-wheel scrolling from altering values inadvertently.
+
+#### Tab Closure API Update
+
+**File:** `src/app/api/order-sessions/[sessionId]/close/route.ts`
+
+- Accepts and validates discount payload (`discount_type`, `discount_value`, `discount_amount`).
+- Normalises discount data before handing off to the service layer.
+
+#### Order Session Service Enhancements
+
+**File:** `src/core/services/orders/OrderSessionService.ts`
+
+- Applies additional tab discounts via `OrderCalculation.applyDiscount` to ensure parity with POS logic.
+- Recalculates totals, validates tendered amount, and persists updated session totals.
+- Returns a consolidated receipt payload used for single-tab receipt printing.
+
+#### DTO & Repository Updates
+
+**File:** `src/models/entities/OrderSession.ts`
+
+- `CloseOrderSessionDto` now includes optional `discount_type` and `discount_value` fields.
+- `UpdateOrderSessionDto` exposes subtotal/discount/tax/total so the service can persist recomputed amounts.
+
+**File:** `src/data/repositories/OrderSessionRepository.ts`
+
+- Persists recomputed discount and total amounts when closing a tab with a new discount.
+
+#### Consolidated Session Receipt
+
+**File:** `src/app/(dashboard)/order-sessions/[sessionId]/close/page.tsx`
+
+- Launches a single consolidated session receipt window instead of one per order after a tab closes.
+- Reuses `/order-sessions/[sessionId]/receipt` for reprints and auto-print workflows.
+
+---
+
+### 4. API Endpoints (POS)
 
 **File:** `src/app/api/current-orders/[orderId]/discount/route.ts`
 
@@ -87,7 +133,7 @@ Remove discount from an order.
 
 ---
 
-### 4. useCurrentOrders Hook Enhancement
+### 5. useCurrentOrders Hook Enhancement
 
 **File:** `src/lib/hooks/useCurrentOrders.ts`
 
@@ -109,7 +155,7 @@ Both methods:
 
 ---
 
-### 5. Repository Update
+### 6. Repository Update (POS)
 
 **File:** `src/data/repositories/CurrentOrderRepository.ts`
 
@@ -201,12 +247,12 @@ When discount is applied/removed:
 
 ## User Experience
 
-### Applying a Discount
+### Applying a Discount (POS & Tab)
 
 1. Cashier adds items to cart (e.g., ₱1,000 subtotal)
 2. Scrolls to "Apply Discount" section
 3. Selects discount type (Percentage or Fixed Amount)
-4. Enters value (e.g., "10" for 10%)
+4. Enters value (e.g., "10" for 10%) using a scroll-safe decimal text field
 5. Sees preview: "Discount: -₱100.00"
 6. Clicks "Apply"
 7. Green badge appears: "Active Discount: -₱100.00"
@@ -270,6 +316,8 @@ console.log(`✅ [Discount API] Applied ${discountType} discount (${discountValu
 - [ ] Try 150% discount → Error displayed
 - [ ] Try ₱600 discount on ₱500 order → Error displayed
 - [ ] Remove discount → Total returns to ₱500
+- [ ] Close tab with existing discount, then apply additional 10% → Totals recompute and consolidated session receipt prints once
+- [ ] Close tab without new discount to confirm no extra receipt pop-ups and totals remain unchanged
 - [ ] Open two windows (same cashier) → Both update in real-time
 - [ ] Multiple cashiers → No interference between orders
 
@@ -292,6 +340,9 @@ console.log(`✅ [Discount API] Applied ${discountType} discount (${discountValu
 - ✅ `CurrentOrderPanel` - Contains DiscountInput
 - ✅ `useCurrentOrders` - New discount methods
 - ✅ `CurrentOrderRepository` - Updated update method
+- ✅ `PaymentPanel` - Shared POS/Tab payment UI with discount parity
+- ✅ `OrderSessionService` - Applies/Persists tab discounts
+- ✅ `Close Tab Page` - Launches consolidated receipt after payment
 - ✅ Order summary display - Shows discount line
 
 ### Does NOT Affect:
@@ -311,13 +362,17 @@ console.log(`✅ [Discount API] Applied ${discountType} discount (${discountValu
 2. `src/app/api/current-orders/[orderId]/discount/route.ts` - API endpoint (207 lines)
 3. `docs/POS_DISCOUNT_FEATURE.md` - Comprehensive documentation
 
-### Modified (3 files) 🔧
+### Modified (7 files) 🔧
 1. `src/views/pos/CurrentOrderPanel.tsx` - Added DiscountInput integration (+35 lines)
 2. `src/lib/hooks/useCurrentOrders.ts` - Added discount methods (+60 lines)
 3. `src/data/repositories/CurrentOrderRepository.ts` - Enhanced update method (+10 lines)
+4. `src/views/pos/PaymentPanel.tsx` - Tab parity, consolidated summary, scroll-safe discount input
+5. `src/app/api/order-sessions/[sessionId]/close/route.ts` - Discount validation & payload
+6. `src/core/services/orders/OrderSessionService.ts` - Session discount application & totals persistence
+7. `src/app/(dashboard)/order-sessions/[sessionId]/close/page.tsx` - Single consolidated receipt flow
 
-**Total Lines Added:** ~614 lines  
-**Total Lines Modified:** ~105 lines
+**Total Lines Added (v1.0.2 → v1.1.0 cumulative):** ~740 lines  
+**Total Lines Modified:** ~210 lines
 
 ---
 
@@ -413,5 +468,5 @@ The discount feature integrates seamlessly into the existing POS workflow. Cashi
 ---
 
 **Implemented by:** AI Assistant  
-**Date:** 2025-01-15  
+**Date:** 2025-11-11  
 **Ready for:** User Acceptance Testing → Production

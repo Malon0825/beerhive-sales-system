@@ -49,6 +49,8 @@ interface PaymentPanelProps {
   sessionId?: string;
   sessionNumber?: string;
   sessionTotal?: number;
+  sessionSubtotal?: number;
+  sessionExistingDiscount?: number;
   sessionItemCount?: number;
   sessionCustomer?: { id: string; full_name: string };
   sessionTable?: { id: string; table_number: string };
@@ -81,6 +83,8 @@ export function PaymentPanel({
   sessionId,
   sessionNumber,
   sessionTotal,
+  sessionSubtotal,
+  sessionExistingDiscount,
   sessionItemCount,
   sessionCustomer,
   sessionTable,
@@ -99,8 +103,10 @@ export function PaymentPanel({
   const [discountAmount, setDiscountAmount] = useState<number>(0);
 
   // Get total from cart (POS mode) or session (close-tab mode)
-  const subtotal = mode === 'pos' ? (cart?.getTotal() || 0) : (sessionTotal || 0);
-  const total = subtotal - discountAmount; // Final total after discount
+  const grossSubtotal = mode === 'pos' ? (cart?.getTotal() || 0) : (sessionSubtotal ?? sessionTotal ?? 0);
+  const existingDiscount = mode === 'pos' ? 0 : (sessionExistingDiscount || 0);
+  const subtotal = Math.max(0, grossSubtotal - existingDiscount);
+  const total = Math.max(0, subtotal - discountAmount); // Final total after discount
   const itemCount = mode === 'pos' ? (cart?.getItemCount() || 0) : (sessionItemCount || 0);
   const customer = mode === 'pos' ? cart?.customer : sessionCustomer;
   const table = mode === 'pos' ? cart?.table : sessionTable;
@@ -123,7 +129,7 @@ export function PaymentPanel({
         return;
       }
       const calculated = Math.round((subtotal * value) / 100 * 100) / 100;
-      setDiscountAmount(calculated);
+      setDiscountAmount(Math.min(calculated, subtotal));
     } else {
       // Fixed amount discount
       if (value > subtotal) {
@@ -246,6 +252,8 @@ export function PaymentPanel({
       let apiUrl;
       let requestBody;
 
+      const parsedDiscountValue = parseFloat(discountValue);
+
       if (mode === 'pos') {
         // POS Mode: Create new order
         apiUrl = '/api/orders';
@@ -266,6 +274,10 @@ export function PaymentPanel({
           change_amount: selectedMethod === PaymentMethod.CASH ? changeAmount : 0,
           discount_amount: discountAmount > 0 ? discountAmount : undefined,
           discount_type: discountAmount > 0 ? discountType : undefined,
+          discount_value:
+            discountAmount > 0 && !isNaN(parsedDiscountValue)
+              ? parsedDiscountValue
+              : undefined,
           notes: referenceNumber ? `Ref: ${referenceNumber}` : undefined,
         };
 
@@ -279,6 +291,13 @@ export function PaymentPanel({
             ? parseFloat(amountTendered) 
             : total,
           reference_number: referenceNumber || undefined,
+          ...(discountAmount > 0
+            ? {
+                discount_type: discountType,
+                discount_value: !isNaN(parsedDiscountValue) ? parsedDiscountValue : undefined,
+                discount_amount: discountAmount,
+              }
+            : {}),
         };
 
         console.log('🔍 [PaymentPanel-CloseTab] Closing session:', sessionId);
@@ -386,8 +405,14 @@ export function PaymentPanel({
             )}
             <div className="flex justify-between">
               <span>Items ({itemCount}):</span>
-              <span>₱{subtotal.toFixed(2)}</span>
+              <span>₱{grossSubtotal.toFixed(2)}</span>
             </div>
+            {existingDiscount > 0 && (
+              <div className="flex justify-between text-sm text-red-500">
+                <span>Existing Discounts:</span>
+                <span>-₱{existingDiscount.toFixed(2)}</span>
+              </div>
+            )}
             {customer && (
               <div className="flex justify-between text-blue-600">
                 <span>Customer:</span>
@@ -402,7 +427,7 @@ export function PaymentPanel({
             )}
             {discountAmount > 0 && (
               <div className="flex justify-between text-red-600">
-                <span>Discount:</span>
+                <span>New Discount:</span>
                 <span>-₱{discountAmount.toFixed(2)}</span>
               </div>
             )}
@@ -448,10 +473,9 @@ export function PaymentPanel({
             </Label>
             <Input
               id="discountValue"
-              type="number"
-              step="0.01"
-              min="0"
-              max={discountType === 'percentage' ? '100' : subtotal.toString()}
+              type="text"
+              inputMode="decimal"
+              pattern="^[0-9]*[.,]?[0-9]*$"
               placeholder={discountType === 'percentage' ? 'e.g., 10' : 'e.g., 50.00'}
               value={discountValue}
               onChange={(e) => setDiscountValue(e.target.value)}

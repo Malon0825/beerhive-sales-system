@@ -4,6 +4,7 @@ import { OrderSession, CreateOrderSessionDto, CloseOrderSessionDto } from '@/mod
 import { SessionStatus } from '@/models/enums/SessionStatus';
 import { OrderStatus } from '@/models/enums/OrderStatus';
 import { StockDeduction } from '@/core/services/inventory/StockDeduction';
+import { OrderCalculation } from '@/core/services/orders/OrderCalculation';
 import { AppError } from '@/lib/errors/AppError';
 
 /**
@@ -204,8 +205,33 @@ export class OrderSessionService {
         throw new AppError('Session is not open', 400);
       }
 
+      // Base financials
+      const baseSubtotal = session.subtotal || 0;
+      const existingDiscount = session.discount_amount || 0;
+      const taxAmount = session.tax_amount || 0;
+      const netBeforeAdditionalDiscount = Math.max(0, baseSubtotal - existingDiscount);
+
+      // Derive additional discount from payload (if any)
+      let additionalDiscount = 0;
+
+      if (paymentData.discount_type && paymentData.discount_value) {
+        const { discountAmount } = OrderCalculation.applyDiscount(
+          netBeforeAdditionalDiscount,
+          paymentData.discount_type,
+          paymentData.discount_value
+        );
+        additionalDiscount = discountAmount;
+      } else if (typeof paymentData.discount_amount === 'number' && paymentData.discount_amount > 0) {
+        additionalDiscount = Math.min(paymentData.discount_amount, netBeforeAdditionalDiscount);
+      }
+
+      additionalDiscount = Math.min(additionalDiscount, netBeforeAdditionalDiscount);
+
+      const finalDiscountTotal = existingDiscount + additionalDiscount;
+      const finalTotalAmount = OrderCalculation.calculateTotal(baseSubtotal, finalDiscountTotal, taxAmount);
+
       // Validate payment amount
-      if (paymentData.amount_tendered < session.total_amount) {
+      if (paymentData.amount_tendered < finalTotalAmount) {
         throw new AppError('Payment amount is less than total', 400);
       }
 
@@ -215,7 +241,18 @@ export class OrderSessionService {
       }
 
       // Calculate change
-      const change = paymentData.amount_tendered - session.total_amount;
+      const change = paymentData.amount_tendered - finalTotalAmount;
+
+      // Persist updated discount + total if a new discount was applied
+      session.discount_amount = finalDiscountTotal;
+      session.total_amount = finalTotalAmount;
+
+      if (additionalDiscount > 0) {
+        await OrderSessionRepository.update(sessionId, {
+          discount_amount: finalDiscountTotal,
+          total_amount: finalTotalAmount,
+        });
+      }
 
       // Update all orders in session to COMPLETED and ensure inventory is deducted
       const orders = session.orders || [];

@@ -25,7 +25,7 @@ export async function POST(
   try {
     const { sessionId } = await params;
     const body = await request.json();
-    const { payment_method, amount_tendered, discount_amount, notes } = body;
+    const { payment_method, amount_tendered, discount_amount, discount_type, discount_value, notes } = body;
 
     // Get authenticated user or fall back to default POS user
     let closedByUserId: string;
@@ -67,10 +67,34 @@ export async function POST(
       }
     }
 
+    let normalizedDiscountType: 'percentage' | 'fixed_amount' | undefined;
+    let normalizedDiscountValue: number | undefined;
+
+    if (discount_type !== undefined || discount_value !== undefined) {
+      if (!discount_type || !['percentage', 'fixed_amount'].includes(discount_type)) {
+        return NextResponse.json(
+          { success: false, error: 'Discount type must be percentage or fixed_amount' },
+          { status: 400 }
+        );
+      }
+
+      if (typeof discount_value !== 'number' || discount_value <= 0) {
+        return NextResponse.json(
+          { success: false, error: 'Discount value must be a positive number' },
+          { status: 400 }
+        );
+      }
+
+      normalizedDiscountType = discount_type;
+      normalizedDiscountValue = discount_value;
+    }
+
     const result = await OrderSessionService.closeTab(sessionId, {
       payment_method,
       amount_tendered,
       discount_amount,
+      discount_type: normalizedDiscountType,
+      discount_value: normalizedDiscountValue,
       notes,
       closed_by: closedByUserId,
     });
