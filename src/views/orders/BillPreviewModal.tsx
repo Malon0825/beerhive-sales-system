@@ -114,46 +114,77 @@ export default function BillPreviewModal({
       return;
     }
 
-    const activeStyles = collectActiveStyles();
+    // Don't use external styles for thermal printing - use minimal inline CSS only
+    const activeStyles = '';
 
     printWindow.document.write(`
       <!DOCTYPE html>
-      <html lang="en">
+      <html>
       <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Bill Preview - ${billData?.session.session_number}</title>
-        ${activeStyles}
+        <title>Bill - ${billData?.session.session_number}</title>
         <style>
-          * {
-            margin: 0;
-            padding: 0;
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: monospace; 
+            font-size: 11px; 
+            color: #000; 
+            background: #fff; 
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+          }
+          .print-receipt { 
+            width: 80mm !important; 
+            max-width: 80mm !important; 
+            text-align: left; 
             box-sizing: border-box;
+            margin: 0 auto;
           }
-          
-          body {
-            font-family: monospace;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            color-adjust: exact;
-          }
-          
-          @media print {
-            @page {
-              size: 80mm auto;
-              margin: 0;
-            }
-            
-            body {
-              margin: 0;
-              padding: 0;
-            }
-          }
-          
-          img {
-            max-width: 100%;
-            height: auto;
+          .flex { display: flex; }
+          .justify-between { justify-content: space-between; }
+          .justify-center { justify-content: center; }
+          .items-center { align-items: center; }
+          .grid { display: grid; }
+          .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .text-center { text-align: center; }
+          .text-left { text-align: left; }
+          .text-right { text-align: right; }
+          .font-bold { font-weight: 700; }
+          .font-semibold { font-weight: 600; }
+          .font-medium { font-weight: 500; }
+          .uppercase { text-transform: uppercase; }
+          .italic { font-style: italic; }
+          .w-full { width: 100%; }
+          .inline-block { display: inline-block; }
+          .border-black { border-color: #000; }
+          .border-gray-200 { border-color: #e5e7eb; }
+          .border-gray-300 { border-color: #d1d5db; }
+          .border-gray-400 { border-color: #9ca3af; }
+          .border-t { border-top-width: 1px; border-top-style: solid; }
+          .border-t-2 { border-top-width: 2px; border-top-style: solid; }
+          .border-b { border-bottom-width: 1px; border-bottom-style: solid; }
+          .border-l-4 { border-left-width: 4px; border-left-style: solid; }
+          .border-dashed { border-style: dashed; }
+          .border-double { border-style: double; }
+          .border { border-width: 1px; border-style: solid; }
+          .bg-white { background-color: #fff; }
+          .text-black { color: #000; }
+          .text-xs { font-size: 0.75rem; }
+          table { border-collapse: collapse; }
+          img { 
+            max-width: 100%; 
+            height: auto; 
             display: block;
+            margin-left: auto;
+            margin-right: auto;
+          }
+          @media print { 
+            @page { size: 80mm auto; margin: 0; } 
+            body { display: block; }
+            .print-receipt { margin: 0 auto !important; }
           }
         </style>
       </head>

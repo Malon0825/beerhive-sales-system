@@ -52,29 +52,57 @@ export interface SessionBillItem
 
 /**
  * Convert tab bill data into the POS `PrintableReceipt` order payload.
+ * Merges same products across all orders to conserve vertical space.
  */
 export function createSessionReceiptOrderData(billData: SessionBillData) {
-  const aggregatedItems: OrderItem[] = billData.orders.flatMap((order) =>
-    order.items.map((item, index) => ({
-      id: `${order.id}-${index}`,
-      order_id: order.id,
-      product_id: null,
-      package_id: null,
-      item_name: `${order.order_number} • ${item.item_name}`,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-      subtotal: item.unit_price * item.quantity,
-      discount_amount: Math.max(
-        0,
-        item.unit_price * item.quantity - item.total
-      ),
-      total: item.total,
-      is_vip_price: item.is_vip_price,
-      is_complimentary: item.is_complimentary,
-      notes: item.notes ?? null,
-      created_at: order.created_at,
-    }))
-  );
+  // Aggregate items across all orders, merging products with same name
+  const itemMap = new Map<string, OrderItem>();
+  
+  billData.orders.forEach((order) => {
+    order.items.forEach((item) => {
+      const key = item.item_name; // Group by item name
+      
+      if (itemMap.has(key)) {
+        // Merge with existing item
+        const existing = itemMap.get(key)!;
+        existing.quantity += item.quantity;
+        existing.total += item.total;
+        existing.subtotal += item.unit_price * item.quantity;
+        existing.discount_amount += Math.max(0, item.unit_price * item.quantity - item.total);
+        
+        // Keep VIP/complimentary flags if any instance has them
+        existing.is_vip_price = existing.is_vip_price || item.is_vip_price;
+        existing.is_complimentary = existing.is_complimentary || item.is_complimentary;
+        
+        // Concatenate notes if different
+        if (item.notes && existing.notes !== item.notes) {
+          existing.notes = existing.notes 
+            ? `${existing.notes}; ${item.notes}` 
+            : item.notes;
+        }
+      } else {
+        // Add new item
+        itemMap.set(key, {
+          id: `merged-${item.item_name}`,
+          order_id: order.id,
+          product_id: null,
+          package_id: null,
+          item_name: item.item_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          subtotal: item.unit_price * item.quantity,
+          discount_amount: Math.max(0, item.unit_price * item.quantity - item.total),
+          total: item.total,
+          is_vip_price: item.is_vip_price,
+          is_complimentary: item.is_complimentary,
+          notes: item.notes ?? null,
+          created_at: order.created_at,
+        });
+      }
+    });
+  });
+  
+  const mergedItems = Array.from(itemMap.values());
 
   const createdAt = billData.orders[0]?.created_at ?? billData.session.opened_at;
   const updatedAt =
@@ -108,7 +136,7 @@ export function createSessionReceiptOrderData(billData: SessionBillData) {
   return {
     order: {
       ...printableOrder,
-      order_items: aggregatedItems,
+      order_items: mergedItems, // Merged items across all orders
       customer: billData.session.customer
         ? {
             full_name: billData.session.customer.full_name,
@@ -119,6 +147,13 @@ export function createSessionReceiptOrderData(billData: SessionBillData) {
       table: billData.session.table
         ? { table_number: billData.session.table.table_number }
         : undefined,
+    },
+    // Add session metadata for receipt display
+    sessionMetadata: {
+      session_number: billData.session.session_number,
+      opened_at: billData.session.opened_at,
+      duration_minutes: billData.session.duration_minutes,
+      order_count: billData.orders.length,
     },
   };
 }

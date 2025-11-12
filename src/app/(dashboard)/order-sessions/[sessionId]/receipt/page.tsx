@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
 import { LoadingSpinner } from '@/views/shared/feedback/LoadingSpinner';
 import { PrintableReceipt } from '@/views/pos/PrintableReceipt';
 import { Button } from '@/views/shared/ui/button';
 import { Printer, X } from 'lucide-react';
+import { createSessionReceiptOrderData } from '@/views/orders/sessionReceiptMapper';
 
 /**
  * Session Receipt Page
@@ -86,7 +87,12 @@ export default function SessionReceiptPage() {
    */
   const handlePrint = () => {
     const printContent = printContainerRef.current;
-    if (!printContent) return;
+    if (!printContent) {
+      console.error('❌ Print content not found');
+      return;
+    }
+
+    console.log('✅ Print content HTML length:', printContent.innerHTML.length);
 
     const printWindow = window.open('', '_blank', 'width=400,height=600');
     if (!printWindow) {
@@ -95,32 +101,89 @@ export default function SessionReceiptPage() {
     }
 
     const activeStyles = collectActiveStyles();
+    console.log('✅ Active styles collected:', activeStyles.length, 'characters');
 
     printWindow.document.write(`
       <!DOCTYPE html>
-      <html lang="en">
+      <html>
       <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Session Receipt - ${billData?.session?.session_number || ''}</title>
-        ${activeStyles}
+        <title>Receipt</title>
         <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: monospace; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
-          @media print {
-            @page { size: 80mm auto; margin: 0; }
-            body { margin: 0; padding: 0; }
-            .page-break { page-break-after: always; break-after: page; }
+          * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
           }
-          /* Ensure receipt content uses optimal padding similar to POS */
+          body { 
+            margin: 0;
+            padding: 0;
+            font-family: monospace;
+            font-size: 11px;
+            color: #000;
+            background: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+          }
           .print-receipt {
+            width: 80mm !important;
             max-width: 80mm !important;
-            margin: 0 auto !important;
-            /* Reduce lateral padding to avoid cramping; keep bottom padding for cutter */
-            padding: 6mm 6mm 14mm 6mm !important;
-            font-family: monospace !important;
+            text-align: left;
+            box-sizing: border-box;
+            margin: 0 auto;
           }
-          img { max-width: 100%; height: auto; display: block; }
+          @media print {
+            @page { 
+              size: 80mm auto; 
+              margin: 0; 
+            }
+            body {
+              display: block;
+            }
+            .print-receipt {
+              margin: 0 auto !important;
+            }
+          }
+          /* Essential utility classes */
+          .flex { display: flex; }
+          .justify-between { justify-content: space-between; }
+          .justify-center { justify-content: center; }
+          .items-center { align-items: center; }
+          .grid { display: grid; }
+          .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .text-center { text-align: center; }
+          .text-left { text-align: left; }
+          .text-right { text-align: right; }
+          .font-bold { font-weight: 700; }
+          .font-semibold { font-weight: 600; }
+          .font-medium { font-weight: 500; }
+          .uppercase { text-transform: uppercase; }
+          .italic { font-style: italic; }
+          .w-full { width: 100%; }
+          .inline-block { display: inline-block; }
+          .border-black { border-color: #000; }
+          .border-gray-200 { border-color: #e5e7eb; }
+          .border-gray-300 { border-color: #d1d5db; }
+          .border-gray-400 { border-color: #9ca3af; }
+          .border-t { border-top-width: 1px; border-top-style: solid; }
+          .border-t-2 { border-top-width: 2px; border-top-style: solid; }
+          .border-b { border-bottom-width: 1px; border-bottom-style: solid; }
+          .border-l-4 { border-left-width: 4px; border-left-style: solid; }
+          .border-dashed { border-style: dashed; }
+          .border-double { border-style: double; }
+          .border { border-width: 1px; border-style: solid; }
+          .bg-white { background-color: #fff; }
+          .text-black { color: #000; }
+          .text-xs { font-size: 0.75rem; }
+          table { border-collapse: collapse; }
+          img { 
+            max-width: 100%; 
+            height: auto; 
+            display: block; 
+            margin-left: auto;
+            margin-right: auto;
+          }
         </style>
       </head>
       <body>
@@ -151,15 +214,21 @@ export default function SessionReceiptPage() {
     window.close();
   };
 
+  // Transform billData into receipt format
+  const receiptData = useMemo(() => {
+    if (!billData) return null;
+    return createSessionReceiptOrderData(billData);
+  }, [billData]);
+
   useEffect(() => {
-    if (!billData || !isMounted) return;
+    if (!receiptData || !isMounted) return;
     const t = setTimeout(() => {
       if (printContainerRef.current) {
         handlePrint();
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [billData, isMounted]);
+  }, [receiptData, isMounted]);
 
   // Loading state
   if (loading) {
@@ -174,7 +243,7 @@ export default function SessionReceiptPage() {
   }
 
   // Error state
-  if (error || !billData) {
+  if (error || !billData || !receiptData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md">
@@ -221,45 +290,10 @@ export default function SessionReceiptPage() {
       {/* Receipt Preview (hidden when printing) */}
       <div className="print:hidden flex justify-center px-6 py-8">
         <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-4 w-full max-w-[360px] h-[calc(100vh-180px)] overflow-y-auto">
-          {billData.orders.map((order: any, idx: number) => {
-            const orderData = {
-              order: {
-                id: order.id,
-                order_number: order.order_number,
-                created_at: order.created_at,
-                customer: billData.session.customer
-                  ? { full_name: billData.session.customer.full_name, customer_number: '' }
-                  : undefined,
-                cashier: undefined,
-                table: billData.session.table
-                  ? { table_number: billData.session.table.table_number }
-                  : undefined,
-                order_items: (order.items || []).map((it: any) => ({
-                  id: it.id || undefined,
-                  item_name: it.item_name,
-                  quantity: it.quantity,
-                  unit_price: it.unit_price,
-                  total: it.total,
-                  notes: it.notes,
-                  is_vip_price: it.is_vip_price,
-                  is_complimentary: it.is_complimentary,
-                })),
-                subtotal: order.subtotal,
-                discount_amount: order.discount_amount || 0,
-                tax_amount: (billData.totals && billData.totals.tax_amount) || 0,
-                total_amount: order.total_amount,
-                payment_method: undefined,
-                amount_tendered: undefined,
-                change_amount: undefined,
-              },
-            } as any;
-
-            return (
-              <div key={order.id} className={idx < billData.orders.length - 1 ? 'pb-6 mb-6 border-b border-dashed border-gray-300' : ''}>
-                <PrintableReceipt orderData={orderData} isPrintMode={false} />
-              </div>
-            );
-          })}
+          <PrintableReceipt 
+            orderData={receiptData} 
+            isPrintMode={false} 
+          />
         </div>
       </div>
 
@@ -289,50 +323,15 @@ export default function SessionReceiptPage() {
       `}</style>
 
       {/* Hidden print container rendered to body; used to feed the popup */}
-      {isMounted && billData && createPortal(
+      {isMounted && receiptData && createPortal(
         <div
           ref={printContainerRef}
           style={{ position: 'fixed', left: '-9999px', top: '0', width: '80mm', visibility: 'hidden' }}
         >
-          {billData.orders.map((order: any, idx: number) => {
-            const orderData = {
-              order: {
-                id: order.id,
-                order_number: order.order_number,
-                created_at: order.created_at,
-                customer: billData.session.customer
-                  ? { full_name: billData.session.customer.full_name, customer_number: '' }
-                  : undefined,
-                cashier: undefined,
-                table: billData.session.table
-                  ? { table_number: billData.session.table.table_number }
-                  : undefined,
-                order_items: (order.items || []).map((it: any) => ({
-                  id: it.id || undefined,
-                  item_name: it.item_name,
-                  quantity: it.quantity,
-                  unit_price: it.unit_price,
-                  total: it.total,
-                  notes: it.notes,
-                  is_vip_price: it.is_vip_price,
-                  is_complimentary: it.is_complimentary,
-                })),
-                subtotal: order.subtotal,
-                discount_amount: order.discount_amount || 0,
-                tax_amount: (billData.totals && billData.totals.tax_amount) || 0,
-                total_amount: order.total_amount,
-                payment_method: undefined,
-                amount_tendered: undefined,
-                change_amount: undefined,
-              },
-            } as any;
-
-            return (
-              <div key={order.id} className={idx < billData.orders.length - 1 ? 'page-break' : ''}>
-                <PrintableReceipt orderData={orderData} isPrintMode={true} />
-              </div>
-            );
-          })}
+          <PrintableReceipt 
+            orderData={receiptData} 
+            isPrintMode={true} 
+          />
         </div>,
         document.body
       )}

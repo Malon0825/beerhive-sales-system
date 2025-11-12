@@ -613,19 +613,19 @@ export function POSInterface() {
         }
       }
 
-      // Auto-print receipt immediately
-      const printWindow = window.open(
-        `/api/orders/${orderId}/receipt?format=html`,
-        '_blank',
-        'width=400,height=600'
-      );
-      if (printWindow) {
-        printWindow.addEventListener('load', () => {
-          printWindow.print();
-          printWindow.addEventListener('afterprint', () => {
-            try { printWindow.close(); } catch {}
-          });
-        });
+      // Fetch order data and show receipt modal with auto-print
+      try {
+        const orderResponse = await fetch(`/api/orders/${orderId}`);
+        if (orderResponse.ok) {
+          const orderResult = await orderResponse.json();
+          if (orderResult.success && orderResult.data) {
+            // Show receipt modal which will auto-print
+            setReceiptData({ order: orderResult.data });
+            setShowReceipt(true);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch order for receipt:', err);
       }
       
       // Show success message

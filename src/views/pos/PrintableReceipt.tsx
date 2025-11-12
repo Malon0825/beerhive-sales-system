@@ -315,6 +315,13 @@ interface ReceiptOrderData {
     };
     order_items?: OrderItem[];
   };
+  // Session-specific fields for tab receipts
+  sessionMetadata?: {
+    session_number: string;
+    opened_at: string;
+    duration_minutes: number;
+    order_count: number;
+  };
 }
 
 interface PrintableReceiptProps {
@@ -336,89 +343,153 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
     return <MinimalPrintableReceipt orderData={orderData} isPrintMode={isPrintMode} />;
   }
 
-  const { order } = orderData;
+  const { order, sessionMetadata } = orderData;
+  const isSessionReceipt = !!sessionMetadata;
+  
   const { businessInfo, receiptSettings } = useReceiptBranding();
   const branding = useMemo(
     () => createBrandingDetails(businessInfo, receiptSettings),
     [businessInfo, receiptSettings]
   );
+  
+  // Helper to format duration
+  const formatDuration = (minutes: number): string => {
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (remainingMinutes === 0) return `${hours}h`;
+    return `${hours}h ${remainingMinutes}m`;
+  };
+  
+  // Helper to format time only
+  const formatTime = (dateString: string) => {
+    try {
+      return format(new Date(dateString), 'hh:mm a');
+    } catch {
+      return dateString;
+    }
+  };
 
   return (
     <div 
       className={`${isPrintMode ? 'print-receipt' : ''} bg-white`}
       style={isPrintMode ? { 
+        width: '80mm',
         maxWidth: '80mm', 
         margin: '0 auto', 
-        padding: '8mm',
-        paddingBottom: '14mm',
-        fontFamily: 'monospace'
+        padding: '4mm 6mm 14mm 6mm',
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        lineHeight: '1.2',
+        textAlign: 'left',
+        boxSizing: 'border-box'
       } : { 
-        padding: '2rem',
+        padding: '1.5rem',
         fontFamily: 'monospace',
         maxWidth: '400px',
-        margin: '0 auto'
+        margin: '0 auto',
+        fontSize: '0.875rem',
+        lineHeight: '1.3'
       }}
     >
-      {/* Logo and Business Name */}
-      <div className="text-center mb-6">
-        <div className="flex justify-center mb-4">
-          <Image
-            src="/receipt-logo.png"
-            alt="BeerHive Receipt Logo"
-            width={120}
-            height={120}
-            className="object-contain grayscale contrast-200"
-            priority
-            unoptimized
-          />
+      {/* Logo and Business Name - Compact */}
+      <div className="text-center" style={{ marginBottom: '8px' }}>
+        <div className="flex justify-center" style={{ marginBottom: '6px' }}>
+          {isPrintMode ? (
+            <img
+              src="/receipt-logo.png"
+              alt="BeerHive Receipt Logo"
+              width={80}
+              height={80}
+              style={{ objectFit: 'contain', filter: 'grayscale(100%) contrast(200%)' }}
+            />
+          ) : (
+            <Image
+              src="/receipt-logo.png"
+              alt="BeerHive Receipt Logo"
+              width={80}
+              height={80}
+              className="object-contain grayscale contrast-200"
+              priority
+              unoptimized
+            />
+          )}
         </div>
-        <div className="space-y-1">
+        <div style={{ lineHeight: '1.2' }}>
           <h1
-            className="text-3xl font-bold tracking-wider text-black"
-            style={{ letterSpacing: '0.1em' }}
+            className="font-bold tracking-wider text-black"
+            style={{ letterSpacing: '0.1em', fontSize: '16px', marginBottom: '2px' }}
           >
             {branding.displayName.toUpperCase()}
           </h1>
           {branding.legalName && (
-            <p className="text-sm text-black">{branding.legalName}</p>
+            <p style={{ fontSize: '9px', marginBottom: '1px' }} className="text-black">{branding.legalName}</p>
           )}
           {branding.registrationLines.map((line, idx) => (
-            <p key={`registration-${idx}`} className="text-xs text-black">
+            <p key={`registration-${idx}`} style={{ fontSize: '8px', marginBottom: '1px' }} className="text-black">
               {line}
             </p>
           ))}
           {branding.addressLines.map((line, idx) => (
-            <p key={`address-${idx}`} className="text-xs text-black">
+            <p key={`address-${idx}`} style={{ fontSize: '8px', marginBottom: '1px' }} className="text-black">
               {line}
             </p>
           ))}
           {branding.contactLines.map((line, idx) => (
-            <p key={`contact-${idx}`} className="text-xs text-black">
+            <p key={`contact-${idx}`} style={{ fontSize: '8px', marginBottom: '1px' }} className="text-black">
               {line}
             </p>
           ))}
           {branding.additionalNotes && (
-            <p className="text-xs text-black">{branding.additionalNotes}</p>
+            <p style={{ fontSize: '8px', marginBottom: '1px' }} className="text-black">{branding.additionalNotes}</p>
           )}
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="border-t-2 border-double border-black my-5" />
+      {/* Divider - Minimal */}
+      <div className="border-t-2 border-double border-black" style={{ margin: '6px 0' }} />
 
-      {/* Order Information */}
-      <div className="mb-5">
-        <div className="grid grid-cols-2 gap-y-2 text-sm">
-          <div className="text-black font-semibold">Order #:</div>
-          <div className="text-right font-bold">{order.order_number}</div>
-          
-          <div className="text-black">Date:</div>
-          <div className="text-right">{formatReceiptDateTime(order.created_at)}</div>
-          
-          {order.cashier && (
+      {/* Session Badge for Tab Receipts - Compact */}
+      {isSessionReceipt && sessionMetadata && (
+        <div className="text-center" style={{ marginBottom: '6px' }}>
+          <div className="inline-block border border-black" style={{ padding: '3px 8px', borderRadius: '4px' }}>
+            <p className="text-black font-semibold uppercase" style={{ fontSize: '8px', marginBottom: '1px', letterSpacing: '0.05em' }}>Tab Session</p>
+            <p className="font-bold text-black" style={{ fontSize: '11px' }}>{sessionMetadata.session_number}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Order Information - Compact */}
+      <div style={{ marginBottom: '6px' }}>
+        <div className="grid grid-cols-2" style={{ fontSize: '9px', lineHeight: '1.4', rowGap: '2px' }}>
+          {isSessionReceipt && sessionMetadata ? (
             <>
-              <div className="text-black">Cashier:</div>
-              <div className="text-right">{order.cashier.full_name}</div>
+              <div className="text-black font-semibold">Session:</div>
+              <div className="text-right font-bold">{sessionMetadata.session_number}</div>
+              
+              <div className="text-black">Opened:</div>
+              <div className="text-right">{formatReceiptDateTime(sessionMetadata.opened_at)}</div>
+              
+              <div className="text-black">Duration:</div>
+              <div className="text-right font-semibold">{formatDuration(sessionMetadata.duration_minutes)}</div>
+              
+              <div className="text-black">Orders:</div>
+              <div className="text-right font-semibold">{sessionMetadata.order_count} order{sessionMetadata.order_count !== 1 ? 's' : ''}</div>
+            </>
+          ) : (
+            <>
+              <div className="text-black font-semibold">Order:</div>
+              <div className="text-right font-bold">{order.order_number}</div>
+              
+              <div className="text-black">Date:</div>
+              <div className="text-right">{formatReceiptDateTime(order.created_at)}</div>
+              
+              {order.cashier && (
+                <>
+                  <div className="text-black">Cashier:</div>
+                  <div className="text-right">{order.cashier.full_name}</div>
+                </>
+              )}
             </>
           )}
           
@@ -438,50 +509,48 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-dashed border-black my-5" />
+      {/* Divider - Minimal */}
+      <div className="border-t border-dashed border-black" style={{ margin: '4px 0' }} />
 
-      {/* Order Items */}
-      <div className="mb-5">
-        <h3 className="font-bold text-sm mb-4 text-center uppercase tracking-wide border-b-2 border-black pb-2">
-          Order Items
+      {/* Order Items - Compact Unified Layout */}
+      <div style={{ marginBottom: '6px' }}>
+        <h3 className="font-bold text-center uppercase border-b border-black" style={{ fontSize: '10px', paddingBottom: '2px', marginBottom: '4px', letterSpacing: '0.05em' }}>
+          {isSessionReceipt ? 'Items' : 'Items'}
         </h3>
-        <table className="w-full text-sm">
+        
+        {/* Unified Table - Works for both POS and Session */}
+        <table className="w-full" style={{ fontSize: '9px' }}>
           <thead>
             <tr className="border-b border-black">
-              <th className="text-left pb-2 font-semibold">Item</th>
-              <th className="text-center pb-2 font-semibold w-12">Qty</th>
-              <th className="text-right pb-2 font-semibold w-20">Price</th>
-              <th className="text-right pb-2 font-semibold w-24">Total</th>
+              <th className="text-left font-semibold" style={{ paddingBottom: '2px' }}>Item</th>
+              <th className="text-center font-semibold" style={{ width: '28px', paddingBottom: '2px' }}>Qty</th>
+              <th className="text-right font-semibold" style={{ width: '50px', paddingBottom: '2px' }}>Total</th>
             </tr>
           </thead>
           <tbody>
             {order.order_items?.map((item, index) => (
               <React.Fragment key={item.id || index}>
-                <tr className="border-b border-black">
-                  <td className="py-3 pr-2">{item.item_name}</td>
-                  <td className="text-center py-3">{item.quantity}x</td>
-                  <td className="text-right py-3">{formatReceiptCurrency(item.unit_price)}</td>
-                  <td className="text-right py-3 font-semibold">{formatReceiptCurrency(item.total)}</td>
+                <tr className="border-b border-gray-300">
+                  <td style={{ paddingTop: '3px', paddingBottom: '3px', paddingRight: '4px' }}>
+                    {item.item_name}
+                    {item.is_vip_price && <span className="text-xs"> [VIP]</span>}
+                    {item.is_complimentary && <span className="text-xs"> [FREE]</span>}
+                  </td>
+                  <td className="text-center" style={{ paddingTop: '3px', paddingBottom: '3px' }}>
+                    {item.quantity}x
+                  </td>
+                  <td className="text-right font-semibold" style={{ paddingTop: '3px', paddingBottom: '3px' }}>
+                    {item.is_complimentary ? (
+                      <span style={{ fontSize: '8px' }}>FREE</span>
+                    ) : (
+                      formatReceiptCurrency(item.total)
+                    )}
+                  </td>
                 </tr>
                 {item.notes && (
                   <tr>
-                    <td colSpan={4} className="text-xs pb-2 pt-1 italic pl-2">
+                    <td colSpan={3} className="italic" style={{ fontSize: '8px', paddingBottom: '2px', paddingLeft: '4px', paddingTop: '1px' }}>
                       Note: {item.notes}
-                    </td>
-                  </tr>
-                )}
-                {item.is_vip_price && (
-                  <tr>
-                    <td colSpan={4} className="text-xs pb-2 pl-2 font-semibold uppercase">
-                      VIP PRICE APPLIED
-                    </td>
-                  </tr>
-                )}
-                {item.is_complimentary && (
-                  <tr>
-                    <td colSpan={4} className="text-xs pb-2 pl-2 font-semibold uppercase">
-                      COMPLIMENTARY ITEM
                     </td>
                   </tr>
                 )}
@@ -491,57 +560,57 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
         </table>
       </div>
 
-      {/* Divider */}
-      <div className="border-t border-dashed border-black my-5" />
+      {/* Divider - Minimal */}
+      <div className="border-t border-dashed border-black" style={{ margin: '4px 0' }} />
 
-      {/* Totals */}
-      <div className="mb-5">
-        <div className="space-y-3 text-sm">
-          <div className="flex justify-between py-1">
+      {/* Totals - Compact */}
+      <div style={{ marginBottom: '6px' }}>
+        <div style={{ fontSize: '10px', lineHeight: '1.4' }}>
+          <div className="flex justify-between" style={{ paddingTop: '2px', paddingBottom: '2px' }}>
             <span className="text-black">Subtotal:</span>
             <span className="font-medium">{formatReceiptCurrency(order.subtotal)}</span>
           </div>
           {order.discount_amount > 0 && (
-            <div className="flex justify-between py-1">
+            <div className="flex justify-between" style={{ paddingTop: '2px', paddingBottom: '2px' }}>
               <span className="font-medium">Discount:</span>
               <span className="font-semibold">-{formatReceiptCurrency(order.discount_amount)}</span>
             </div>
           )}
           {order.tax_amount > 0 && (
-            <div className="flex justify-between py-1">
+            <div className="flex justify-between" style={{ paddingTop: '2px', paddingBottom: '2px' }}>
               <span className="text-black">Tax:</span>
               <span className="font-medium">{formatReceiptCurrency(order.tax_amount)}</span>
             </div>
           )}
         </div>
         
-        <div className="border-t-2 border-black mt-4 pt-4">
+        <div className="border-t-2 border-black" style={{ marginTop: '4px', paddingTop: '4px' }}>
           <div className="flex justify-between items-center">
-            <span className="text-xl font-bold uppercase">Total:</span>
-            <span className="text-2xl font-bold">{formatReceiptCurrency(order.total_amount)}</span>
+            <span className="font-bold uppercase" style={{ fontSize: '12px' }}>Total:</span>
+            <span className="font-bold" style={{ fontSize: '14px' }}>{formatReceiptCurrency(order.total_amount)}</span>
           </div>
         </div>
       </div>
 
-      {/* Payment Details */}
+      {/* Payment Details - Compact */}
       {order.payment_method && (
         <>
-          <div className="border-t border-dashed border-black my-5" />
-          <div className="mb-5">
-            <h4 className="font-semibold text-sm mb-3 uppercase tracking-wide">Payment Details</h4>
-            <div className="space-y-2 text-sm border border-black p-3 rounded">
-              <div className="flex justify-between">
+          <div className="border-t border-dashed border-black" style={{ margin: '4px 0' }} />
+          <div style={{ marginBottom: '6px' }}>
+            <h4 className="font-semibold uppercase" style={{ fontSize: '9px', marginBottom: '3px', letterSpacing: '0.05em' }}>Payment</h4>
+            <div className="border border-black" style={{ fontSize: '10px', padding: '4px', lineHeight: '1.4' }}>
+              <div className="flex justify-between" style={{ marginBottom: '2px' }}>
                 <span className="text-black">Method:</span>
                 <span className="font-semibold uppercase">{order.payment_method}</span>
               </div>
               {order.amount_tendered && (
-                <div className="flex justify-between">
+                <div className="flex justify-between" style={{ marginBottom: '2px' }}>
                   <span className="text-black">Tendered:</span>
                   <span className="font-medium">{formatReceiptCurrency(order.amount_tendered)}</span>
                 </div>
               )}
               {order.change_amount !== null && order.change_amount > 0 && (
-                <div className="flex justify-between border-t border-black pt-2 mt-2">
+                <div className="flex justify-between border-t border-black" style={{ paddingTop: '3px', marginTop: '3px' }}>
                   <span className="font-semibold text-black">Change:</span>
                   <span className="font-bold">{formatReceiptCurrency(order.change_amount)}</span>
                 </div>
@@ -551,20 +620,18 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
         </>
       )}
 
-      {/* Divider */}
-      <div className="border-t-2 border-double border-black my-6" />
+      {/* Divider - Minimal */}
+      <div className="border-t-2 border-double border-black" style={{ margin: '6px 0' }} />
 
-      {/* Footer Message */}
-      <div className="text-center space-y-3 py-4">
-        <div className="mb-3">
-          <p className="text-base font-bold text-black">{branding.footerMessage}</p>
-        </div>
+      {/* Footer Message - Compact */}
+      <div className="text-center" style={{ paddingTop: '4px', paddingBottom: '4px' }}>
+        <p className="font-bold text-black" style={{ fontSize: '10px' }}>{branding.footerMessage}</p>
       </div>
 
       {/* Print Timestamp - Only visible when printed */}
       {isPrintMode && (
-        <div className="text-center mt-4 mb-20 pt-3 border-t border-gray-200">
-          <p className="text-xs">
+        <div className="text-center border-t border-gray-200" style={{ marginTop: '4px', marginBottom: '40px', paddingTop: '3px' }}>
+          <p style={{ fontSize: '8px' }}>
             Printed: {formatReceiptDateTime(new Date().toISOString())}
           </p>
         </div>
