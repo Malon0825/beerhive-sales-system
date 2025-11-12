@@ -66,6 +66,10 @@ export interface CreateOrderSessionDto {
  */
 export interface UpdateOrderSessionDto {
   notes?: string;
+  subtotal?: number;
+  discount_amount?: number;
+  tax_amount?: number;
+  total_amount?: number;
 }
 
 /**
@@ -76,5 +80,7 @@ export interface CloseOrderSessionDto {
   payment_method: string;
   amount_tendered: number;
   discount_amount?: number;
+  discount_type?: 'percentage' | 'fixed_amount';
+  discount_value?: number;
   notes?: string;
 }

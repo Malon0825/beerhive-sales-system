@@ -4,22 +4,42 @@ import { useState, useEffect } from 'react';
 import { Package } from '@/models/entities/Package';
 import { Product } from '@/models/entities/Product';
 import PackageList from './PackageList';
-import PackageForm from './PackageForm';
+import PackageFormDialog from './PackageFormDialog';
 import { Button } from '../shared/ui/button';
 import { Plus, Filter } from 'lucide-react';
 import { Badge } from '../shared/ui/badge';
+import { toast } from '@/lib/hooks/useToast';
+import { ConfirmDialog } from '../shared/ui/confirm-dialog';
 
 /**
  * PackageManager Component
- * Main container for package management functionality
+ * 
+ * Main container for package management functionality with professional dialog-based UI
+ * 
+ * @remarks
+ * Architecture:
+ * - Follows Single Responsibility: UI orchestration only
+ * - Delegates form presentation to PackageFormDialog
+ * - Uses controlled dialog state for professional UX
+ * - Implements optimistic UI updates where appropriate
+ * 
+ * Frontend Integration:
+ * - Dialog handles all modal interactions and animations
+ * - Toast notifications provide feedback without blocking UI
+ * - Loading states prevent duplicate submissions
  */
 export default function PackageManager() {
   const [packages, setPackages] = useState<(Package & { items?: any[] })[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package & { items?: any[] } | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'vip_only' | 'regular' | 'promotional'>('all');
+  const [saving, setSaving] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
+  const [pendingDeactivatePackage, setPendingDeactivatePackage] = useState<(Package & { items?: any[] }) | null>(null);
 
   useEffect(() => {
     loadPackages();
@@ -63,14 +83,18 @@ export default function PackageManager() {
 
   /**
    * Handle create new package
+   * Opens dialog in create mode
    */
   const handleCreate = () => {
     setEditingPackage(null);
-    setShowForm(true);
+    setDialogOpen(true);
   };
 
   /**
    * Handle edit existing package
+   * Fetches full package details and opens dialog in edit mode
+   * 
+   * @param pkg - Package to edit (may not have full item details)
    */
   const handleEdit = async (pkg: Package) => {
     try {
@@ -80,11 +104,21 @@ export default function PackageManager() {
 
       if (result.success) {
         setEditingPackage(result.data);
-        setShowForm(true);
+        setDialogOpen(true);
+      } else {
+        toast({
+          title: '❌ Failed to Load Package',
+          description: result.error || 'Could not load package details',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Load package details error:', error);
-      alert('Failed to load package details');
+      toast({
+        title: '❌ Error',
+        description: 'An unexpected error occurred while loading package details',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -97,18 +131,27 @@ export default function PackageManager() {
   };
 
   /**
-   * Handle form close
+   * Handle dialog close
+   * Resets editing state when dialog closes
    */
-  const handleFormClose = () => {
-    setShowForm(false);
-    setEditingPackage(null);
+  const handleDialogClose = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      setEditingPackage(null);
+    }
   };
 
   /**
    * Handle form submission
+   * 
+   * Saves package data and provides user feedback
+   * Closes dialog on success, shows error toast on failure
+   * 
+   * @param data - Validated form data from PackageForm
    */
   const handleFormSubmit = async (data: any) => {
     try {
+      setSaving(true);
       const url = editingPackage 
         ? `/api/packages/${editingPackage.id}` 
         : '/api/packages';
@@ -126,45 +169,140 @@ export default function PackageManager() {
       const result = await response.json();
 
       if (result.success) {
-        setShowForm(false);
+        // Success: Close dialog and show success notification
+        setDialogOpen(false);
         setEditingPackage(null);
+        
+        toast({
+          title: editingPackage ? '✅ Package Updated' : '✅ Package Created',
+          description: result.message || 'Package saved successfully',
+          variant: 'default',
+        });
+        
+        // Reload packages to show changes
         loadPackages();
-        alert(result.message || 'Package saved successfully!');
       } else {
-        alert(result.error || 'Failed to save package');
+        // Error: Keep dialog open and show error
+        toast({
+          title: '❌ Save Failed',
+          description: result.error || 'Failed to save package',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Save package error:', error);
-      alert('Failed to save package');
+      toast({
+        title: '❌ Error',
+        description: 'An unexpected error occurred while saving the package',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
   /**
-   * Handle delete package
+   * Handle deactivate package (opens confirmation dialog)
    */
-  const handleDelete = async (id: string) => {
+  const handleDeactivateRequest = (pkg: Package & { items?: any[] }) => {
+    setPendingDeactivatePackage(pkg);
+    setShowDeactivateDialog(true);
+  };
+
+  /**
+   * Execute package deactivation
+   */
+  const confirmDeactivate = async () => {
+    if (!pendingDeactivatePackage) return;
+
+    const pkg = pendingDeactivatePackage;
+    setStatusUpdatingId(pkg.id);
+
     try {
-      const response = await fetch(`/api/packages/${id}`, {
-        method: 'DELETE',
+      const response = await fetch(`/api/packages/${pkg.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: false }),
       });
 
       const result = await response.json();
 
       if (result.success) {
-        loadPackages();
+        toast({
+          title: '📦 Package Deactivated',
+          description: `${pkg.name} is now hidden from POS and ordering flows.`,
+          variant: 'default',
+        });
+        await loadPackages();
       } else {
-        alert(result.error || 'Failed to delete package');
+        toast({
+          title: '❌ Deactivation Failed',
+          description: result.error || 'Could not deactivate package. Please try again.',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
-      console.error('Delete package error:', error);
-      alert('Failed to delete package');
+      console.error('Deactivate package error:', error);
+      toast({
+        title: '❌ Error',
+        description: 'An unexpected error occurred while deactivating the package.',
+        variant: 'destructive',
+      });
+    } finally {
+      setStatusUpdatingId(null);
+      setShowDeactivateDialog(false);
+      setPendingDeactivatePackage(null);
     }
   };
 
-  // Filter packages by type
-  const filteredPackages = filterType === 'all' 
-    ? packages 
-    : packages.filter(pkg => pkg.package_type === filterType);
+  /**
+   * Handle package activation
+   */
+  const handleActivate = async (pkg: Package & { items?: any[] }) => {
+    setStatusUpdatingId(pkg.id);
+
+    try {
+      const response = await fetch(`/api/packages/${pkg.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: true }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: '✅ Package Activated',
+          description: `${pkg.name} is now available in POS.`,
+          variant: 'default',
+        });
+        await loadPackages();
+      } else {
+        toast({
+          title: '❌ Activation Failed',
+          description: result.error || 'Could not activate package. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Activate package error:', error);
+      toast({
+        title: '❌ Error',
+        description: 'An unexpected error occurred while activating the package.',
+        variant: 'destructive',
+      });
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
+
+  const statusFilteredPackages = statusFilter === 'all'
+    ? packages
+    : packages.filter(pkg => (statusFilter === 'active' ? pkg.is_active : pkg.is_active === false));
+
+  const filteredPackages = filterType === 'all'
+    ? statusFilteredPackages
+    : statusFilteredPackages.filter(pkg => pkg.package_type === filterType);
 
   return (
     <div className="p-6">
@@ -180,22 +318,56 @@ export default function PackageManager() {
         </Button>
       </div>
 
-      {/* Form Modal/Section */}
-      {showForm && (
-        <div className="mb-6">
-          <PackageForm
-            package={editingPackage || undefined}
-            products={products}
-            onSubmit={handleFormSubmit}
-            onCancel={handleFormClose}
-          />
-        </div>
-      )}
+      {/* Package Form Dialog */}
+      <PackageFormDialog
+        open={dialogOpen}
+        onOpenChange={handleDialogClose}
+        package={editingPackage || undefined}
+        products={products}
+        onSubmit={handleFormSubmit}
+        loading={saving}
+      />
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-        <div className="flex items-center gap-3">
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-6 space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
           <Filter className="w-5 h-5 text-gray-500" />
+          <span className="text-sm font-medium text-gray-700">Show packages:</span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setStatusFilter('active')}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                statusFilter === 'active'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Active ({packages.filter(p => p.is_active).length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('inactive')}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                statusFilter === 'inactive'
+                  ? 'bg-slate-700 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Inactive ({packages.filter(p => p.is_active === false).length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                statusFilter === 'all'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              All ({packages.length})
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm font-medium text-gray-700">Filter by type:</span>
           <div className="flex gap-2">
             <button
@@ -206,7 +378,7 @@ export default function PackageManager() {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              All ({packages.length})
+              All ({statusFilteredPackages.length})
             </button>
             <button
               onClick={() => setFilterType('regular')}
@@ -216,7 +388,7 @@ export default function PackageManager() {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              Regular ({packages.filter(p => p.package_type === 'regular').length})
+              Regular ({statusFilteredPackages.filter(p => p.package_type === 'regular').length})
             </button>
             <button
               onClick={() => setFilterType('vip_only')}
@@ -226,7 +398,7 @@ export default function PackageManager() {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              VIP Only ({packages.filter(p => p.package_type === 'vip_only').length})
+              VIP Only ({statusFilteredPackages.filter(p => p.package_type === 'vip_only').length})
             </button>
             <button
               onClick={() => setFilterType('promotional')}
@@ -236,7 +408,7 @@ export default function PackageManager() {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              Promotional ({packages.filter(p => p.package_type === 'promotional').length})
+              Promotional ({statusFilteredPackages.filter(p => p.package_type === 'promotional').length})
             </button>
           </div>
         </div>
@@ -247,8 +419,28 @@ export default function PackageManager() {
         packages={filteredPackages}
         loading={loading}
         onEdit={handleEdit}
-        onDelete={handleDelete}
+        onDeactivate={handleDeactivateRequest}
+        onActivate={handleActivate}
         onView={handleView}
+        statusUpdatingId={statusUpdatingId}
+      />
+
+      <ConfirmDialog
+        open={showDeactivateDialog}
+        onOpenChange={(open) => {
+          setShowDeactivateDialog(open);
+          if (!open) {
+            setPendingDeactivatePackage(null);
+          }
+        }}
+        title="Deactivate Package"
+        description={pendingDeactivatePackage
+          ? `Are you sure you want to deactivate "${pendingDeactivatePackage.name}"? The package will disappear from POS but remain in the management list so you can re-activate it later.`
+          : ''}
+        confirmText="Deactivate"
+        variant="warning"
+        onConfirm={confirmDeactivate}
+        loading={statusUpdatingId === pendingDeactivatePackage?.id}
       />
     </div>
   );

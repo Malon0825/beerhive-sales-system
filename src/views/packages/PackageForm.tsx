@@ -6,7 +6,7 @@ import { Product } from '@/models/entities/Product';
 import { Button } from '../shared/ui/button';
 import { Input } from '../shared/ui/input';
 import { Label } from '../shared/ui/label';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 interface PackageFormProps {
   package?: Package & { items?: any[] };
@@ -47,7 +47,8 @@ export default function PackageForm({
   });
 
   const [selectedProductId, setSelectedProductId] = useState<string>('');
-  const [itemQuantity, setItemQuantity] = useState<number>(1);
+  const [itemQuantity, setItemQuantity] = useState<string>('1');
+  const [itemQuantityDrafts, setItemQuantityDrafts] = useState<Record<string, string>>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,6 +73,12 @@ export default function PackageForm({
       return;
     }
 
+    const parsedQuantity = parseFloat(itemQuantity);
+    if (!itemQuantity || Number.isNaN(parsedQuantity) || parsedQuantity <= 0) {
+      alert('Please enter a valid quantity');
+      return;
+    }
+
     const productExists = formData.items.some(item => item.product_id === selectedProductId);
     if (productExists) {
       alert('This product is already in the package');
@@ -84,7 +91,7 @@ export default function PackageForm({
         ...formData.items,
         {
           product_id: selectedProductId,
-          quantity: itemQuantity,
+          quantity: parsedQuantity,
           is_choice_item: false,
           display_order: formData.items.length,
         },
@@ -92,7 +99,7 @@ export default function PackageForm({
     });
 
     setSelectedProductId('');
-    setItemQuantity(1);
+    setItemQuantity('1');
   };
 
   const removeItem = (index: number) => {
@@ -103,9 +110,50 @@ export default function PackageForm({
   };
 
   const updateItemQuantity = (index: number, quantity: number) => {
+    if (Number.isNaN(quantity) || quantity <= 0) {
+      return;
+    }
     const updatedItems = [...formData.items];
     updatedItems[index].quantity = quantity;
     setFormData({ ...formData, items: updatedItems });
+  };
+
+  useEffect(() => {
+    setItemQuantityDrafts((prev) => {
+      const nextDrafts: Record<string, string> = {};
+      formData.items.forEach((item) => {
+        const key = item.product_id;
+        nextDrafts[key] = prev[key] ?? item.quantity.toString();
+      });
+      return nextDrafts;
+    });
+  }, [formData.items]);
+
+  const handleExistingItemQuantityChange = (productId: string, index: number, value: string) => {
+    setItemQuantityDrafts((prev) => ({ ...prev, [productId]: value }));
+
+    if (value === '' || value === '-' || value === '.') {
+      return;
+    }
+
+    const parsed = parseFloat(value);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      updateItemQuantity(index, parsed);
+    }
+  };
+
+  const handleExistingItemQuantityBlur = (productId: string, index: number) => {
+    setItemQuantityDrafts((prev) => {
+      const currentValue = prev[productId];
+      if (currentValue === '' || currentValue === '-' || currentValue === '.') {
+        const fallback = formData.items[index]?.quantity;
+        return {
+          ...prev,
+          [productId]: fallback !== undefined ? fallback.toString() : '1',
+        };
+      }
+      return prev;
+    });
   };
 
   const getProductName = (productId: string) => {
@@ -125,17 +173,7 @@ export default function PackageForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 max-w-4xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">
-          {existingPackage ? 'Edit Package' : 'Create New Package'}
-        </h2>
-        <Button variant="ghost" size="sm" onClick={onCancel} type="button">
-          <X className="w-5 h-5" />
-        </Button>
-      </div>
-
-      <div className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -291,7 +329,7 @@ export default function PackageForm({
                   min="1"
                   step="0.1"
                   value={itemQuantity}
-                  onChange={(e) => setItemQuantity(parseFloat(e.target.value) || 1)}
+                  onChange={(e) => setItemQuantity(e.target.value)}
                 />
               </div>
 
@@ -309,8 +347,11 @@ export default function PackageForm({
             <p className="text-gray-500 text-center py-8">No items added yet. Add items above.</p>
           ) : (
             <div className="space-y-2">
-              {formData.items.map((item, index) => (
-                <div key={index} className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg p-3">
+              {formData.items.map((item, index) => {
+                const draftValue = itemQuantityDrafts[item.product_id] ?? item.quantity.toString();
+
+                return (
+                  <div key={index} className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg p-3">
                   <div className="flex-1">
                     <div className="font-medium text-gray-900">{getProductName(item.product_id)}</div>
                     <div className="text-sm text-gray-500">
@@ -324,8 +365,9 @@ export default function PackageForm({
                       type="number"
                       min="1"
                       step="0.1"
-                      value={item.quantity}
-                      onChange={(e) => updateItemQuantity(index, parseFloat(e.target.value) || 1)}
+                      value={draftValue}
+                      onChange={(e) => handleExistingItemQuantityChange(item.product_id, index, e.target.value)}
+                      onBlur={() => handleExistingItemQuantityBlur(item.product_id, index)}
                       className="w-20"
                     />
                     <Button
@@ -338,7 +380,8 @@ export default function PackageForm({
                     </Button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
                 <div className="flex justify-between items-center">
@@ -374,7 +417,6 @@ export default function PackageForm({
             {loading ? 'Saving...' : existingPackage ? 'Update Package' : 'Create Package'}
           </Button>
         </div>
-      </div>
     </form>
   );
 }

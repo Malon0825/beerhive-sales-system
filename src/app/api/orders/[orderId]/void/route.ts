@@ -36,13 +36,15 @@ export async function POST(
       // Does not matter who is currently logged in - any authorized manager can void
       // Cast supabase client to any to bypass strict column name checks when
       // Database types might not include `manager_pin` yet after migrations.
+      // Use limit(1).maybeSingle() to handle cases where multiple users share same PIN
       const { data: userRaw, error } = await (supabaseAdmin as any)
         .from('users')
         .select('id, role, manager_pin, full_name, username')
         .eq('manager_pin', body.managerPin)
         .in('role', [UserRole.MANAGER, UserRole.ADMIN])
         .eq('is_active', true)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       if (error || !userRaw) {
         return NextResponse.json(
@@ -104,6 +106,7 @@ export async function POST(
       success: true,
       data: voidedOrder,
       message: body.isReturn ? 'Order returned successfully' : 'Order voided successfully',
+      inventoryRestocked: returnInventory,
     });
   } catch (error) {
     console.error('POST /api/orders/[orderId]/void error:', error);

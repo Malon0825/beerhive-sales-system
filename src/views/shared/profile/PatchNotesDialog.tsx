@@ -29,7 +29,7 @@ interface PatchNotesDialogProps {
 
 /**
  * PatchNotesDialog Component
- * Displays version 1.0.2 patch notes in user-friendly language
+ * Displays version 1.1.0 patch notes in user-friendly language
  * Designed for non-technical users to understand what's new and what was fixed
  */
 export function PatchNotesDialog({ open, onOpenChange }: PatchNotesDialogProps) {
@@ -42,10 +42,10 @@ export function PatchNotesDialog({ open, onOpenChange }: PatchNotesDialogProps) 
               <Sparkles className="h-5 w-5 text-amber-700" />
             </div>
             <div>
-              <DialogTitle className="text-2xl">What's New in Version 1.0.2</DialogTitle>
+              <DialogTitle className="text-2xl">What's New in Version 1.1.0</DialogTitle>
               <div className="flex items-center gap-2 mt-1">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Released: October 20, 2025</p>
+                <p className="text-sm text-muted-foreground">Released: November 13, 2025</p>
               </div>
             </div>
           </div>
@@ -61,22 +61,41 @@ export function PatchNotesDialog({ open, onOpenChange }: PatchNotesDialogProps) 
               </div>
 
               <div className="space-y-4">
-                {/* Cancelled Orders Fix */}
+                {/* Tab Discount Reporting Fix */}
                 <div className="rounded-lg border bg-blue-50 p-4">
                   <div className="flex items-start gap-3">
                     <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
                     <div>
                       <h3 className="font-semibold text-blue-900 mb-1">
-                        Kitchen & Bar Staff Can Now See Cancelled Items
+                        Tab Discounts Now Show in Reports
                       </h3>
                       <p className="text-sm text-blue-800 mb-2">
-                        <strong>The Problem:</strong> When customers removed items from their orders, 
-                        the kitchen and bar staff couldn't see these cancellations. This led to 
-                        wasted food and drinks being prepared for nothing.
+                        <strong>The Problem:</strong> Discounts applied when closing tabs weren't 
+                        being recorded properly, causing inaccurate sales reports and missing discount data.
                       </p>
                       <p className="text-sm text-blue-800">
-                        <strong>How We Fixed It:</strong> Cancelled items now stay on the screen 
-                        with a red "CANCELLED" label, so staff can immediately stop preparing them.
+                        <strong>How We Fixed It:</strong> All tab discounts are now properly saved 
+                        to the database and appear correctly in sales and discount reports.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Numeric Input Scroll Fix */}
+                <div className="rounded-lg border bg-blue-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h3 className="font-semibold text-blue-900 mb-1">
+                        Accidental Number Changes While Scrolling
+                      </h3>
+                      <p className="text-sm text-blue-800 mb-2">
+                        <strong>The Problem:</strong> Scrolling with your mouse over number fields 
+                        accidentally changed quantities and prices, leading to order mistakes.
+                      </p>
+                      <p className="text-sm text-blue-800">
+                        <strong>How We Fixed It:</strong> Mouse wheel scrolling over number fields 
+                        no longer changes values. Numbers only change when you type them.
                       </p>
                     </div>
                   </div>
@@ -92,161 +111,112 @@ export function PatchNotesDialog({ open, onOpenChange }: PatchNotesDialogProps) 
               </div>
 
               <div className="space-y-4">
-                {/* Clear Cancelled Orders */}
+                {/* POS Discounts */}
                 <div className="rounded-lg border bg-card p-4">
                   <div className="flex items-start gap-3">
-                    <Trash2 className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                    <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
-                      <h3 className="font-semibold mb-2">Clean Up Cancelled Orders</h3>
+                      <h3 className="font-semibold mb-2">Apply Discounts at Checkout</h3>
                       <p className="text-sm text-muted-foreground mb-3">
-                        Keep your kitchen and bar screens tidy with new cleanup options.
+                        Give customers discounts directly in the POS system before payment.
                       </p>
                       <ul className="space-y-1.5 text-sm">
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>"Clear All" button removes all cancelled orders at once</span>
+                          <span>Percentage discounts (10%, 20%, etc.) or fixed amount discounts</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Individual "Remove" button on each cancelled item</span>
+                          <span>Add optional reason for the discount (senior, promo, etc.)</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Cancelled items stay visible until you manually remove them</span>
+                          <span>All discounts tracked in reports for accounting</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                          <span>Works for both direct POS sales and tab closures</span>
                         </li>
                       </ul>
                     </div>
                   </div>
                 </div>
 
-                {/* Category Management */}
+                {/* Order Item Notes */}
                 <div className="rounded-lg border bg-card p-4">
                   <div className="flex items-start gap-3">
-                    <FolderEdit className="h-5 w-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                    <CheckCircle2 className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
-                      <h3 className="font-semibold mb-2">Manage Product Categories</h3>
+                      <h3 className="font-semibold mb-2">Add Special Instructions to Orders</h3>
                       <p className="text-sm text-muted-foreground mb-3">
-                        Full control over your product categories with smart safety features.
+                        Add notes for individual items so the kitchen knows exactly how to prepare them.
                       </p>
                       <ul className="space-y-1.5 text-sm">
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Create new categories with custom colors</span>
+                          <span>Add notes like "no onions", "extra spicy", or "well done"</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Edit existing categories (name, color, settings)</span>
+                          <span>Notes appear on kitchen tickets and receipts</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Delete unused categories safely</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Prevents duplicate names (Beer = beer = BEER)</span>
-                        </li>
-                      </ul>
-                      <div className="mt-3 p-3 bg-yellow-50 rounded border border-yellow-200">
-                        <div className="flex gap-2">
-                          <AlertCircle className="h-4 w-4 text-yellow-700 mt-0.5 flex-shrink-0" />
-                          <p className="text-sm text-yellow-800">
-                            <strong>Safety First:</strong> You cannot delete a category if products 
-                            are still using it. The system will show you which products need to be 
-                            reassigned first.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Grid Layout */}
-                <div className="rounded-lg border bg-card p-4">
-                  <div className="flex items-start gap-3">
-                    <Layout className="h-5 w-5 text-indigo-600 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1">
-                      <h3 className="font-semibold mb-2">Customize Product Display Layout</h3>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        Choose how many product columns you want to see on your screen.
-                      </p>
-                      <ul className="space-y-1.5 text-sm">
-                        <li className="flex items-start gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Pick from 3, 4, 5, or 6 columns</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Your preference saves automatically during your session</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Smooth animations when switching layouts</span>
+                          <span>Works for both POS and tab orders</span>
                         </li>
                       </ul>
                     </div>
                   </div>
                 </div>
 
-                {/* Reports & Analytics (All Products Sold) */}
+                {/* Alphabetical Product Sorting */}
                 <div className="rounded-lg border bg-card p-4">
                   <div className="flex items-start gap-3">
-                    <BarChart3 className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <Layout className="h-5 w-5 text-purple-600 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
-                      <h3 className="font-semibold mb-2">Reports & Analytics: All Products Sold</h3>
+                      <h3 className="font-semibold mb-2">Products Sorted Alphabetically</h3>
                       <p className="text-sm text-muted-foreground mb-3">
-                        Improved clarity and export alignment when analyzing sold products.
+                        All products in POS now appear in A-Z order, making them easier to find.
                       </p>
                       <ul className="space-y-1.5 text-sm">
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Standalone vs Combined toggle (revenue shown only in Standalone)</span>
+                          <span>Products sorted alphabetically by name</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Directional slide on toggle; header stays fixed while body animates</span>
+                          <span>Faster to find products when taking orders</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Inline package details with smooth expand/collapse</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Sticky table header and fixed Rank column for consistent layout</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Export All reflects toggle; removed Top Products sheet; Combined export excludes revenue</span>
+                          <span>Applies to all POS screens and tab module</span>
                         </li>
                       </ul>
                     </div>
                   </div>
                 </div>
 
-                {/* Table Management */}
+                {/* Package Dialog Improvements */}
                 <div className="rounded-lg border bg-card p-4">
                   <div className="flex items-start gap-3">
-                    <Table2 className="h-5 w-5 text-teal-600 mt-0.5 flex-shrink-0" />
+                    <FolderEdit className="h-5 w-5 text-indigo-600 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
-                      <h3 className="font-semibold mb-2">Complete Table Management</h3>
+                      <h3 className="font-semibold mb-2">Improved Package Management</h3>
                       <p className="text-sm text-muted-foreground mb-3">
-                        Full control over your restaurant tables and seating areas.
+                        Better controls for creating and managing product packages.
                       </p>
                       <ul className="space-y-1.5 text-sm">
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Edit table details (number, capacity, area, notes)</span>
+                          <span>Cleaner package editing interface</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Create custom area names (like "Rooftop Bar" or "Garden")</span>
+                          <span>Better validation for package pricing and items</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Prevents duplicate area names</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          <span>Tables page now focused only on table management</span>
+                          <span>Easier to add and remove items from packages</span>
                         </li>
                       </ul>
                     </div>
@@ -266,19 +236,19 @@ export function PatchNotesDialog({ open, onOpenChange }: PatchNotesDialogProps) 
 
               <div className="space-y-4">
                 <div>
-                  <h4 className="font-semibold text-amber-900 mb-2">For Kitchen & Bar Staff:</h4>
+                  <h4 className="font-semibold text-amber-900 mb-2">For Cashiers:</h4>
                   <ol className="space-y-2 text-sm text-amber-900">
                     <li className="flex gap-2">
                       <span className="font-semibold">1.</span>
-                      <span>When you see a red "CANCELLED" label on an item, stop preparing it immediately</span>
+                      <span>Use the "Discount" button during checkout to apply discounts</span>
                     </li>
                     <li className="flex gap-2">
                       <span className="font-semibold">2.</span>
-                      <span>Click the "Remove" button to clear it from your screen</span>
+                      <span>Products are now sorted alphabetically - easier to find items quickly</span>
                     </li>
                     <li className="flex gap-2">
                       <span className="font-semibold">3.</span>
-                      <span>Use "Clear Cancelled" button to remove all cancelled items at once</span>
+                      <span>Add special instructions by clicking the note icon on any order item</span>
                     </li>
                   </ol>
                 </div>
@@ -288,15 +258,15 @@ export function PatchNotesDialog({ open, onOpenChange }: PatchNotesDialogProps) 
                   <ol className="space-y-2 text-sm text-amber-900">
                     <li className="flex gap-2">
                       <span className="font-semibold">1.</span>
-                      <span>Find category management in the "Add Product" dialog</span>
+                      <span>All discounts (POS and tabs) now tracked correctly in reports</span>
                     </li>
                     <li className="flex gap-2">
                       <span className="font-semibold">2.</span>
-                      <span>Edit tables by clicking the pencil icon on any table card</span>
+                      <span>Number fields won't change accidentally when scrolling anymore</span>
                     </li>
                     <li className="flex gap-2">
                       <span className="font-semibold">3.</span>
-                      <span>Customize your product grid layout using the dot selector</span>
+                      <span>Package management interface is cleaner and easier to use</span>
                     </li>
                   </ol>
                 </div>

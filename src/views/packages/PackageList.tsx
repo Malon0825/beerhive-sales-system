@@ -1,16 +1,18 @@
 'use client';
 
-import { Package, PackageItem } from '@/models/entities/Package';
+import { Package } from '@/models/entities/Package';
 import { Badge } from '../shared/ui/badge';
 import { Button } from '../shared/ui/button';
-import { Edit, Trash2, Package as PackageIcon, Users, Calendar, DollarSign } from 'lucide-react';
+import { Edit, Power, Package as PackageIcon, Users, Calendar, DollarSign } from 'lucide-react';
 
 interface PackageListProps {
   packages: (Package & { items?: any[] })[];
   loading: boolean;
   onEdit: (pkg: Package) => void;
-  onDelete: (id: string) => void;
+  onDeactivate: (pkg: Package & { items?: any[] }) => void;
+  onActivate: (pkg: Package & { items?: any[] }) => void;
   onView: (id: string) => void;
+  statusUpdatingId?: string | null;
 }
 
 /**
@@ -21,8 +23,10 @@ export default function PackageList({
   packages,
   loading,
   onEdit,
-  onDelete,
+  onDeactivate,
+  onActivate,
   onView,
+  statusUpdatingId,
 }: PackageListProps) {
   if (loading) {
     return (
@@ -49,8 +53,10 @@ export default function PackageList({
           key={pkg.id}
           package={pkg}
           onEdit={onEdit}
-          onDelete={onDelete}
+          onDeactivate={onDeactivate}
+          onActivate={onActivate}
           onView={onView}
+          statusUpdatingId={statusUpdatingId}
         />
       ))}
     </div>
@@ -60,21 +66,26 @@ export default function PackageList({
 interface PackageCardProps {
   package: Package & { items?: any[] };
   onEdit: (pkg: Package) => void;
-  onDelete: (id: string) => void;
+  onDeactivate: (pkg: Package & { items?: any[] }) => void;
+  onActivate: (pkg: Package & { items?: any[] }) => void;
   onView: (id: string) => void;
+  statusUpdatingId?: string | null;
 }
 
 /**
  * PackageCard Component
  * Displays individual package information
  */
-function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProps) {
+function PackageCard({ package: pkg, onEdit, onDeactivate, onActivate, onView, statusUpdatingId }: PackageCardProps) {
   const isValid = () => {
     const today = new Date().toISOString().split('T')[0];
     const validFrom = pkg.valid_from || '1900-01-01';
     const validUntil = pkg.valid_until || '2100-12-31';
     return today >= validFrom && today <= validUntil;
   };
+
+  const isInactive = pkg.is_active === false;
+  const isUpdating = statusUpdatingId === pkg.id;
 
   const getTypeColor = () => {
     switch (pkg.package_type) {
@@ -100,24 +111,28 @@ function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProp
 
   return (
     <div 
-      className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all cursor-pointer overflow-hidden"
+      className={`rounded-lg shadow-md transition-all cursor-pointer overflow-hidden border ${
+        isInactive
+          ? 'bg-gray-100 border-gray-200 opacity-75 hover:shadow-md'
+          : 'bg-white border-transparent hover:shadow-lg'
+      }`}
       onClick={() => onView(pkg.id)}
     >
       {/* Header with Type Badge */}
       <div className={`px-6 py-3 border-b ${getTypeColor()}`}>
         <div className="flex items-center justify-between">
           <span className="font-semibold text-sm">{getTypeLabel()}</span>
-          {!pkg.is_active && (
-            <Badge variant="secondary">Inactive</Badge>
+          {isInactive && (
+            <Badge variant="secondary" className="bg-gray-500 text-white">Inactive</Badge>
           )}
-          {pkg.is_active && !isValid() && (
+          {!isInactive && !isValid() && (
             <Badge variant="warning">Expired</Badge>
           )}
         </div>
       </div>
 
       {/* Package Details */}
-      <div className="p-6">
+      <div className="p-6 space-y-4">
         <h3 className="text-xl font-semibold text-gray-900 mb-2">{pkg.name}</h3>
         <p className="text-sm text-gray-500 mb-1">Code: {pkg.package_code}</p>
         
@@ -126,7 +141,7 @@ function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProp
         )}
 
         {/* Pricing */}
-        <div className="mb-4 space-y-1">
+        <div className="space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-600">Base Price:</span>
             <span className="text-lg font-bold text-gray-900">₱{pkg.base_price.toFixed(2)}</span>
@@ -140,7 +155,7 @@ function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProp
         </div>
 
         {/* Package Info */}
-        <div className="space-y-2 mb-4">
+        <div className="space-y-2">
           {pkg.items && pkg.items.length > 0 && (
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <PackageIcon className="w-4 h-4" />
@@ -177,17 +192,25 @@ function PackageCard({ package: pkg, onEdit, onDelete, onView }: PackageCardProp
             Edit
           </Button>
           <Button
-            variant="destructive"
+            variant={isInactive ? 'default' : 'outline'}
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
-              if (confirm(`Are you sure you want to delete "${pkg.name}"?`)) {
-                onDelete(pkg.id);
+              if (isInactive) {
+                onActivate(pkg);
+              } else {
+                onDeactivate(pkg);
               }
             }}
-            className="flex items-center gap-1"
+            disabled={isUpdating}
+            className={`flex items-center gap-1 ${
+              isInactive
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'text-red-600 hover:bg-red-50'
+            }`}
           >
-            <Trash2 className="w-4 h-4" />
+            <Power className="w-4 h-4" />
+            {isUpdating ? 'Updating...' : isInactive ? 'Activate' : 'Deactivate'}
           </Button>
         </div>
       </div>

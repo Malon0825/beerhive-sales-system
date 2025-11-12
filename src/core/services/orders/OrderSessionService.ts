@@ -1,9 +1,11 @@
 import { OrderSessionRepository } from '@/data/repositories/OrderSessionRepository';
 import { OrderRepository } from '@/data/repositories/OrderRepository';
+import { DiscountRepository } from '@/data/repositories/DiscountRepository';
 import { OrderSession, CreateOrderSessionDto, CloseOrderSessionDto } from '@/models/entities/OrderSession';
 import { SessionStatus } from '@/models/enums/SessionStatus';
 import { OrderStatus } from '@/models/enums/OrderStatus';
 import { StockDeduction } from '@/core/services/inventory/StockDeduction';
+import { OrderCalculation } from '@/core/services/orders/OrderCalculation';
 import { AppError } from '@/lib/errors/AppError';
 
 /**
@@ -204,8 +206,33 @@ export class OrderSessionService {
         throw new AppError('Session is not open', 400);
       }
 
+      // Base financials
+      const baseSubtotal = session.subtotal || 0;
+      const existingDiscount = session.discount_amount || 0;
+      const taxAmount = session.tax_amount || 0;
+      const netBeforeAdditionalDiscount = Math.max(0, baseSubtotal - existingDiscount);
+
+      // Derive additional discount from payload (if any)
+      let additionalDiscount = 0;
+
+      if (paymentData.discount_type && paymentData.discount_value) {
+        const { discountAmount } = OrderCalculation.applyDiscount(
+          netBeforeAdditionalDiscount,
+          paymentData.discount_type,
+          paymentData.discount_value
+        );
+        additionalDiscount = discountAmount;
+      } else if (typeof paymentData.discount_amount === 'number' && paymentData.discount_amount > 0) {
+        additionalDiscount = Math.min(paymentData.discount_amount, netBeforeAdditionalDiscount);
+      }
+
+      additionalDiscount = Math.min(additionalDiscount, netBeforeAdditionalDiscount);
+
+      const finalDiscountTotal = existingDiscount + additionalDiscount;
+      const finalTotalAmount = OrderCalculation.calculateTotal(baseSubtotal, finalDiscountTotal, taxAmount);
+
       // Validate payment amount
-      if (paymentData.amount_tendered < session.total_amount) {
+      if (paymentData.amount_tendered < finalTotalAmount) {
         throw new AppError('Payment amount is less than total', 400);
       }
 
@@ -215,7 +242,14 @@ export class OrderSessionService {
       }
 
       // Calculate change
-      const change = paymentData.amount_tendered - session.total_amount;
+      const change = paymentData.amount_tendered - finalTotalAmount;
+
+      // Update in-memory session object for receipt generation
+      session.discount_amount = finalDiscountTotal;
+      session.total_amount = finalTotalAmount;
+
+      // NOTE: Session discount will be persisted AFTER order updates
+      // to prevent database trigger from overwriting it
 
       // Update all orders in session to COMPLETED and ensure inventory is deducted
       const orders = session.orders || [];
@@ -305,7 +339,94 @@ export class OrderSessionService {
       }
 
       console.log(`✅ [OrderSessionService.closeTab] ${orders.length} orders marked as completed`);
+      
+      // Close the session (marks as closed, sets closed_at and closed_by)
+      // This must happen BEFORE updating discount to prevent trigger overwrite
       const closedSession = await OrderSessionRepository.close(sessionId, paymentData.closed_by);
+
+      // CRITICAL FIX: Update session discount and total AFTER all order updates
+      // The update_session_totals() trigger recalculates totals when orders are updated
+      // If we set the discount before order updates, the trigger overwrites it to 0
+      // By updating AFTER order completion, we preserve the tab-level discount
+      if (additionalDiscount > 0 || finalDiscountTotal !== (closedSession.discount_amount || 0)) {
+        console.log(`💰 [OrderSessionService.closeTab] Updating session totals with discount:`, {
+          finalDiscountTotal,
+          finalTotalAmount,
+          additionalDiscount,
+        });
+        
+        await OrderSessionRepository.update(sessionId, {
+          discount_amount: finalDiscountTotal,
+          total_amount: finalTotalAmount,
+        });
+      }
+
+      // Persist discount entry for reporting (align with POS behavior)
+      // Only log NEW discounts applied at closure (additionalDiscount), not existing discounts
+      if (additionalDiscount > 0) {
+        try {
+          // Determine discount type and value
+          const discountType = paymentData.discount_type ?? 'fixed_amount';
+          const discountValue = paymentData.discount_value ?? additionalDiscount;
+
+          // Create descriptive reason and notes
+          const sessionReason = paymentData.notes?.trim() || 'Tab discount applied at closure';
+          const sessionNotes = [
+            `Session: ${session.session_number}`,
+            `Amount: ₱${additionalDiscount.toFixed(2)}`,
+            `Type: ${discountType}`,
+            `Value: ${discountValue}`,
+          ];
+          if (session.customer) {
+            sessionNotes.push(`Customer: ${session.customer.full_name}`);
+          }
+          if (session.table) {
+            sessionNotes.push(`Table: ${session.table.table_number}`);
+          }
+
+          console.log(`🧾 [OrderSessionService.closeTab] Persisting discount to discounts table:`, {
+            session_id: session.id,
+            session_number: session.session_number,
+            discount_amount: additionalDiscount,
+            discount_type: discountType,
+            discount_value: discountValue,
+            cashier_id: paymentData.closed_by,
+            order_id: orders[0]?.id ?? null,
+          });
+
+          await DiscountRepository.create({
+            discount_amount: additionalDiscount,
+            discount_type: discountType,
+            discount_value: discountValue,
+            reason: sessionReason,
+            cashier_id: paymentData.closed_by,
+            manager_id: null,
+            order_id: orders[0]?.id ?? null,
+            order_item_id: null,
+            notes: sessionNotes.join(' | '),
+          });
+
+          console.log(
+            `✅ [OrderSessionService.closeTab] Successfully logged discount for session ${session.session_number}: ₱${additionalDiscount.toFixed(
+              2
+            )} (${discountType}: ${discountValue})`
+          );
+        } catch (discountLogError) {
+          // Log error but don't fail the tab closure
+          console.error(
+            `❌ [OrderSessionService.closeTab] Failed to log discount to discounts table:`,
+            discountLogError
+          );
+          console.error(
+            `⚠️  [OrderSessionService.closeTab] Tab closed successfully but discount not recorded in reports.`
+          );
+          // Don't throw - tab is already closed
+        }
+      } else {
+        console.log(
+          `ℹ️  [OrderSessionService.closeTab] No additional discount applied at closure (additionalDiscount: ${additionalDiscount}, existingDiscount: ${existingDiscount})`
+        );
+      }
 
       // Clear table session reference
       if (session.table_id) {

@@ -23,7 +23,12 @@ export async function fetchOrderForReceipt(orderId: string) {
       throw new Error(result.error || 'Failed to fetch order details');
     }
 
-    return result.data;
+    // Extract order from nested structure (getOrderSummary returns { order, summary })
+    const data = result.data;
+    
+    // If the response has an 'order' property, extract it (from getOrderSummary)
+    // Otherwise, return the data as-is (from getById)
+    return data.order || data;
   } catch (error) {
     console.error('Error fetching order for receipt:', error);
     throw error;

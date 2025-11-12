@@ -11,7 +11,7 @@ export async function GET() {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     message: 'BeerHive POS API is running',
-    version: '1.0.0',
-    phase: 'Phase 2 - Database Setup'
+    version: '1.1.0',
+    phase: 'Production - Feature Complete'
   });
 }

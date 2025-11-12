@@ -314,7 +314,12 @@ export default function ManageOrderItemsModal({
                               value={editQuantity}
                               onChange={(e) => setEditQuantity(e.target.value)}
                               onBlur={() => {
-                                if (!editQuantity || isNaN(parseInt(editQuantity, 10)) || parseInt(editQuantity, 10) < 1) {
+                                if (!editQuantity?.trim()) {
+                                  return;
+                                }
+
+                                const parsed = parseInt(editQuantity, 10);
+                                if (Number.isNaN(parsed) || parsed < 1) {
                                   setEditQuantity('1');
                                 }
                               }}

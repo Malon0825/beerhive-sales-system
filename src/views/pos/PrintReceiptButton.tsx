@@ -104,9 +104,33 @@ export function PrintReceiptButton({
           ${activeStyles}
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: monospace; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
-            @media print { @page { size: 80mm auto; margin: 5mm; } body { margin: 0; padding: 0; } }
-            img { max-width: 100%; height: auto; display: block; }
+            body { 
+              font-family: monospace; 
+              -webkit-print-color-adjust: exact; 
+              print-color-adjust: exact; 
+              color-adjust: exact;
+              display: flex;
+              justify-content: center;
+              align-items: flex-start;
+            }
+            .print-receipt {
+              width: 80mm !important;
+              max-width: 80mm !important;
+              margin: 0 auto;
+              box-sizing: border-box;
+            }
+            img { 
+              max-width: 100%; 
+              height: auto; 
+              display: block;
+              margin-left: auto;
+              margin-right: auto;
+            }
+            @media print { 
+              @page { size: 80mm auto; margin: 5mm; } 
+              body { display: block; margin: 0; padding: 0; }
+              .print-receipt { margin: 0 auto !important; }
+            }
           </style>
         </head>
         <body>

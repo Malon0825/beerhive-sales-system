@@ -21,7 +21,7 @@ export default function EventForm({ event, onSuccess, onCancel }: EventFormProps
     event_name: '',
     offer_description: '',
     discount_type: 'percentage' as 'percentage' | 'fixed_amount' | 'complimentary',
-    discount_value: '' as any,
+    discount_value: '',
     free_item_product_id: '',
     offer_valid_from: '',
     offer_valid_until: '',
@@ -43,7 +43,9 @@ export default function EventForm({ event, onSuccess, onCancel }: EventFormProps
         event_name: event.event_name || '',
         offer_description: event.offer_description || '',
         discount_type: event.discount_type || 'percentage',
-        discount_value: event.discount_value || '' as any,
+        discount_value: event.discount_value !== null && event.discount_value !== undefined
+          ? event.discount_value.toString()
+          : '',
         free_item_product_id: event.free_item_product_id || '',
         offer_valid_from: event.offer_valid_from || '',
         offer_valid_until: event.offer_valid_until || '',
@@ -75,7 +77,10 @@ export default function EventForm({ event, onSuccess, onCancel }: EventFormProps
     try {
       const payload = {
         ...formData,
-        discount_value: formData.discount_value ? Number(formData.discount_value) : null,
+        discount_value:
+          formData.discount_value && formData.discount_value.trim() !== ''
+            ? Number(formData.discount_value)
+            : null,
         free_item_product_id: formData.free_item_product_id || null,
         offer_valid_from: formData.offer_valid_from || null,
         offer_valid_until: formData.offer_valid_until || null,
@@ -262,7 +267,7 @@ export default function EventForm({ event, onSuccess, onCancel }: EventFormProps
             step="0.01"
             min="0"
             value={formData.discount_value}
-            onChange={(e) => setFormData({ ...formData, discount_value: Number(e.target.value) })}
+            onChange={(e) => setFormData({ ...formData, discount_value: e.target.value })}
           />
         </div>
       )}

@@ -613,19 +613,19 @@ export function POSInterface() {
         }
       }
 
-      // Auto-print receipt immediately
-      const printWindow = window.open(
-        `/api/orders/${orderId}/receipt?format=html`,
-        '_blank',
-        'width=400,height=600'
-      );
-      if (printWindow) {
-        printWindow.addEventListener('load', () => {
-          printWindow.print();
-          printWindow.addEventListener('afterprint', () => {
-            try { printWindow.close(); } catch {}
-          });
-        });
+      // Fetch order data and show receipt modal with auto-print
+      try {
+        const orderResponse = await fetch(`/api/orders/${orderId}`);
+        if (orderResponse.ok) {
+          const orderResult = await orderResponse.json();
+          if (orderResult.success && orderResult.data) {
+            // Show receipt modal which will auto-print
+            setReceiptData({ order: orderResult.data });
+            setShowReceipt(true);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch order for receipt:', err);
       }
       
       // Show success message
@@ -713,14 +713,9 @@ export function POSInterface() {
     // Apply stock availability filter (using realtime stock)
     filtered = filtered.filter(p => isProductAvailable(p));
 
-    // Sort by popularity (desc), then by name
-    return filtered.sort((a, b) => {
-      const qa = topSellingMap[a.id] || 0;
-      const qb = topSellingMap[b.id] || 0;
-      if (qa !== qb) return qb - qa;
-      return a.name.localeCompare(b.name);
-    });
-  }, [products, activeView, searchQuery, selectedCategory, stockTracker, topSellingMap]);
+    // Sort by name alphabetically
+    return filtered.sort((a, b) => a.name.localeCompare(b.name));
+  }, [products, activeView, searchQuery, selectedCategory, stockTracker]);
 
   /**
    * Filter packages by search query for inclusion in 'All Products' view
@@ -987,6 +982,7 @@ export function POSInterface() {
           onOpenCustomerSearch={() => setShowCustomerSearch(true)}
           onOpenTableSelector={() => setShowTableSelector(true)}
           onUpdateQuantity={handleUpdateQuantity}
+          onUpdateItemNotes={cart.updateItemNotes}
           onRemoveItem={handleRemoveItem}
           onProceedToPayment={() => setShowPaymentPanel(true)}
           onClearCart={handleClearCart}

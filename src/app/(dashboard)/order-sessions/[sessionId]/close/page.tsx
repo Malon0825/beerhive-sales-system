@@ -98,41 +98,20 @@ export default function CloseTabPage() {
     const resultData = options?.resultData;
     
     if (resultData) {
-      // Get the session's orders for receipt printing
-      const orders = resultData.receipt?.orders || [];
-      
-      console.log('📄 Auto-printing receipts for', orders.length, 'orders');
-      
-      // Auto-print receipt for each order in the session
-      // Note: In a tab/session, multiple orders might exist, we print the main consolidated receipt
-      // For now, we'll print receipts for all orders in the session
-      orders.forEach((order: any, index: number) => {
-        // Get order ID - the order object should have an id property
-        // Since we're getting order data from the closeTab service, we need to find the actual order IDs
-        // The session has the order IDs in sessionData.orders array
-        const sessionOrder = sessionData?.orders?.[index];
-        
-        if (sessionOrder?.id) {
-          setTimeout(() => {
-            // Auto-print mode: open and trigger print immediately
-            const printWindow = window.open(
-              `/api/orders/${sessionOrder.id}/receipt?format=html`,
-              '_blank',
-              'width=400,height=600'
-            );
-            
-            if (printWindow) {
-              printWindow.addEventListener('load', () => {
-                printWindow.print();
-                // Auto-close after printing
-                printWindow.addEventListener('afterprint', () => {
-                  try { printWindow.close(); } catch {}
-                });
-              });
-            }
-          }, index * 500); // Stagger multiple receipts by 500ms
+      const receiptUrl = `/order-sessions/${sessionId}/receipt`;
+      console.log('📄 Auto-printing consolidated session receipt:', receiptUrl);
+
+      setTimeout(() => {
+        const printWindow = window.open(receiptUrl, '_blank', 'width=420,height=680');
+
+        if (printWindow) {
+          printWindow.addEventListener('load', () => {
+            try {
+              printWindow.focus();
+            } catch {}
+          });
         }
-      });
+      }, 200);
     }
     
     // Redirect after a brief delay to allow print dialogs to open
@@ -199,6 +178,8 @@ export default function CloseTabPage() {
       sessionId={sessionId}
       sessionNumber={sessionData.session_number}
       sessionTotal={sessionData.total_amount || 0}
+      sessionSubtotal={sessionData.subtotal || 0}
+      sessionExistingDiscount={sessionData.discount_amount || 0}
       sessionItemCount={itemCount}
       sessionCustomer={sessionData.customer}
       sessionTable={sessionData.table}

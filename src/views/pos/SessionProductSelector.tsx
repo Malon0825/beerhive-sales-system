@@ -279,13 +279,9 @@ export default function SessionProductSelector({
       return matchesSearch && matchesCategory && isAvailable;
     });
 
-    return list.sort((a, b) => {
-      const qa = topSellingMap[a.id] || 0;
-      const qb = topSellingMap[b.id] || 0;
-      if (qa !== qb) return qb - qa;
-      return a.name.localeCompare(b.name);
-    });
-  }, [products, searchQuery, selectedCategory, stockTracker, topSellingMap]);
+    // Sort by name alphabetically
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [products, searchQuery, selectedCategory, stockTracker]);
 
   /**
    * Featured products for the 'Featured' view
@@ -304,13 +300,9 @@ export default function SessionProductSelector({
       return matchesSearch && isAvailable;
     });
 
-    return list.sort((a, b) => {
-      const qa = topSellingMap[a.id] || 0;
-      const qb = topSellingMap[b.id] || 0;
-      if (qa !== qb) return qb - qa;
-      return a.name.localeCompare(b.name);
-    });
-  }, [products, searchQuery, stockTracker, topSellingMap]);
+    // Sort by name alphabetically
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [products, searchQuery, stockTracker]);
 
   /**
    * Filter packages by search query (used in the 'All Products' view to include packages in search results)
