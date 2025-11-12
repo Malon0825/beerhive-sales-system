@@ -353,8 +353,12 @@ export class OrderRepository {
             item_name,
             quantity,
             unit_price,
+            subtotal,
+            discount_amount,
             total,
-            notes
+            notes,
+            is_vip_price,
+            is_complimentary
           )
         `)
         .order('created_at', { ascending: false });
