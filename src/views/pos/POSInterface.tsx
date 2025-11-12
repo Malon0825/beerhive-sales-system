@@ -713,14 +713,9 @@ export function POSInterface() {
     // Apply stock availability filter (using realtime stock)
     filtered = filtered.filter(p => isProductAvailable(p));
 
-    // Sort by popularity (desc), then by name
-    return filtered.sort((a, b) => {
-      const qa = topSellingMap[a.id] || 0;
-      const qb = topSellingMap[b.id] || 0;
-      if (qa !== qb) return qb - qa;
-      return a.name.localeCompare(b.name);
-    });
-  }, [products, activeView, searchQuery, selectedCategory, stockTracker, topSellingMap]);
+    // Sort by name alphabetically
+    return filtered.sort((a, b) => a.name.localeCompare(b.name));
+  }, [products, activeView, searchQuery, selectedCategory, stockTracker]);
 
   /**
    * Filter packages by search query for inclusion in 'All Products' view

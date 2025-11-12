@@ -214,7 +214,7 @@ export function ProductGrid({
    * Filter products by search query, category, and stock availability
    */
   const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
+    const filtered = products.filter((product) => {
       const matchesSearch =
         searchQuery === '' ||
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -227,6 +227,9 @@ export function ProductGrid({
 
       return matchesSearch && matchesCategory && shouldDisplay;
     });
+
+    // Sort by name alphabetically
+    return filtered.sort((a, b) => a.name.localeCompare(b.name));
   }, [products, searchQuery, selectedCategory]);
 
   /**

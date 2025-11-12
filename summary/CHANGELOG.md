@@ -2,33 +2,77 @@
 
 All notable changes to the BeerHive Sales System are documented in this file.
 
-## [1.1.0] - 2025-11-06
+## [1.1.0] - 2025-11-13
 
 ### Added
 
-#### UI/UX
-- **Order board success toast** now confirms when inventory restocking completes after voiding an order, highlighting that both standalone products and package contents were returned to stock.
-- **Package deletion confirmation dialog** uses the shared `ConfirmDialog` component with permanent deletion messaging for clarity.
+#### New Features
+- **POS Discount System** - Apply percentage or fixed-amount discounts at checkout
+  - New `DiscountInput` component with real-time validation
+  - Toggle between percentage (%) and fixed amount (₱)
+  - Discount preview before applying
+  - Visual feedback with green badge for active discounts
+  - Keyboard support (Enter to apply)
+
+- **Tab Discount Support** - Extend discount functionality to tab closures
+  - Unified payment panel with session-aware discount handling
+  - Display existing tab discounts separately from new discounts
+  - Discount data persisted to `discounts` table for reporting
+
+- **Order Item Notes** - Add special instructions to individual items
+  - Notes input field for each cart item in both POS and Tab modules
+  - Real-time updates saved to cart state
+  - Notes displayed to kitchen/bartender staff in blue highlight boxes
+  - Helps specify product variations without creating multiple SKUs
+
+- **Alphabetical Product Sorting** - Products now sorted A-Z by name
+  - Replaced popularity-based sorting with alphabetical ordering
+  - Applied across all POS views (Main POS, Tab module, Current Orders)
+  - Faster product discovery for staff
+
+#### UI/UX Improvements
+- **Numeric Input Protection** - Mouse wheel scrolling disabled on number fields
+  - Prevents accidental value changes when scrolling
+  - Applied to all `<Input type="number">` components globally
+  - Users can still type values normally
+
+- **Package Dialog Refactor** - Improved package management interface
+  - Cleaner editing experience
+  - Better validation for package pricing and items
+  - Easier to add/remove items from packages
+
+### Fixed
+
+#### Critical Fixes
+- **Tab Discount Reporting** - Fixed database trigger conflict causing discount amounts to reset to 0
+  - Issue: `update_session_totals()` trigger was overwriting tab discounts after order updates
+  - Solution: Moved session updates to occur AFTER all order updates complete
+  - Tab discounts now correctly persist in both `order_sessions` and `discounts` tables
+  - Reports now show accurate discount data
 
 ### Changed
 
 #### API Layer
-- **`POST /api/orders/[orderId]/void`**
-  - Accepts manager PINs that map to multiple accounts by using `maybeSingle()` with `limit(1)`.
-  - Responds with an `inventoryRestocked` flag so clients know if stock reconciliation occurred.
+- **`POST /api/order-sessions/[sessionId]/close`**
+  - Now accepts discount payload (`discount_type`, `discount_value`, `discount_amount`)
+  - Validates and normalizes discount data before processing
 
 #### Service Layer
-- **`VoidOrderService.returnInventoryForOrder()`**
-  - Returns stock for individual items and decomposes packages to restock each component product proportionally.
-  - Adds helper methods for product and package stock adjustments with detailed logging.
-
-#### Repository Layer
-- **`PackageRepository.delete()`** now performs a hard delete, removing related `package_items` before deleting the package record to maintain referential integrity.
+- **`OrderSessionService.closeTab()`**
+  - Applies tab-level discounts using `OrderCalculation.applyDiscount`
+  - Recalculates totals with discount applied
+  - Updates session AFTER order updates to avoid trigger conflicts
+  - Inserts discount record into `discounts` table for reporting
 
 #### UI Components
-- **`ReturnOrderDialog`** displays inventory restock confirmation using the toast system with package-aware messaging.
-- **`PackageManager`** shows toast notifications on successful or failed deletions and refreshes the package list automatically.
-- **`PackageList`** replaces the browser `confirm()` with the shared `ConfirmDialog`, ensuring consistent styling and messaging for irreversible deletions.
+- **`CurrentOrderPanel`** - Integrated `DiscountInput` above order summary
+- **`PaymentPanel`** - Added discount support for both POS and tab closure modes
+- **`SessionProductSelector`** - Products sorted alphabetically
+- **`POSInterface`** - Products sorted alphabetically
+- **`ProductGrid`** - Added alphabetical sorting
+- **`OrderSummaryPanel`** - Added notes input for each order item
+- **`SessionOrderFlow`** - Added notes input for each cart item
+- **Shared `Input` component** - Blocks wheel events on number inputs
 
 ## [1.0.2] - 2025-10-20
 
