@@ -3,10 +3,12 @@
 import React from 'react';
 import { Card } from '@/views/shared/ui/card';
 import { Button } from '@/views/shared/ui/button';
+import { Input } from '@/views/shared/ui/input';
+import { Label } from '@/views/shared/ui/label';
 import { CartItem } from '@/lib/contexts/CartContext';
 import { Customer } from '@/models/entities/Customer';
 import { RestaurantTable } from '@/models/entities/Table';
-import { User, Armchair, List, Trash2, Plus, Minus } from 'lucide-react';
+import { User, Armchair, List, Trash2, Plus, Minus, FileText } from 'lucide-react';
 
 /**
  * Props for OrderSummaryPanel component
@@ -30,6 +32,8 @@ interface OrderSummaryPanelProps {
   onOpenTableSelector: () => void;
   /** Handler to update item quantity */
   onUpdateQuantity: (itemId: string, quantity: number) => void;
+  /** Handler to update item notes */
+  onUpdateItemNotes: (itemId: string, notes: string) => void;
   /** Handler to remove item */
   onRemoveItem: (itemId: string) => void;
   /** Handler to proceed to payment */
@@ -63,6 +67,7 @@ export function OrderSummaryPanel({
   onOpenCustomerSearch,
   onOpenTableSelector,
   onUpdateQuantity,
+  onUpdateItemNotes,
   onRemoveItem,
   onProceedToPayment,
   onClearCart,
@@ -187,6 +192,24 @@ export function OrderSummaryPanel({
                   <span className="font-bold text-lg text-amber-600">
                     ₱{item.subtotal.toFixed(2)}
                   </span>
+                </div>
+
+                {/* Item Notes Input */}
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <FileText className="w-3 h-3 text-gray-500" />
+                    <Label htmlFor={`item-notes-${item.id}`} className="text-xs text-gray-600">
+                      Special instructions (flavor, cooking style, etc.)
+                    </Label>
+                  </div>
+                  <Input
+                    id={`item-notes-${item.id}`}
+                    type="text"
+                    placeholder="e.g., BBQ flavor, Well done, Extra spicy..."
+                    value={item.notes || ''}
+                    onChange={(e) => onUpdateItemNotes(item.id, e.target.value)}
+                    className="h-8 text-xs"
+                  />
                 </div>
               </Card>
             ))}

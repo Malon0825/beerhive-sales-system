@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import { Button } from '@/views/shared/ui/button';
 import { Badge } from '@/views/shared/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/views/shared/ui/card';
+import { Input } from '@/views/shared/ui/input';
+import { Label } from '@/views/shared/ui/label';
 import { 
   ShoppingCart, 
   Send, 
@@ -14,7 +16,8 @@ import {
   Trash2,
   Star,
   Edit,
-  CheckCircle2
+  CheckCircle2,
+  FileText
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { OrderStatus } from '@/models/enums/OrderStatus';
@@ -169,6 +172,7 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
       console.error('Failed to update session customer:', error);
     }
   };
+
 
   /**
    * Get tier badge color
@@ -400,6 +404,16 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
     item.quantity = newQuantity;
     item.subtotal = item.unit_price * newQuantity;
     item.total = item.subtotal;
+    setCart(updatedCart);
+  };
+
+  /**
+   * Update item notes
+   * Notes are used for special instructions (e.g., "BBQ flavor", "Well done", etc.)
+   */
+  const updateItemNotes = (index: number, notes: string) => {
+    const updatedCart = [...cart];
+    updatedCart[index].notes = notes;
     setCart(updatedCart);
   };
 
@@ -739,6 +753,24 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
+                    </div>
+
+                    {/* Item Notes Input */}
+                    <div className="mt-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <FileText className="w-3 h-3 text-gray-500" />
+                        <Label htmlFor={`item-notes-${index}`} className="text-xs text-gray-600">
+                          Special instructions (flavor, cooking style, etc.)
+                        </Label>
+                      </div>
+                      <Input
+                        id={`item-notes-${index}`}
+                        type="text"
+                        placeholder="e.g., BBQ flavor, Well done, Extra spicy..."
+                        value={item.notes || ''}
+                        onChange={(e) => updateItemNotes(index, e.target.value)}
+                        className="h-8 text-xs"
+                      />
                     </div>
                   </div>
                 ))}

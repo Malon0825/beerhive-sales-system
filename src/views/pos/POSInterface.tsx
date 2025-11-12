@@ -987,6 +987,7 @@ export function POSInterface() {
           onOpenCustomerSearch={() => setShowCustomerSearch(true)}
           onOpenTableSelector={() => setShowTableSelector(true)}
           onUpdateQuantity={handleUpdateQuantity}
+          onUpdateItemNotes={cart.updateItemNotes}
           onRemoveItem={handleRemoveItem}
           onProceedToPayment={() => setShowPaymentPanel(true)}
           onClearCart={handleClearCart}
