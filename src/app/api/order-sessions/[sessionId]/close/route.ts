@@ -27,6 +27,17 @@ export async function POST(
     const body = await request.json();
     const { payment_method, amount_tendered, discount_amount, discount_type, discount_value, notes } = body;
 
+    // Log received discount data for debugging
+    if (discount_amount || discount_type || discount_value) {
+      console.log(`💰 [Close Tab API] Discount data received:`, {
+        sessionId,
+        discount_amount,
+        discount_type,
+        discount_value,
+        notes: notes ? notes.substring(0, 50) : null,
+      });
+    }
+
     // Get authenticated user or fall back to default POS user
     let closedByUserId: string;
     const authenticatedUser = await getAuthenticatedUser(request);
@@ -72,6 +83,7 @@ export async function POST(
 
     if (discount_type !== undefined || discount_value !== undefined) {
       if (!discount_type || !['percentage', 'fixed_amount'].includes(discount_type)) {
+        console.error(`❌ [Close Tab API] Invalid discount_type: ${discount_type}`);
         return NextResponse.json(
           { success: false, error: 'Discount type must be percentage or fixed_amount' },
           { status: 400 }
@@ -79,6 +91,7 @@ export async function POST(
       }
 
       if (typeof discount_value !== 'number' || discount_value <= 0) {
+        console.error(`❌ [Close Tab API] Invalid discount_value: ${discount_value} (type: ${typeof discount_value})`);
         return NextResponse.json(
           { success: false, error: 'Discount value must be a positive number' },
           { status: 400 }
@@ -87,9 +100,13 @@ export async function POST(
 
       normalizedDiscountType = discount_type;
       normalizedDiscountValue = discount_value;
+      console.log(`✅ [Close Tab API] Discount validated and normalized:`, {
+        normalizedDiscountType,
+        normalizedDiscountValue,
+      });
     }
 
-    const result = await OrderSessionService.closeTab(sessionId, {
+    const closeTabPayload = {
       payment_method,
       amount_tendered,
       discount_amount,
@@ -97,7 +114,20 @@ export async function POST(
       discount_value: normalizedDiscountValue,
       notes,
       closed_by: closedByUserId,
+    };
+
+    console.log(`🔹 [Close Tab API] Calling OrderSessionService.closeTab with payload:`, {
+      sessionId,
+      payment_method,
+      amount_tendered,
+      discount_amount,
+      discount_type: normalizedDiscountType,
+      discount_value: normalizedDiscountValue,
+      has_notes: !!notes,
+      closed_by: closedByUserId,
     });
+
+    const result = await OrderSessionService.closeTab(sessionId, closeTabPayload);
 
     return NextResponse.json({
       success: true,
