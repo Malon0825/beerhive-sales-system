@@ -422,27 +422,6 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
           >
             {branding.displayName.toUpperCase()}
           </h1>
-          {branding.legalName && (
-            <p style={{ fontSize: '9px', marginBottom: '1px' }} className="text-black">{branding.legalName}</p>
-          )}
-          {branding.registrationLines.map((line, idx) => (
-            <p key={`registration-${idx}`} style={{ fontSize: '8px', marginBottom: '1px' }} className="text-black">
-              {line}
-            </p>
-          ))}
-          {branding.addressLines.map((line, idx) => (
-            <p key={`address-${idx}`} style={{ fontSize: '8px', marginBottom: '1px' }} className="text-black">
-              {line}
-            </p>
-          ))}
-          {branding.contactLines.map((line, idx) => (
-            <p key={`contact-${idx}`} style={{ fontSize: '8px', marginBottom: '1px' }} className="text-black">
-              {line}
-            </p>
-          ))}
-          {branding.additionalNotes && (
-            <p style={{ fontSize: '8px', marginBottom: '1px' }} className="text-black">{branding.additionalNotes}</p>
-          )}
         </div>
       </div>
 
@@ -677,7 +656,6 @@ export function MinimalPrintableReceipt({ orderData, isPrintMode = false }: Mini
       <header className="text-center space-y-1">
         <p className="text-xs uppercase tracking-[0.3em] text-gray-900">BeerHive</p>
         <h1 className="text-base font-semibold text-gray-900">Sales Receipt</h1>
-        <p className="text-[10px] text-gray-600">VAT Reg. TIN: —</p>
       </header>
 
       <div className="border-t border-dashed border-gray-400 my-3" />
