@@ -93,7 +93,6 @@ export default function SessionProductSelector({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'all' | 'featured' | 'packages'>('all');
-  const [topSellingMap, setTopSellingMap] = useState<Record<string, number>>({});
   
   // Grid columns with session storage persistence (default: 5 columns)
   const [gridColumns, setGridColumns] = useSessionStorage<number>('tab-product-grid-columns', 5);
@@ -159,7 +158,6 @@ export default function SessionProductSelector({
   useEffect(() => {
     fetchProducts();
     fetchPackages();
-    fetchTopSelling();
   }, []);
 
   /**
@@ -184,25 +182,6 @@ export default function SessionProductSelector({
       console.error('❌ [SessionProductSelector] Error fetching products:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchTopSelling = async () => {
-    try {
-      const response = await fetch('/api/reports/sales?type=top-products&period=month&limit=500');
-      const result = await response.json();
-      if (result?.success && Array.isArray(result.data)) {
-        const map: Record<string, number> = {};
-        for (const item of result.data) {
-          const id = item.product_id || item.id;
-          if (!id) continue;
-          const qty = Number(item.total_quantity ?? item.total_quantity_sold ?? 0);
-          map[id] = qty;
-        }
-        setTopSellingMap(map);
-      }
-    } catch (error) {
-      console.error('Error fetching top products:', error);
     }
   };
 
