@@ -9,7 +9,7 @@ import { PrintableReceipt } from './PrintableReceipt';
 /**
  * Order data structure with full details for receipt
  */
-interface ReceiptOrderData {
+export interface ReceiptOrderData {
   order: Order & {
     customer?: {
       full_name: string;

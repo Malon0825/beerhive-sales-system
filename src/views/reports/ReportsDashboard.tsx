@@ -68,8 +68,16 @@ export function ReportsDashboard() {
         fetch(`/api/reports/customers?type=summary&startDate=${encodedStart}&endDate=${encodedEnd}`),
       ]);
 
+      // Check for failed responses and display appropriate error message
       if (!salesRes.ok || !inventoryRes.ok || !customersRes.ok) {
-        throw new Error('Failed to fetch reports');
+        const failedServices = [];
+        if (!salesRes.ok) failedServices.push('Sales');
+        if (!inventoryRes.ok) failedServices.push('Inventory');
+        if (!customersRes.ok) failedServices.push('Customers');
+        
+        setError(`Failed to load ${failedServices.join(', ')} reports. Please try again or contact support if the issue persists.`);
+        setLoading(false);
+        return;
       }
 
       const [sales, inventory, customers] = await Promise.all([
@@ -84,7 +92,12 @@ export function ReportsDashboard() {
         customers: customers.data,
       });
     } catch (err: any) {
-      setError(err.message || 'An error occurred while fetching reports');
+      // Handle network errors or parsing errors
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        setError('Network error: Unable to connect to the server. Please check your internet connection.');
+      } else {
+        setError('An unexpected error occurred while loading reports. Please refresh the page and try again.');
+      }
       console.error('Reports fetch error:', err);
     } finally {
       setLoading(false);

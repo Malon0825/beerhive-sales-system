@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/contexts/AuthContext";
+import { OfflineRuntimeProvider } from "@/lib/contexts/OfflineRuntimeContext";
 import { Toaster } from "@/views/shared/ui/toaster";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -9,6 +10,7 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "BeerHive POS",
   description: "Point of Sale System for BeerHive PUB",
+  manifest: "/manifest.json",
   icons: {
     icon: '/beerhive-logo.png',
     shortcut: '/beerhive-logo.png',
@@ -37,8 +39,10 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <AuthProvider>
-          {children}
-          <Toaster />
+          <OfflineRuntimeProvider>
+            {children}
+            <Toaster />
+          </OfflineRuntimeProvider>
         </AuthProvider>
       </body>
     </html>

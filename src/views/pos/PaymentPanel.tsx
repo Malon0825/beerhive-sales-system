@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { PaymentMethod } from '@/models/enums/PaymentMethod';
 import { useCart } from '@/lib/contexts/CartContext';
-import { apiPost } from '@/lib/utils/apiClient';
+import { useOfflineRuntime } from '@/lib/contexts/OfflineRuntimeContext';
+import { enqueueSyncMutation, decreaseStockForOrder } from '@/lib/data-batching/offlineDb';
+import { MutationSyncService } from '@/lib/data-batching/MutationSyncService';
 import {
   Dialog,
   DialogContent,
@@ -24,6 +26,44 @@ import {
   CheckCircle,
   AlertCircle,
 } from 'lucide-react';
+import { toast } from '@/lib/hooks/useToast';
+import { createSessionReceiptOrderData, type SessionBillData } from '@/views/orders/sessionReceiptMapper';
+import type { OrderSession } from '@/models/entities/OrderSession';
+import type { ReceiptOrderData } from './SalesReceipt';
+
+export interface OfflineOrderItemSnapshot {
+  id: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  isPackage: boolean;
+  notes?: string;
+}
+
+export interface OfflineOrderSnapshot {
+  id: string;
+  queueId: number;
+  order_number: string;
+  created_at: string;
+  status: 'pending_sync' | 'synced' | 'failed';
+  subtotal: number;
+  total: number;
+  discount: number;
+  payment_method: PaymentMethod | null;
+  tableLabel?: string | null;
+  customerName?: string | null;
+  items: OfflineOrderItemSnapshot[];
+}
+
+export type OfflineReceiptPayload = OfflineOrderSnapshot | ReceiptOrderData;
+
+export interface PaymentCompleteOptions {
+  resultData?: any;
+  isOffline?: boolean;
+  queueId?: number;
+  localOrder?: OfflineReceiptPayload | null;
+}
 
 /**
  * Payment mode: 'pos' for new orders, 'close-tab' for closing existing sessions
@@ -42,7 +82,7 @@ interface PaymentPanelProps {
    * For close-tab mode: receives sessionId and result data containing order information
    * Receipts are automatically printed upon completion.
    */
-  onPaymentComplete: (idOrResult: string | any, options?: { resultData?: any }) => void;
+  onPaymentComplete: (idOrResult: string | any, options?: PaymentCompleteOptions) => void;
   
   // Close-tab mode specific props
   mode?: PaymentMode;
@@ -54,6 +94,7 @@ interface PaymentPanelProps {
   sessionItemCount?: number;
   sessionCustomer?: { id: string; full_name: string };
   sessionTable?: { id: string; table_number: string };
+  sessionData?: OrderSession | null;
 }
 
 /**
@@ -88,8 +129,10 @@ export function PaymentPanel({
   sessionItemCount,
   sessionCustomer,
   sessionTable,
+  sessionData,
 }: PaymentPanelProps) {
   const cart = mode === 'pos' ? useCart() : null;
+  const { isOnline } = useOfflineRuntime();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [amountTendered, setAmountTendered] = useState<string>('');
   const [changeAmount, setChangeAmount] = useState<number>(0);
@@ -106,10 +149,107 @@ export function PaymentPanel({
   const grossSubtotal = mode === 'pos' ? (cart?.getTotal() || 0) : (sessionSubtotal ?? sessionTotal ?? 0);
   const existingDiscount = mode === 'pos' ? 0 : (sessionExistingDiscount || 0);
   const subtotal = Math.max(0, grossSubtotal - existingDiscount);
-  const total = Math.max(0, subtotal - discountAmount); // Final total after discount
+  const total = Math.max(0, subtotal - discountAmount);
   const itemCount = mode === 'pos' ? (cart?.getItemCount() || 0) : (sessionItemCount || 0);
   const customer = mode === 'pos' ? cart?.customer : sessionCustomer;
   const table = mode === 'pos' ? cart?.table : sessionTable;
+
+  const buildOfflineOrderSnapshot = (orderId: string, queueId: number): OfflineOrderSnapshot | null => {
+    if (mode !== 'pos' || !cart) {
+      return null;
+    }
+
+    const createdAt = new Date().toISOString();
+    const items = (cart?.items || []).map<OfflineOrderItemSnapshot>((item) => ({
+      id: item.id,
+      name: item.itemName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      subtotal: item.subtotal,
+      isPackage: item.isPackage,
+      notes: item.notes,
+    }));
+
+    return {
+      id: orderId,
+      queueId,
+      order_number: `OFFLINE-${queueId}`,
+      created_at: createdAt,
+      status: 'pending_sync',
+      subtotal,
+      total,
+      discount: subtotal - total,
+      payment_method: selectedMethod,
+      tableLabel: table?.table_number || null,
+      customerName: customer?.full_name || null,
+      items,
+    };
+  };
+
+  const calculateSessionDurationMinutes = (): number => {
+    if (!sessionData?.opened_at) {
+      return 0;
+    }
+    const opened = new Date(sessionData.opened_at);
+    const closed = sessionData.closed_at ? new Date(sessionData.closed_at) : new Date();
+    const diff = Math.max(0, closed.getTime() - opened.getTime());
+    return Math.floor(diff / 60000);
+  };
+
+  const buildOfflineSessionReceiptSnapshot = (): ReceiptOrderData | null => {
+    if (mode !== 'close-tab' || !sessionData) {
+      return null;
+    }
+
+    const orders = sessionData.orders || [];
+    const billData: SessionBillData = {
+      session: {
+        id: sessionData.id,
+        session_number: sessionNumber ?? sessionData.session_number,
+        opened_at: sessionData.opened_at,
+        duration_minutes: calculateSessionDurationMinutes(),
+        table: (sessionTable ?? sessionData.table)
+          ? {
+              table_number: (sessionTable ?? sessionData.table)?.table_number || '',
+              area: sessionData.table?.area,
+            }
+          : undefined,
+        customer: (sessionCustomer ?? sessionData.customer)
+          ? {
+              full_name: (sessionCustomer ?? sessionData.customer)!.full_name,
+              customer_number: (sessionData.customer as any)?.customer_number,
+              tier: sessionData.customer?.tier,
+            }
+          : undefined,
+      },
+      orders: orders.map((order: any) => ({
+        id: order.id,
+        order_number: order.order_number || order.id,
+        status: order.status || 'pending_sync',
+        created_at: order.created_at || new Date().toISOString(),
+        items: (order.order_items || []).map((item: any) => ({
+          item_name: item.item_name || item.name || 'Item',
+          quantity: item.quantity ?? 1,
+          unit_price: item.unit_price ?? item.price ?? item.total ?? 0,
+          total: item.total ?? item.total_amount ?? item.subtotal ?? 0,
+          is_complimentary: Boolean(item.is_complimentary),
+          is_vip_price: Boolean(item.is_vip_price),
+          notes: item.notes ?? item.order_item_note ?? undefined,
+        })),
+        subtotal: order.subtotal ?? order.total_amount ?? 0,
+        discount_amount: order.discount_amount ?? 0,
+        total_amount: order.total_amount ?? order.subtotal ?? 0,
+      })),
+      totals: {
+        subtotal: sessionSubtotal ?? sessionData.subtotal ?? 0,
+        discount_amount: sessionExistingDiscount ?? sessionData.discount_amount ?? 0,
+        tax_amount: sessionData.tax_amount ?? 0,
+        total_amount: sessionTotal ?? sessionData.total_amount ?? 0,
+      },
+    };
+
+    return createSessionReceiptOrderData(billData);
+  };
 
   /**
    * Calculate discount amount when discount value changes
@@ -248,48 +388,38 @@ export function PaymentPanel({
       setProcessing(true);
       setError(null);
 
-      let response;
-      let apiUrl;
-      let requestBody;
+      let apiUrl: string;
+      let requestBody: Record<string, unknown>;
 
       const parsedDiscountValue = parseFloat(discountValue);
 
       if (mode === 'pos') {
-        // POS Mode: Create new order
         apiUrl = '/api/orders';
         requestBody = {
           customer_id: cart?.customer?.id,
           table_id: cart?.table?.id,
           items: cart?.items.map((item) => ({
-            // For packages, use package_id; for products, use product_id
             product_id: item.isPackage ? undefined : item.product?.id,
             package_id: item.isPackage ? item.package?.id : undefined,
             quantity: item.quantity,
             notes: item.notes,
           })) || [],
           payment_method: selectedMethod,
-          amount_tendered: selectedMethod === PaymentMethod.CASH 
-            ? parseFloat(amountTendered) 
-            : total,
+          amount_tendered:
+            selectedMethod === PaymentMethod.CASH ? parseFloat(amountTendered) : total,
           change_amount: selectedMethod === PaymentMethod.CASH ? changeAmount : 0,
           discount_amount: discountAmount > 0 ? discountAmount : undefined,
           discount_type: discountAmount > 0 ? discountType : undefined,
           discount_value:
-            discountAmount > 0 && !isNaN(parsedDiscountValue)
-              ? parsedDiscountValue
-              : undefined,
+            discountAmount > 0 && !isNaN(parsedDiscountValue) ? parsedDiscountValue : undefined,
           notes: referenceNumber ? `Ref: ${referenceNumber}` : undefined,
         };
-
-        console.log('🔍 [PaymentPanel-POS] Creating order:', requestBody);
       } else {
-        // Close-Tab Mode: Close existing session
         apiUrl = `/api/order-sessions/${sessionId}/close`;
         requestBody = {
           payment_method: selectedMethod,
-          amount_tendered: selectedMethod === PaymentMethod.CASH 
-            ? parseFloat(amountTendered) 
-            : total,
+          amount_tendered:
+            selectedMethod === PaymentMethod.CASH ? parseFloat(amountTendered) : total,
           reference_number: referenceNumber || undefined,
           ...(discountAmount > 0
             ? {
@@ -299,40 +429,68 @@ export function PaymentPanel({
               }
             : {}),
         };
-
-        console.log('🔍 [PaymentPanel-CloseTab] Closing session:', sessionId);
       }
 
-      // Submit payment using authenticated API client
-      const result = await apiPost(apiUrl, requestBody);
+      const mutationType = mode === 'pos' ? 'orders.create' : 'orderSessions.close';
+      const mutationPayload = {
+        endpoint: apiUrl,
+        method: 'POST',
+        body: requestBody,
+        created_at: new Date().toISOString(),
+      };
 
-      console.log('🔍 [PaymentPanel] API response:', {
-        mode,
-        success: result.success,
+      const queueId = await enqueueSyncMutation(mutationType, mutationPayload);
+      const tempOrderId = mode === 'pos'
+        ? `offline-${queueId}-${Date.now()}`
+        : sessionId || `session-offline-${queueId}`;
+      const localOrderPayload = mode === 'pos'
+        ? buildOfflineOrderSnapshot(tempOrderId, queueId)
+        : buildOfflineSessionReceiptSnapshot();
+
+      // CRITICAL: Decrease stock locally for immediate UI updates
+      // This ensures accurate stock visibility without waiting for server sync
+      if (mode === 'pos' && cart?.items && cart.items.length > 0) {
+        try {
+          const stockItems = cart.items
+            .filter(item => !item.isPackage && item.product?.id) // Only products (not packages)
+            .map(item => ({
+              productId: item.product!.id,
+              quantity: item.quantity,
+              itemName: item.itemName,
+            }));
+
+          if (stockItems.length > 0) {
+            await decreaseStockForOrder(stockItems);
+            console.log('✅ [PaymentPanel] Local stock decreased for order');
+          }
+        } catch (stockError) {
+          console.error('⚠️ [PaymentPanel] Failed to decrease local stock:', stockError);
+          // Don't block payment - stock will sync from server eventually
+        }
+      }
+
+      toast({
+        title: '💾 Transaction Queued',
+        description: isOnline
+          ? 'Synced orders will appear automatically once confirmed.'
+          : 'Device is offline. Order will sync when connection returns.',
+        variant: 'default',
       });
 
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to process payment');
-      }
+      onPaymentComplete(mode === 'pos' ? tempOrderId : sessionId || tempOrderId, {
+        isOffline: true,
+        queueId,
+        localOrder: localOrderPayload,
+      });
 
-      // Success - Close modal and trigger completion handler
-      console.log('✅ [PaymentPanel] Payment processed successfully');
-      
-      // Call completion handler with appropriate data
-      // For POS mode: pass orderId from newly created order
-      // For close-tab mode: pass sessionId and full result data containing orders
-      // Receipts are automatically printed upon completion
-      if (mode === 'pos') {
-        const orderId = result.data.id;
-        onPaymentComplete(orderId);
-      } else {
-        // Close-tab mode: pass sessionId and result data for receipt printing
-        onPaymentComplete(sessionId!, { resultData: result.data });
-      }
-      
-      // Reset form and close modal
+      cart?.clearCart();
       resetForm();
       onOpenChange(false);
+
+      if (isOnline) {
+        const syncService = MutationSyncService.getInstance();
+        void syncService.processPendingMutations();
+      }
     } catch (err: any) {
       console.error('Payment error:', err);
       setError(err.message || 'Failed to process payment');

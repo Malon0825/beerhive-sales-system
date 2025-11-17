@@ -9,16 +9,18 @@ import {
   SelectValue,
 } from '@/views/shared/ui/select';
 import { Loader2 } from 'lucide-react';
+import { readAllRecords } from '@/lib/data-batching/offlineDb';
+import type { OfflineCategory } from '@/lib/data-batching/offlineDb';
 
 /**
- * CategoryFilter Component
+ * CategoryFilter Component - OFFLINE-FIRST
  * 
  * Dropdown select component for category filtering.
- * Provides a compact and accessible way to filter products by category.
+ * Reads categories from IndexedDB for instant offline support.
  * 
  * Features:
  * - Dropdown select for category filtering
- * - Fetch categories from the database
+ * - Reads from IndexedDB (offline-first)
  * - Display categories with product counts
  * - Support for "All Categories" option
  * - Compact design that saves space
@@ -27,13 +29,8 @@ import { Loader2 } from 'lucide-react';
  * @component
  */
 
-interface Category {
-  id: string;
-  name: string;
-  color_code?: string;
-  display_order: number;
-  description?: string;
-}
+// Use OfflineCategory from IndexedDB schema
+type Category = OfflineCategory;
 
 interface CategoryFilterProps {
   selectedCategoryId: string | null;
@@ -53,7 +50,9 @@ export default function CategoryFilter({
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Fetch categories from the API
+   * Fetch categories from IndexedDB - OFFLINE-FIRST
+   * ALWAYS reads from IndexedDB, never blocks on API calls
+   * DataBatchingService handles background sync automatically
    */
   useEffect(() => {
     fetchCategories();
@@ -64,17 +63,29 @@ export default function CategoryFilter({
       setLoading(true);
       setError(null);
       
-      const response = await fetch('/api/categories');
-      const result = await response.json();
-
-      if (result.success) {
-        setCategories(result.data || []);
+      console.log('💾 [CategoryFilter] Reading categories from IndexedDB (offline-first)...');
+      
+      // Read from IndexedDB (local cache)
+      const cachedCategories = await readAllRecords('categories');
+      
+      if (cachedCategories.length === 0) {
+        console.warn('⚠️ [CategoryFilter] No categories in cache - waiting for sync');
+        setError('Categories are syncing...');
       } else {
-        setError(result.error || 'Failed to load categories');
+        // Sort by display order (if available) or name
+        const sortedCategories = cachedCategories.sort((a, b) => {
+          if (a.sort_order !== undefined && b.sort_order !== undefined) {
+            return a.sort_order - b.sort_order;
+          }
+          return a.name.localeCompare(b.name);
+        });
+        
+        setCategories(sortedCategories);
+        console.log(`✅ [CategoryFilter] Loaded ${sortedCategories.length} categories from cache`);
       }
     } catch (err) {
-      console.error('Error fetching categories:', err);
-      setError('Failed to load categories');
+      console.error('❌ [CategoryFilter] Error reading categories from IndexedDB:', err);
+      setError('Failed to load categories from cache');
     } finally {
       setLoading(false);
     }

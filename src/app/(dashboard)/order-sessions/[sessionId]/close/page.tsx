@@ -4,6 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PaymentPanel } from '@/views/pos/PaymentPanel';
 import { apiGet } from '@/lib/utils/apiClient';
+import type {
+  PaymentCompleteOptions,
+  OfflineReceiptPayload,
+} from '@/views/pos/PaymentPanel';
+import { SalesReceipt } from '@/views/pos/SalesReceipt';
+import type { ReceiptOrderData } from '@/views/pos/SalesReceipt';
 
 /**
  * Close Tab Page
@@ -19,6 +25,8 @@ export default function CloseTabPage() {
   const [isOpen, setIsOpen] = useState(true);
   const [sessionData, setSessionData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [receiptData, setReceiptData] = useState<ReceiptOrderData | null>(null);
 
   /**
    * Fetch session data including orders for item count
@@ -81,7 +89,7 @@ export default function CloseTabPage() {
    */
   const handleClose = (open: boolean) => {
     setIsOpen(open);
-    if (!open) {
+    if (!open && !showReceipt) {
       router.push('/tabs'); // Redirect to unified tab management
     }
   };
@@ -91,9 +99,24 @@ export default function CloseTabPage() {
    * @param sessionId - The ID of the closed session
    * @param options - Options containing result data
    */
-  const handleSuccess = (sessionId: string, options?: { resultData?: any }) => {
+  const handleSuccess = (sessionId: string, options?: PaymentCompleteOptions) => {
     console.log('✅ Payment successful, session closed:', sessionId);
     
+    if (options?.isOffline) {
+      const localOrder = options.localOrder as OfflineReceiptPayload | null | undefined;
+
+      if (localOrder && 'order' in localOrder) {
+        setReceiptData(localOrder);
+      } else if (localOrder) {
+        setReceiptData({ order: localOrder as any });
+      } else {
+        console.warn('⚠️ [CloseTabPage] Offline completion missing localOrder payload');
+      }
+
+      setShowReceipt(true);
+      return;
+    }
+
     // Extract result data containing orders
     const resultData = options?.resultData;
     
@@ -112,12 +135,20 @@ export default function CloseTabPage() {
           });
         }
       }, 200);
-    }
-    
-    // Redirect after a brief delay to allow print dialogs to open
-    setTimeout(() => {
+
+      // Redirect after a brief delay to allow print dialogs to open
+      setTimeout(() => {
+        router.push('/tabs');
+      }, 1500);
+    } else {
       router.push('/tabs');
-    }, 1500);
+    }
+  };
+
+  const handleCloseReceipt = () => {
+    setShowReceipt(false);
+    setReceiptData(null);
+    router.push('/tabs');
   };
 
   // Loading state
@@ -170,19 +201,29 @@ export default function CloseTabPage() {
   }
 
   return (
-    <PaymentPanel
-      open={isOpen}
-      onOpenChange={handleClose}
-      onPaymentComplete={handleSuccess}
-      mode="close-tab"
-      sessionId={sessionId}
-      sessionNumber={sessionData.session_number}
-      sessionTotal={sessionData.total_amount || 0}
-      sessionSubtotal={sessionData.subtotal || 0}
-      sessionExistingDiscount={sessionData.discount_amount || 0}
-      sessionItemCount={itemCount}
-      sessionCustomer={sessionData.customer}
-      sessionTable={sessionData.table}
-    />
+    <>
+      <PaymentPanel
+        open={isOpen}
+        onOpenChange={handleClose}
+        onPaymentComplete={handleSuccess}
+        mode="close-tab"
+        sessionId={sessionId}
+        sessionNumber={sessionData.session_number}
+        sessionTotal={sessionData.total_amount || 0}
+        sessionSubtotal={sessionData.subtotal || 0}
+        sessionExistingDiscount={sessionData.discount_amount || 0}
+        sessionItemCount={itemCount}
+        sessionCustomer={sessionData.customer}
+        sessionTable={sessionData.table}
+        sessionData={sessionData}
+      />
+
+      {showReceipt && receiptData && (
+        <SalesReceipt
+          orderData={receiptData}
+          onClose={handleCloseReceipt}
+        />
+      )}
+    </>
   );
 }

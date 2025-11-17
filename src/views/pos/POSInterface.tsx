@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { DataBatchingService } from '@/lib/data-batching/DataBatchingService';
 import { Product } from '@/models/entities/Product';
 import { Package } from '@/models/entities/Package';
 import { Customer } from '@/models/entities/Customer';
@@ -19,9 +20,16 @@ import { OrderSummaryPanel } from './components/OrderSummaryPanel';
 import { CustomerSearch } from './CustomerSearch';
 import { TableSelector } from './TableSelector';
 import { PaymentPanel } from './PaymentPanel';
+import type {
+  PaymentCompleteOptions,
+  OfflineOrderSnapshot,
+  OfflineReceiptPayload,
+} from './PaymentPanel';
 import { SalesReceipt } from './SalesReceipt';
+import { OfflineStatusBadge } from './OfflineStatusBadge';
 import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
 import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
+import { toast } from '@/lib/hooks/useToast';
 
 /**
  * POSInterface - Main POS Component
@@ -83,6 +91,9 @@ export function POSInterface() {
   const cart = useCart();
   const stockTracker = useStockTracker();
   const { markOrderAsPaid } = useLocalOrder();
+  
+  // Offline-first data service
+  const dataBatching = useMemo(() => DataBatchingService.getInstance(), []);
 
   /**
    * Generate dynamic grid class based on selected columns
@@ -267,8 +278,9 @@ export function POSInterface() {
   }, []);
 
   /**
-   * Fetch products from API with duplicate call prevention
-   * Initializes stock tracker with loaded products
+   * Fetch products - Pure Offline-First Architecture
+   * ALWAYS reads from IndexedDB, never blocks on API calls
+   * DataBatchingService handles all background syncing
    */
   const fetchProducts = async () => {
     if (fetchingProductsRef.current) {
@@ -279,58 +291,112 @@ export function POSInterface() {
     try {
       fetchingProductsRef.current = true;
       setLoading(true);
-      console.log('🔄 [POSInterface] Fetching products...');
+      console.log('💾 [POSInterface] Reading products from IndexedDB (offline-first)...');
       
-      const response = await fetch('/api/products');
-      const result = await response.json();
+      // ALWAYS read from IndexedDB - this is the single source of truth
+      const snapshot = await dataBatching.getCatalogSnapshot();
       
-      if (result.success) {
-        console.log('✅ [POSInterface] Products fetched:', result.data.length);
-        setProducts(result.data);
+      if (snapshot.products.length > 0) {
+        console.log(`✅ [POSInterface] Loaded ${snapshot.products.length} products from IndexedDB`);
         
-        // Initialize stock tracker with loaded products
-        stockTracker.initializeStock(result.data);
-        console.log('📊 [POSInterface] Stock tracker initialized');
+        // Map OfflineProduct to Product format
+        const mappedProducts = snapshot.products.map(p => ({
+          id: p.id,
+          name: p.name,
+          sku: p.sku,
+          category_id: p.category_id,
+          category_name: p.category_name,
+          category_color: p.category_color,
+          package_ids: p.package_ids,
+          base_price: p.base_price,
+          vip_price: p.vip_price,
+          tax_group: p.tax_group,
+          current_stock: p.current_stock,
+          reorder_point: p.reorder_point,
+          image_url: p.image_url,
+          is_featured: p.is_featured,
+          // Additional fields for Product type
+          barcode: null,
+          description: null,
+          cost_price: 0,
+          unit_of_measure: 'unit',
+          low_stock_threshold: p.reorder_point,
+          reorder_quantity: null,
+          size_variant: null,
+          alcohol_percentage: null,
+          display_order: 0,
+          created_by: null,
+          is_active: true,
+          created_at: p.updated_at,
+          updated_at: p.updated_at,
+        } as unknown as Product));
+        
+        setProducts(mappedProducts);
+        stockTracker.initializeStock(mappedProducts);
+        console.log('📊 [POSInterface] Stock tracker initialized from IndexedDB');
       } else {
-        console.error('❌ [POSInterface] Failed to fetch products:', result);
+        console.warn('⚠️ [POSInterface] IndexedDB is empty - waiting for initial sync');
+        console.warn('🔄 [POSInterface] DataBatchingService will populate cache on first run');
+        toast({
+          title: 'Loading Initial Data',
+          description: 'Please wait while we sync product data. This only happens once.',
+          variant: 'default',
+        });
       }
+      
     } catch (error) {
-      console.error('❌ [POSInterface] Error fetching products:', error);
+      console.error('❌ [POSInterface] Error reading from IndexedDB:', error);
+      toast({
+        title: 'Cache Error',
+        description: 'Failed to load products from cache. Please refresh the page.',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
       fetchingProductsRef.current = false;
-      console.log('🏁 [POSInterface] Products fetch completed');
+      console.log('🏁 [POSInterface] Products load completed');
     }
   };
 
   /**
-   * Fetch categories from API
-   * Used to dynamically generate product tabs
+   * Fetch categories - Pure Offline-First Architecture
+   * ALWAYS reads from IndexedDB, never blocks on API calls
    */
   const fetchCategories = async () => {
     try {
       setCategoriesLoading(true);
-      console.log('🔄 [POSInterface] Fetching categories...');
+      console.log('💾 [POSInterface] Reading categories from IndexedDB (offline-first)...');
       
-      const response = await fetch('/api/categories');
-      const result = await response.json();
+      // ALWAYS read from IndexedDB
+      const snapshot = await dataBatching.getCatalogSnapshot();
       
-      if (result.success) {
-        console.log('✅ [POSInterface] Categories fetched:', result.data.length);
-        setCategories(result.data || []);
+      if (snapshot.categories.length > 0) {
+        console.log(`✅ [POSInterface] Loaded ${snapshot.categories.length} categories from IndexedDB`);
+        
+        // Map OfflineCategory to expected format
+        const mappedCategories = snapshot.categories.map(c => ({
+          id: c.id,
+          name: c.name,
+          color_code: c.color_code ?? undefined,
+        }));
+        
+        setCategories(mappedCategories);
       } else {
-        console.error('❌ [POSInterface] Failed to fetch categories:', result);
+        console.warn('⚠️ [POSInterface] No categories in cache - waiting for sync');
+        setCategories([]);
       }
     } catch (error) {
-      console.error('❌ [POSInterface] Error fetching categories:', error);
+      console.error('❌ [POSInterface] Error reading categories from IndexedDB:', error);
+      setCategories([]);
     } finally {
       setCategoriesLoading(false);
-      console.log('🏁 [POSInterface] Categories fetch completed');
+      console.log('🏁 [POSInterface] Categories load completed');
     }
   };
 
   /**
-   * Fetch active packages from API with duplicate call prevention
+   * Fetch packages - Pure Offline-First Architecture
+   * ALWAYS reads from IndexedDB, never blocks on API calls
    */
   const fetchPackages = async () => {
     if (fetchingPackagesRef.current) {
@@ -341,34 +407,58 @@ export function POSInterface() {
     try {
       fetchingPackagesRef.current = true;
       setPackagesLoading(true);
-      console.log('🔄 [POSInterface] Fetching packages...');
+      console.log('💾 [POSInterface] Reading packages from IndexedDB (offline-first)...');
       
-      const response = await fetch('/api/packages?active=true');
-      const result = await response.json();
+      // ALWAYS read from IndexedDB
+      const snapshot = await dataBatching.getCatalogSnapshot();
       
-      console.log('📦 [POSInterface] Packages API Response:', {
-        success: result.success,
-        count: result.data?.length
-      });
-      
-      if (result.success) {
-        console.log('✅ [POSInterface] Packages fetched:', result.data.length);
-        if (result.data.length > 0) {
+      if (snapshot.packages.length > 0) {
+        console.log(`✅ [POSInterface] Loaded ${snapshot.packages.length} packages from IndexedDB`);
+        
+        // Map OfflinePackage to expected format
+        const mappedPackages = snapshot.packages.map(p => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          package_code: p.package_code,
+          product_id: p.product_id,
+          unit_size: p.unit_size,
+          base_price: p.base_price,
+          vip_price: p.vip_price,
+          package_type: p.package_type,
+          barcode: p.barcode,
+          items: p.items || [],
+          // Additional fields for Package type
+          valid_from: null,
+          valid_until: null,
+          is_addon_eligible: false,
+          time_restrictions: null,
+          quantity_available: null,
+          created_by: null,
+          is_active: true,
+          created_at: p.updated_at,
+          updated_at: p.updated_at,
+        } as unknown as Package & { items?: any[] }));
+        
+        setPackages(mappedPackages);
+        
+        if (mappedPackages.length > 0) {
           console.log('📋 [POSInterface] First package:', {
-            name: result.data[0].name,
-            itemsCount: result.data[0].items?.length
+            name: mappedPackages[0].name,
+            itemsCount: mappedPackages[0].items?.length
           });
         }
-        setPackages(result.data);
       } else {
-        console.error('❌ [POSInterface] Failed to fetch packages:', result);
+        console.warn('⚠️ [POSInterface] No packages in cache - waiting for sync');
+        setPackages([]);
       }
     } catch (error) {
-      console.error('❌ [POSInterface] Error fetching packages:', error);
+      console.error('❌ [POSInterface] Error reading packages from IndexedDB:', error);
+      setPackages([]);
     } finally {
       setPackagesLoading(false);
       fetchingPackagesRef.current = false;
-      console.log('🏁 [POSInterface] Packages fetch completed');
+      console.log('🏁 [POSInterface] Packages load completed');
     }
   };
 
@@ -561,39 +651,55 @@ export function POSInterface() {
    * 
    * Also marks order as paid in IndexedDB to clear customer display
    */
-  const handlePaymentComplete = async (orderId: string) => {
+  const handlePaymentComplete = async (orderId: string, options?: PaymentCompleteOptions) => {
     try {
-      // Mark order as completed in database
+      if (options?.isOffline) {
+        const localOrder = options.localOrder as OfflineReceiptPayload | null | undefined;
+
+        if (localOrder && 'order' in localOrder) {
+          setReceiptData(localOrder);
+        } else {
+          const receiptOrder = transformOfflineSnapshotToReceipt(
+            (localOrder as OfflineOrderSnapshot | null | undefined) ?? null,
+            orderId
+          );
+          setReceiptData({ order: receiptOrder });
+        }
+
+        setShowReceipt(true);
+
+        toast({
+          title: '💾 Offline Order Saved',
+          description: 'Receipt generated locally. Queue will sync automatically.',
+        });
+
+        cart.clearCart();
+        return;
+      }
+
       const response = await fetch(`/api/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'complete' })
+        body: JSON.stringify({ action: 'complete' }),
       });
 
       if (!response.ok) {
         throw new Error('Failed to complete order');
       }
 
-      // IMPORTANT: Mark order as paid in IndexedDB
-      // This will automatically clear the customer display
       if (cart.currentOrderId) {
         try {
           await markOrderAsPaid(cart.currentOrderId);
-          console.log('💰 [POSInterface] Order marked as PAID in IndexedDB');
-          console.log('🧹 [POSInterface] Customer display will clear automatically');
         } catch (err) {
           console.error('⚠️ [POSInterface] Failed to mark order as paid in IndexedDB:', err);
-          // Don't block the flow, order is still completed in database
         }
       }
 
-      // Fetch order data and show receipt modal with auto-print
       try {
         const orderResponse = await fetch(`/api/orders/${orderId}`);
         if (orderResponse.ok) {
           const orderResult = await orderResponse.json();
           if (orderResult.success && orderResult.data) {
-            // Show receipt modal which will auto-print
             setReceiptData({ order: orderResult.data });
             setShowReceipt(true);
           }
@@ -601,27 +707,53 @@ export function POSInterface() {
       } catch (err) {
         console.error('Failed to fetch order for receipt:', err);
       }
-      
-      // Show success message
+
       setSuccessMessage(`Order completed successfully! Order ID: ${orderId}`);
-      
-      // Clear cart
       cart.clearCart();
-      
-      // Hide success message after 5 seconds
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 5000);
+      setTimeout(() => setSuccessMessage(null), 5000);
     } catch (error) {
       console.error('Error completing order:', error);
-      // Still show success but with warning
-      setSuccessMessage(`Order created (ID: ${orderId}) but completion failed. Please complete manually.`);
+      setSuccessMessage(`Order saved (ID: ${orderId}). Will sync when online.`);
       cart.clearCart();
-      
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 7000);
+      setTimeout(() => setSuccessMessage(null), 7000);
     }
+  };
+
+  const transformOfflineSnapshotToReceipt = (
+    localOrder: OfflineOrderSnapshot | null | undefined,
+    fallbackId: string
+  ) => {
+    const items = localOrder?.items || cart.items.map((item) => ({
+      item_name: item.itemName,
+      quantity: item.quantity,
+      total: item.subtotal,
+      subtotal: item.subtotal,
+      order_id: fallbackId,
+      product_id: item.product?.id ?? null,
+      package_id: item.package?.id ?? null,
+      discount_amount: item.discount,
+      is_vip_price: false,
+      is_complimentary: false,
+    }));
+
+    const subtotal = localOrder?.subtotal ?? cart.getSubtotal();
+    const total = localOrder?.total ?? cart.getTotal();
+
+    return {
+      id: localOrder?.id ?? fallbackId,
+      order_number: localOrder?.order_number ?? fallbackId,
+      customer: localOrder?.customerName ? { full_name: localOrder.customerName } : undefined,
+      table: localOrder?.tableLabel ? { table_number: localOrder.tableLabel } : undefined,
+      created_at: localOrder?.created_at ?? new Date().toISOString(),
+      subtotal,
+      discount_amount: subtotal - total,
+      total_amount: total,
+      tax_amount: 0,
+      payment_method: localOrder?.payment_method ?? null,
+      amount_tendered: null,
+      change_amount: null,
+      order_items: items,
+    };
   };
 
 
@@ -728,6 +860,9 @@ export function POSInterface() {
       <div className="flex-1 min-w-0 flex flex-col gap-3">
         {/* Main Content Area */}
         <Card className="flex-1 overflow-hidden flex flex-col shadow-md">
+          {/* Offline Sync Status - Moved to top for visibility */}
+          <OfflineStatusBadge className="mx-4 mt-4" />
+          
           <div className="p-4 border-b bg-gradient-to-r from-amber-50 to-orange-50 overflow-hidden space-y-3">
             {/* Top Row: Grid Selector and View Toggle Buttons */}
             <div className="flex items-center justify-between gap-3">

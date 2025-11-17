@@ -129,19 +129,25 @@ export async function POST(request: NextRequest) {
       cashier_id: cashierId
     });
 
-    // Auto-confirm POS orders (ones with payment_method = immediate payment)
+    // Auto-confirm and complete POS orders (ones with payment_method = immediate payment)
     // This ensures kitchen routing happens immediately for paid orders
     if (body.payment_method) {
-      console.log('🔍 [POST /api/orders] Payment method detected - auto-confirming order for kitchen routing...');
+      console.log('🔍 [POST /api/orders] Payment method detected - auto-confirming and completing order...');
       const { OrderService } = await import('@/core/services/orders/OrderService');
       
       try {
+        // Step 1: Confirm order (deduct stock, route to kitchen)
         await OrderService.confirmOrder(order.id, cashierId!);
         console.log('✅ [POST /api/orders] Order auto-confirmed and routed to kitchen');
+        
+        // Step 2: Complete order (mark as paid/completed with completed_at timestamp)
+        // This is critical for reports which filter by completed_at and status='completed'
+        await OrderService.completeOrder(order.id, cashierId!);
+        console.log('✅ [POST /api/orders] Order marked as completed with payment');
       } catch (confirmError) {
         // Log error but don't fail the order creation (order is already created)
-        console.error('⚠️ [POST /api/orders] Auto-confirm failed (non-fatal):', confirmError);
-        console.warn('⚠️ [POST /api/orders] Order created but not sent to kitchen - may need manual confirmation');
+        console.error('⚠️ [POST /api/orders] Auto-confirm/complete failed (non-fatal):', confirmError);
+        console.warn('⚠️ [POST /api/orders] Order created but may not be fully processed');
       }
       
       // Reload order to get updated status
@@ -151,7 +157,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: updatedOrder || order,
-        message: 'Order created and sent to kitchen',
+        message: 'Order created, confirmed, and completed',
       }, { status: 201 });
     }
 
