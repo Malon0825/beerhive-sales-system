@@ -526,6 +526,18 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
                     )}
                   </td>
                 </tr>
+                {/* Package items breakdown */}
+                {item.package_id && item.complex_product_metadata?.package_items && (
+                  <tr>
+                    <td colSpan={3} style={{ fontSize: '8px', paddingBottom: '3px', paddingLeft: '8px', paddingTop: '1px', color: '#666' }}>
+                      {item.complex_product_metadata.package_items.map((pi, idx) => (
+                        <div key={idx} style={{ marginBottom: '1px' }}>
+                          • {pi.quantity}x {pi.product_name}
+                        </div>
+                      ))}
+                    </td>
+                  </tr>
+                )}
                 {item.notes && (
                   <tr>
                     <td colSpan={3} className="italic" style={{ fontSize: '8px', paddingBottom: '2px', paddingLeft: '4px', paddingTop: '1px' }}>
@@ -708,6 +720,18 @@ export function MinimalPrintableReceipt({ orderData, isPrintMode = false }: Mini
                   <td className="py-2 text-right">{item.quantity}</td>
                   <td className="py-2 text-right">{formatReceiptCurrency(item.total)}</td>
                 </tr>
+                {/* Package items breakdown */}
+                {item.package_id && item.complex_product_metadata?.package_items && (
+                  <tr>
+                    <td colSpan={3} className="pb-2 text-[10px] text-gray-500 pl-4">
+                      {item.complex_product_metadata.package_items.map((pi, idx) => (
+                        <div key={idx}>
+                          • {pi.quantity}x {pi.product_name}
+                        </div>
+                      ))}
+                    </td>
+                  </tr>
+                )}
                 {item.notes && (
                   <tr>
                     <td colSpan={3} className="pb-2 text-[10px] italic text-gray-500">

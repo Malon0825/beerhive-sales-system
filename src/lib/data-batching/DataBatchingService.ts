@@ -209,6 +209,28 @@ export class DataBatchingService {
     };
   }
 
+  /**
+   * Force a full catalog sync by clearing all sync timestamps and re-fetching all data
+   * This is useful for manual refresh or when cache is suspected to be stale
+   */
+  async forceFullSync(): Promise<void> {
+    console.log('🔄 [DataBatchingService] Force full sync initiated...');
+    
+    // Clear all entity sync timestamps to force re-fetch
+    await Promise.all(
+      entityList.map(entity => 
+        setMetadataValue(`${ENTITY_CURSOR_PREFIX}.${entity}`, null)
+      )
+    );
+    
+    console.log('✅ [DataBatchingService] Cleared all sync timestamps');
+    
+    // Trigger full sync
+    await this.syncAllEntities();
+    
+    console.log('✅ [DataBatchingService] Force full sync completed');
+  }
+
   async syncAllEntities(): Promise<void> {
     if (this.syncingPromise) {
       return this.syncingPromise;
@@ -472,11 +494,26 @@ export class DataBatchingService {
 
   /**
    * Phase 1.4: Fetch packages with batch size limit.
+   * CRITICAL FIX: Now includes package_items relationship
    */
   private async fetchPackages(lastUpdated?: string, limit: number = 1000) {
     let query = supabase
       .from('packages')
-      .select('*')
+      .select(`
+        *,
+        package_items (
+          id,
+          product_id,
+          quantity,
+          is_choice_item,
+          choice_group,
+          display_order,
+          products (
+            id,
+            name
+          )
+        )
+      `)
       .order('updated_at', { ascending: true })
       .limit(limit);
 
@@ -502,9 +539,23 @@ export class DataBatchingService {
       package_type: pkg.package_type ?? null,
       barcode: pkg.barcode ?? null,
       updated_at: pkg.updated_at ?? new Date().toISOString(),
-      items: [], // TODO: fetch package items if needed
+      // ✅ FIXED: Now properly maps package items
+      items: (pkg.package_items || []).map((item: any) => ({
+        id: item.id,
+        product_id: item.product_id,
+        quantity: item.quantity ?? 1,
+        is_choice_item: item.is_choice_item ?? false,
+        choice_group: item.choice_group ?? null,
+        display_order: item.display_order ?? 0,
+        product: item.products ? {
+          id: item.products.id,
+          name: item.products.name,
+        } : undefined,
+      })),
     }));
 
+    console.log(`[DataBatchingService] Fetched ${records.length} packages with items`);
+    
     return {
       records,
       latestUpdatedAt: records.at(-1)?.updated_at ?? lastUpdated ?? null,

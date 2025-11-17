@@ -44,6 +44,15 @@ export interface OrderItem {
   is_vip_price: boolean;
   is_complimentary: boolean;
   notes: string | null;
+  complex_product_metadata?: {
+    package_items?: Array<{
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      is_choice_item?: boolean;
+      choice_group?: string | null;
+    }>;
+  } | null;
   created_at: string;
 }
 

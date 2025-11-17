@@ -17,6 +17,7 @@ import { UserRole } from '@/models/enums/UserRole';
 import { ProfileDialog } from '../profile/ProfileDialog';
 import { PatchNotesDialog } from '../profile/PatchNotesDialog';
 import { NotificationBell } from '../ui/NotificationBell';
+import { SyncStatusIndicator } from '../ui/SyncStatusIndicator';
 
 interface HeaderProps {
   user?: AuthUser | null;
@@ -88,6 +89,9 @@ export function Header({ user, onLogout, onMenuClick }: HeaderProps) {
 
       {/* Right side actions */}
       <div className="flex items-center gap-2">
+        {/* Sync Status */}
+        <SyncStatusIndicator />
+        
         {/* Notifications */}
         <NotificationBell />
 

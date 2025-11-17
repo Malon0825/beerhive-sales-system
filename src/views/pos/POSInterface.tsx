@@ -26,7 +26,6 @@ import type {
   OfflineReceiptPayload,
 } from './PaymentPanel';
 import { SalesReceipt } from './SalesReceipt';
-import { OfflineStatusBadge } from './OfflineStatusBadge';
 import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
 import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
 import { toast } from '@/lib/hooks/useToast';
@@ -238,6 +237,7 @@ export function POSInterface() {
   const fetchingPackagesRef = useRef(false);
   const hasFetchedRef = useRef(false);
   const cartRestorationCompleteRef = useRef(false);
+  const initialCartLoadCheckedRef = useRef(false);
 
   /**
    * Track component mount/unmount for debugging and reset restoration flag
@@ -247,6 +247,7 @@ export function POSInterface() {
     return () => {
       console.log('🔚 [POSInterface] Component unmounted');
       cartRestorationCompleteRef.current = false;
+      initialCartLoadCheckedRef.current = false;
     };
   }, []);
 
@@ -259,6 +260,56 @@ export function POSInterface() {
       cartRestorationCompleteRef.current = false;
     }
   }, [cart.items.length]);
+
+  /**
+   * Mark restoration as complete when cart finishes loading empty
+   * CRITICAL: Prevents double stock reservation on first product addition
+   * Only runs ONCE during initial cart load, not on user-initiated cart clears
+   */
+  useEffect(() => {
+    if (
+      !cart.isLoadingCart &&
+      cart.items.length === 0 &&
+      !cartRestorationCompleteRef.current &&
+      !initialCartLoadCheckedRef.current
+    ) {
+      console.log('✅ [POSInterface] Cart loaded empty, marking restoration as complete');
+      cartRestorationCompleteRef.current = true;
+      initialCartLoadCheckedRef.current = true;
+    } else if (!cart.isLoadingCart && !initialCartLoadCheckedRef.current) {
+      // Cart loaded with items, mark as checked but don't set restoration complete
+      // (restoration effect will handle it)
+      console.log('ℹ️ [POSInterface] Cart loaded with items, restoration will proceed');
+      initialCartLoadCheckedRef.current = true;
+    }
+  }, [cart.isLoadingCart, cart.items.length]);
+
+  /**
+   * Subscribe to catalog updates from DataBatchingService
+   * When manual sync or background sync completes, refresh the UI
+   */
+  useEffect(() => {
+    console.log('👂 [POSInterface] Subscribing to catalog updates...');
+    
+    const unsubscribe = dataBatching.subscribe(() => {
+      console.log('🔄 [POSInterface] Catalog updated, refreshing data...');
+      
+      // Re-fetch all catalog data to update UI
+      fetchProducts();
+      fetchPackages();
+      fetchCategories();
+      
+      toast({
+        title: 'Catalog updated',
+        description: 'Product and package data has been refreshed.',
+      });
+    });
+    
+    return () => {
+      console.log('👋 [POSInterface] Unsubscribing from catalog updates...');
+      unsubscribe();
+    };
+  }, [dataBatching]);
 
   /**
    * Fetch products and packages from API on mount only
@@ -723,18 +774,47 @@ export function POSInterface() {
     localOrder: OfflineOrderSnapshot | null | undefined,
     fallbackId: string
   ) => {
-    const items = localOrder?.items || cart.items.map((item) => ({
-      item_name: item.itemName,
-      quantity: item.quantity,
-      total: item.subtotal,
-      subtotal: item.subtotal,
-      order_id: fallbackId,
-      product_id: item.product?.id ?? null,
-      package_id: item.package?.id ?? null,
-      discount_amount: item.discount,
-      is_vip_price: false,
-      is_complimentary: false,
-    }));
+    const items = localOrder?.items 
+      ? localOrder.items.map((item) => ({
+          item_name: item.name,
+          quantity: item.quantity,
+          total: item.subtotal,
+          subtotal: item.subtotal,
+          order_id: fallbackId,
+          product_id: item.productId ?? null,
+          package_id: item.packageId ?? null,
+          discount_amount: 0,
+          is_vip_price: false,
+          is_complimentary: false,
+          // Map package metadata for receipt display
+          complex_product_metadata: item.isPackage && item.packageItems 
+            ? { package_items: item.packageItems }
+            : null,
+        }))
+      : cart.items.map((item) => ({
+          item_name: item.itemName,
+          quantity: item.quantity,
+          total: item.subtotal,
+          subtotal: item.subtotal,
+          order_id: fallbackId,
+          product_id: item.product?.id ?? null,
+          package_id: item.package?.id ?? null,
+          discount_amount: item.discount,
+          is_vip_price: false,
+          is_complimentary: false,
+          // Map package metadata for receipt display
+          complex_product_metadata: item.isPackage && item.package?.items
+            ? {
+                package_items: item.package.items.map((pi: any) => ({
+                  product_id: pi.product_id || pi.id,
+                  product_name: pi.product?.name || pi.name || 'Unknown Item',
+                  quantity: pi.quantity || 1,
+                  is_choice_item: pi.is_choice_item || false,
+                  choice_group: pi.choice_group || null,
+                })),
+              }
+            : null,
+        }));
 
     const subtotal = localOrder?.subtotal ?? cart.getSubtotal();
     const total = localOrder?.total ?? cart.getTotal();
@@ -860,9 +940,6 @@ export function POSInterface() {
       <div className="flex-1 min-w-0 flex flex-col gap-3">
         {/* Main Content Area */}
         <Card className="flex-1 overflow-hidden flex flex-col shadow-md">
-          {/* Offline Sync Status - Moved to top for visibility */}
-          <OfflineStatusBadge className="mx-4 mt-4" />
-          
           <div className="p-4 border-b bg-gradient-to-r from-amber-50 to-orange-50 overflow-hidden space-y-3">
             {/* Top Row: Grid Selector and View Toggle Buttons */}
             <div className="flex items-center justify-between gap-3">

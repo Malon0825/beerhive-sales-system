@@ -185,9 +185,12 @@ export class MutationSyncService {
       await deleteSyncQueueEntry(mutation.id);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error(`[MutationSyncService] Mutation ${mutation.id} failed:`, errorMessage);
-
+      
+      // Differentiate between expected network errors and unexpected errors
       if (this.isNetworkError(error)) {
+        // Network errors are expected when offline - use warn instead of error
+        console.warn(`[MutationSyncService] Mutation ${mutation.id} paused (network unavailable):`, errorMessage);
+        
         // Network errors - don't show repeated toasts, just log
         if (!this.offlineNoticeShown) {
           toast({
@@ -197,6 +200,8 @@ export class MutationSyncService {
           this.offlineNoticeShown = true;
         }
       } else {
+        // Unexpected errors - log as error for debugging
+        console.error(`[MutationSyncService] Mutation ${mutation.id} failed:`, errorMessage);
         // Application/business logic errors - show specific message
         const isMaxRetries = mutation.retry_count + 1 >= MAX_RETRIES;
         toast({

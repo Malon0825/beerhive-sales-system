@@ -39,6 +39,15 @@ export interface OfflineOrderItemSnapshot {
   subtotal: number;
   isPackage: boolean;
   notes?: string;
+  packageId?: string | null;
+  productId?: string | null;
+  packageItems?: Array<{
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    is_choice_item: boolean;
+    choice_group: string | null;
+  }>;
 }
 
 export interface OfflineOrderSnapshot {
@@ -160,15 +169,32 @@ export function PaymentPanel({
     }
 
     const createdAt = new Date().toISOString();
-    const items = (cart?.items || []).map<OfflineOrderItemSnapshot>((item) => ({
-      id: item.id,
-      name: item.itemName,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      subtotal: item.subtotal,
-      isPackage: item.isPackage,
-      notes: item.notes,
-    }));
+    const items = (cart?.items || []).map<OfflineOrderItemSnapshot>((item) => {
+      const snapshot: OfflineOrderItemSnapshot = {
+        id: item.id,
+        name: item.itemName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        subtotal: item.subtotal,
+        isPackage: item.isPackage,
+        notes: item.notes,
+        packageId: item.package?.id || null,
+        productId: item.product?.id || null,
+      };
+
+      // Capture package items metadata for receipt display
+      if (item.isPackage && item.package?.items) {
+        snapshot.packageItems = item.package.items.map((pi: any) => ({
+          product_id: pi.product_id || pi.id,
+          product_name: pi.product?.name || pi.name || 'Unknown Item',
+          quantity: pi.quantity || 1,
+          is_choice_item: pi.is_choice_item || false,
+          choice_group: pi.choice_group || null,
+        }));
+      }
+
+      return snapshot;
+    });
 
     return {
       id: orderId,

@@ -242,6 +242,18 @@ export class CreateOrder {
         const isVIP = customer && customer.tier && customer.tier !== 'regular';
         const unitPrice = isVIP && pkg.vip_price ? pkg.vip_price : pkg.base_price;
 
+        // Store package items in metadata for receipt display
+        // pkg.items already contains the package items from getById
+        const packageMetadata = (pkg.items && pkg.items.length > 0) ? {
+          package_items: pkg.items.map((pi: any) => ({
+            product_id: pi.product_id,
+            product_name: pi.product?.name || 'Unknown Item',
+            quantity: pi.quantity,
+            is_choice_item: pi.is_choice_item || false,
+            choice_group: pi.choice_group || null,
+          }))
+        } : null;
+
         // Prepare package order item
         const orderItem = {
           product_id: null,
@@ -259,12 +271,14 @@ export class CreateOrder {
           is_vip_price: isVIP && pkg.vip_price ? true : false,
           is_complimentary: item.is_complimentary || false,
           notes: item.notes || null,
+          complex_product_metadata: packageMetadata,
         };
 
         console.log(`✅ [CreateOrder] Package item processed:`, {
           name: orderItem.item_name,
           unit_price: orderItem.unit_price,
-          is_vip_price: orderItem.is_vip_price
+          is_vip_price: orderItem.is_vip_price,
+          package_items_count: pkg.items?.length || 0
         });
 
         processedItems.push(orderItem);
