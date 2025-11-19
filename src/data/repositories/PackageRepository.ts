@@ -208,6 +208,7 @@ export class PackageRepository {
           package_type: input.package_type,
           base_price: input.base_price,
           vip_price: input.vip_price,
+          cost_price: input.cost_price,
           valid_from: input.valid_from,
           valid_until: input.valid_until,
           is_addon_eligible: input.is_addon_eligible ?? false,
@@ -270,6 +271,9 @@ export class PackageRepository {
       }
       if ('vip_price' in input) {
         updateData.vip_price = input.vip_price ?? null;
+      }
+      if ('cost_price' in input) {
+        updateData.cost_price = input.cost_price ?? null;
       }
       if ('valid_from' in input) {
         updateData.valid_from = input.valid_from ?? null;

@@ -376,7 +376,8 @@ export async function getAllProductsAndPackagesSold(startDate: string, endDate: 
       item_name,
       quantity,
       total,
-      order:order_id(completed_at, status)
+      order:order_id(completed_at, status),
+      package:package_id(base_price, cost_price)
     `)
     .gte('order.completed_at', startDate)
     .lte('order.completed_at', endDate)
@@ -396,6 +397,8 @@ export async function getAllProductsAndPackagesSold(startDate: string, endDate: 
         total_revenue: 0,
         order_count: 0,
         item_type: 'package',
+        base_price: item.package?.base_price != null ? parseFloat(item.package.base_price) : undefined,
+        cost_price: item.package?.cost_price != null ? parseFloat(item.package.cost_price) : null,
       });
     }
     const acc = byId.get(key)!;
@@ -404,14 +407,12 @@ export async function getAllProductsAndPackagesSold(startDate: string, endDate: 
     acc.order_count += 1;
   });
 
-  // Compute net income for individual products only
+  // Compute net income for both products and packages
   byId.forEach((val) => {
-    if (val.item_type === 'product') {
-      if (val.cost_price === null || val.cost_price === undefined || val.base_price === undefined) {
-        val.net_income = null;
-      } else {
-        val.net_income = (val.base_price - val.cost_price) * val.order_count;
-      }
+    if (val.cost_price === null || val.cost_price === undefined || val.base_price === undefined) {
+      val.net_income = null;
+    } else {
+      val.net_income = (val.base_price - val.cost_price) * val.order_count;
     }
   });
 
