@@ -82,44 +82,63 @@ export function useStationNotification(config: StationNotificationConfig = {}) {
   }, [vibrationEnabled, isMuted]);
 
   /**
-   * Play notification sound
+   * Play notification sound with repetition for better audibility
+   * 
+   * @param soundPath - Path to the sound file
+   * @param repeat - Number of times to repeat the sound (default: 3)
+   * @param interval - Delay between repetitions in ms (default: 1000)
    */
-  const playSound = useCallback((soundPath: string) => {
+  const playSound = useCallback((soundPath: string, repeat: number = 3, interval: number = 1000) => {
     if (!soundEnabled || isMuted) return;
 
-    try {
-      const audio = new Audio(soundPath);
-      audio.volume = 0.6; // Moderate volume for station notifications
+    let playCount = 0;
+    
+    const playNext = () => {
+      if (playCount >= repeat) return;
       
-      audio.play().catch(err => {
-        // User might need to interact with page first for autoplay to work
-        console.warn('Could not play notification sound:', err.message);
-      });
-      
-      console.log('🔊 Sound played:', soundPath);
-    } catch (error) {
-      console.warn('Sound playback failed:', error);
-    }
+      try {
+        const audio = new Audio(soundPath);
+        audio.volume = 1.0; // Maximum volume for noisy restaurant environment
+        
+        audio.play().catch(err => {
+          // User might need to interact with page first for autoplay to work
+          console.warn('Could not play notification sound:', err.message);
+        });
+        
+        playCount++;
+        console.log(`🔊 Sound played (${playCount}/${repeat}):`, soundPath);
+        
+        // Schedule next repetition
+        if (playCount < repeat) {
+          setTimeout(playNext, interval);
+        }
+      } catch (error) {
+        console.warn('Sound playback failed:', error);
+      }
+    };
+    
+    playNext();
   }, [soundEnabled, isMuted]);
 
   /**
    * Play complete notification (sound + vibration)
    * 
    * @param type - Type of notification to determine vibration pattern
+   * @param repeat - Number of times to repeat the sound (default: 3)
    */
-  const playNotification = useCallback((type: 'newOrder' | 'urgent' | 'ready' = 'newOrder') => {
+  const playNotification = useCallback((type: 'newOrder' | 'urgent' | 'ready' = 'newOrder', repeat: number = 3) => {
     if (isMuted) {
       console.log('🔇 Station notifications are muted');
       return;
     }
 
-    // Play sound
-    playSound(soundFile);
+    // Play sound with repetition
+    playSound(soundFile, repeat);
     
-    // Trigger vibration based on type
+    // Trigger vibration based on type (convert to mutable array)
     const pattern = type === 'newOrder' 
-      ? vibrationPattern 
-      : VIBRATION_PATTERNS[type];
+      ? [...vibrationPattern]
+      : [...VIBRATION_PATTERNS[type]];
     
     triggerVibration(pattern);
   }, [isMuted, soundFile, vibrationPattern, playSound, triggerVibration]);
@@ -160,6 +179,7 @@ export function useStationNotification(config: StationNotificationConfig = {}) {
 
   /**
    * Show browser notification (works even when tab is not focused)
+   * Uses unique tag to allow multiple notifications to appear simultaneously
    */
   const showBrowserNotification = useCallback(async (
     title: string,
@@ -171,16 +191,25 @@ export function useStationNotification(config: StationNotificationConfig = {}) {
     const hasPermission = await requestNotificationPermission();
     
     if (hasPermission) {
-      new Notification(title, {
+      // Use unique tag with timestamp to allow multiple notifications
+      // Without unique tag, Windows will replace the previous notification
+      const uniqueTag = `station-notification-${Date.now()}`;
+      
+      const notification = new Notification(title, {
         body: message,
         icon: icon || '/beerhive-logo.png',
         badge: '/beerhive-logo.png',
-        tag: 'station-notification',
+        tag: uniqueTag,
         requireInteraction: false,
         silent: false, // Allow system sound
       });
       
-      console.log('📬 Browser notification shown:', title);
+      // Auto-close notification after 10 seconds to prevent buildup
+      setTimeout(() => {
+        notification.close();
+      }, 10000);
+      
+      console.log('🔔 Browser notification shown:', title, '(tag:', uniqueTag, ')');
     }
   }, [isMuted, requestNotificationPermission]);
 

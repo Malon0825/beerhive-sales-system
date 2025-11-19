@@ -235,20 +235,16 @@ export function TopProductsTable({ products, title = 'Top Selling Products', lim
                     )}
                     {!hideRevenue && (
                       <td className="px-6 py-4 whitespace-nowrap text-right">
-                        {product.item_type === 'product' ? (
-                          product.cost_price === null || product.cost_price === undefined ? (
-                            <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded">
-                              Cost Price not set
-                            </span>
-                          ) : (
-                            <div className="text-sm font-medium text-gray-900">
-                              {product.net_income !== null && product.net_income !== undefined
-                                ? formatCurrency(product.net_income)
-                                : '-'}
-                            </div>
-                          )
+                        {product.cost_price === null || product.cost_price === undefined ? (
+                          <span className="text-xs text-gray-500">
+                            -
+                          </span>
                         ) : (
-                          <span className="text-gray-400">-</span>
+                          <div className="text-sm font-medium text-gray-900">
+                            {product.net_income !== null && product.net_income !== undefined
+                              ? formatCurrency(product.net_income)
+                              : '-'}
+                          </div>
                         )}
                       </td>
                     )}

@@ -440,7 +440,7 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
 
       {/* Order Information - Compact */}
       <div style={{ marginBottom: '6px' }}>
-        <div className="grid grid-cols-2" style={{ fontSize: '9px', lineHeight: '1.4', rowGap: '2px' }}>
+        <div className="grid grid-cols-2" style={{ fontSize: '11px', lineHeight: '1.4', rowGap: '2px' }}>
           {isSessionReceipt && sessionMetadata ? (
             <>
               <div className="text-black font-semibold">Session:</div>
@@ -493,12 +493,12 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
 
       {/* Order Items - Compact Unified Layout */}
       <div style={{ marginBottom: '6px' }}>
-        <h3 className="font-bold text-center uppercase border-b border-black" style={{ fontSize: '10px', paddingBottom: '2px', marginBottom: '4px', letterSpacing: '0.05em' }}>
+        <h3 className="font-bold text-center uppercase border-b border-black" style={{ fontSize: '12px', paddingBottom: '2px', marginBottom: '4px', letterSpacing: '0.05em' }}>
           {isSessionReceipt ? 'Items' : 'Items'}
         </h3>
         
         {/* Unified Table - Works for both POS and Session */}
-        <table className="w-full" style={{ fontSize: '9px' }}>
+        <table className="w-full" style={{ fontSize: '12px' }}>
           <thead>
             <tr className="border-b border-black">
               <th className="text-left font-semibold" style={{ paddingBottom: '2px' }}>Item</th>
@@ -544,7 +544,7 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
 
       {/* Totals - Compact */}
       <div style={{ marginBottom: '6px' }}>
-        <div style={{ fontSize: '10px', lineHeight: '1.4' }}>
+        <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
           <div className="flex justify-between" style={{ paddingTop: '2px', paddingBottom: '2px' }}>
             <span className="text-black">Subtotal:</span>
             <span className="font-medium">{formatReceiptCurrency(order.subtotal)}</span>
@@ -565,8 +565,8 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
         
         <div className="border-t-2 border-black" style={{ marginTop: '4px', paddingTop: '4px' }}>
           <div className="flex justify-between items-center">
-            <span className="font-bold uppercase" style={{ fontSize: '12px' }}>Total:</span>
-            <span className="font-bold" style={{ fontSize: '14px' }}>{formatReceiptCurrency(order.total_amount)}</span>
+            <span className="font-bold uppercase" style={{ fontSize: '14px' }}>Total:</span>
+            <span className="font-bold" style={{ fontSize: '18px' }}>{formatReceiptCurrency(order.total_amount)}</span>
           </div>
         </div>
       </div>
@@ -576,8 +576,8 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
         <>
           <div className="border-t border-dashed border-black" style={{ margin: '4px 0' }} />
           <div style={{ marginBottom: '6px' }}>
-            <h4 className="font-semibold uppercase" style={{ fontSize: '9px', marginBottom: '3px', letterSpacing: '0.05em' }}>Payment</h4>
-            <div className="border border-black" style={{ fontSize: '10px', padding: '4px', lineHeight: '1.4' }}>
+            <h4 className="font-semibold uppercase" style={{ fontSize: '11px', marginBottom: '3px', letterSpacing: '0.05em' }}>Payment</h4>
+            <div className="border border-black" style={{ fontSize: '12px', padding: '4px', lineHeight: '1.4' }}>
               <div className="flex justify-between" style={{ marginBottom: '2px' }}>
                 <span className="text-black">Method:</span>
                 <span className="font-semibold uppercase">{order.payment_method}</span>
@@ -604,7 +604,7 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
 
       {/* Footer Message - Compact */}
       <div className="text-center" style={{ paddingTop: '4px', paddingBottom: '4px' }}>
-        <p className="font-bold text-black" style={{ fontSize: '10px' }}>{branding.footerMessage}</p>
+        <p className="font-bold text-black" style={{ fontSize: '12px' }}>{branding.footerMessage}</p>
       </div>
 
       {/* Print Timestamp - Only visible when printed */}
