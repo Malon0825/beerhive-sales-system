@@ -7,6 +7,10 @@ import { KitchenOrderWithRelations } from '@/models/types/KitchenOrderWithRelati
 import { OrderCard } from '../kitchen/OrderCard';
 import { useToast } from '@/lib/hooks/useToast';
 import { useStationNotification } from '@/lib/hooks/useStationNotification';
+import { useOrderAcknowledgment } from '@/lib/hooks/useOrderAcknowledgment';
+import { useOrderAgeAlert } from '@/lib/hooks/useOrderAgeAlert';
+import { AudioEnablePrompt } from '@/components/station/AudioEnablePrompt';
+import { OrderAgeAlert } from '@/components/station/OrderAgeAlert';
 import { Clock, Volume2, VolumeX, Trash2, RefreshCw } from 'lucide-react';
 
 /**
@@ -15,8 +19,11 @@ import { Clock, Volume2, VolumeX, Trash2, RefreshCw } from 'lucide-react';
  * Optimized for phone and tablet screens with responsive layout
  * 
  * Features:
- * - Realtime order updates via Supabase subscriptions
+ * - Realtime order updates via Supabase subscriptions with DB-level filtering
  * - Status filtering (all, pending, preparing, ready)
+ * - Robust notification system (sound repeats 3x, visual alerts, auto re-alert)
+ * - Order acknowledgment tracking with escalation for missed orders
+ * - Visual age alerts (warning at 5 min, critical at 10 min)
  * - Manual refresh capability
  * - Automatic status change handling
  * - Responsive layout for phone (single column) and tablet (2 columns) screens
@@ -30,10 +37,32 @@ export function BartenderDisplay() {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   
-  // Station notification hook for sound and vibration
+  // Station notification hook for sound and vibration (plays 3x at max volume)
   const { playNotification, showBrowserNotification, isMuted, toggleMute } = useStationNotification({
-    soundFile: '/sounds/notification.mp3',
+    soundFile: '/sounds/bartender-alert.mp3', // Bartender-specific sound
     vibrationPattern: [250, 100, 250], // Slightly different pattern for bartender
+  });
+
+  // Order acknowledgment tracking for re-alerts
+  const { addNewOrder, acknowledgeOrder, removeOrder } = useOrderAcknowledgment({
+    repeatInterval: 30, // Re-alert every 30 seconds
+    maxRepeats: 5, // Up to 5 re-alerts
+    onRepeatAlert: (orderId, count) => {
+      console.log(`🍹 Re-alerting for drink order ${orderId} (${count} times)`);
+      playNotification('urgent', 2); // Play 2x for re-alerts
+      toast({ 
+        title: 'Pending Order!', 
+        description: `Drink order ${orderId.slice(0, 8)} still pending`, 
+        variant: 'destructive' 
+      });
+    }
+  });
+
+  // Age alert monitoring for visual escalation
+  const pendingOrders = orders.filter(o => o.status === KitchenOrderStatus.PENDING);
+  const ageStatus = useOrderAgeAlert(pendingOrders, {
+    warningThresholdMinutes: 5,
+    criticalThresholdMinutes: 10,
   });
 
   /**
@@ -67,6 +96,9 @@ export function BartenderDisplay() {
    * Handle status change for a bartender order
    */
   const handleStatusChange = async (orderId: string, status: KitchenOrderStatus) => {
+    // Acknowledge order when staff interacts with it
+    acknowledgeOrder(orderId);
+
     try {
       const response = await fetch(`/api/kitchen/orders/${orderId}/status`, {
         method: 'PATCH',
@@ -80,7 +112,11 @@ export function BartenderDisplay() {
       
       if (data.success) {
         toast({ title: 'Success', description: `Order status updated to ${status}` });
-        // Orders will be updated via realtime subscription
+        
+        // Remove from tracking when completed/cancelled
+        if (status === KitchenOrderStatus.READY || status === KitchenOrderStatus.CANCELLED) {
+          removeOrder(orderId);
+        }
       } else {
         toast({ title: 'Error', description: `Failed to update status: ${data.error}`, variant: 'destructive' });
       }
@@ -121,7 +157,7 @@ export function BartenderDisplay() {
     // Initial fetch
     fetchOrders();
 
-    // Create realtime subscription
+    // Create realtime subscription with DB-level filtering for bartender only
     const channel = supabase
       .channel('bartender-orders-realtime')
       .on(
@@ -130,6 +166,7 @@ export function BartenderDisplay() {
           event: '*',
           schema: 'public',
           table: 'kitchen_orders',
+          filter: 'destination=eq.bartender', // 🎯 Filter at database level
         },
         async (payload) => {
           console.log('Bartender: Kitchen order update:', payload);
@@ -137,10 +174,17 @@ export function BartenderDisplay() {
           // Refetch orders on any change
           await fetchOrders();
           
-          // Show notification for new orders
+          // Show robust notification for new orders
           if (payload.eventType === 'INSERT') {
-            // Play sound and vibration for new beverage order
-            playNotification('newOrder');
+            const orderId = (payload.new as any)?.id;
+            
+            // Track new order for acknowledgment
+            if (orderId) {
+              addNewOrder(orderId);
+            }
+
+            // Play sound 3x at max volume + vibration
+            playNotification('newOrder', 3);
             
             // Show browser notification (works even when tab is not focused)
             await showBrowserNotification(
@@ -153,6 +197,14 @@ export function BartenderDisplay() {
               title: 'New Order!', 
               description: 'New beverage order received' 
             });
+          }
+
+          // Remove from tracking when order is deleted
+          if (payload.eventType === 'DELETE') {
+            const orderId = (payload.old as any)?.id;
+            if (orderId) {
+              removeOrder(orderId);
+            }
           }
         }
       )
@@ -222,8 +274,7 @@ export function BartenderDisplay() {
     return acc;
   }, {} as Record<string, KitchenOrderWithRelations[]>);
 
-  // Group orders by status for count display
-  const pendingOrders = orders.filter(o => o.status === KitchenOrderStatus.PENDING);
+  // Group orders by status for count display (pendingOrders already declared at top)
   const preparingOrders = orders.filter(o => o.status === KitchenOrderStatus.PREPARING);
   const cancelledOrders = orders.filter(o => o.status === KitchenOrderStatus.CANCELLED);
 
@@ -264,6 +315,11 @@ export function BartenderDisplay() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+      {/* Audio Enable Prompt (one-time setup) */}
+      <AudioEnablePrompt />
+
+      {/* Age Alert Banner (warning/critical orders) */}
+      <OrderAgeAlert ageStatus={ageStatus} stationName="Bartender" />
       {/* Header - Responsive Layout */}
       <div className="bg-white shadow-md p-2 sm:p-4 sticky top-0 z-10">
         {/* Mobile Layout */}

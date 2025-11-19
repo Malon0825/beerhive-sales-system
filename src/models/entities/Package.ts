@@ -10,6 +10,7 @@ export interface Package {
   package_type: 'vip_only' | 'regular' | 'promotional';
   base_price: number;
   vip_price: number | null;
+  cost_price: number | null;
   valid_from: string | null;
   valid_until: string | null;
   // max_quantity_per_transaction: REMOVED - Use PackageAvailabilityService for dynamic limits
@@ -39,6 +40,7 @@ export interface CreatePackageInput {
   package_type: 'vip_only' | 'regular' | 'promotional';
   base_price: number;
   vip_price?: number;
+  cost_price?: number;
   valid_from?: string;
   valid_until?: string;
   // max_quantity_per_transaction: REMOVED - Replaced by dynamic stock availability
@@ -61,6 +63,7 @@ export interface UpdatePackageInput {
   package_type?: 'vip_only' | 'regular' | 'promotional';
   base_price?: number;
   vip_price?: number;
+  cost_price?: number;
   valid_from?: string;
   valid_until?: string;
   // max_quantity_per_transaction: REMOVED - Replaced by dynamic stock availability

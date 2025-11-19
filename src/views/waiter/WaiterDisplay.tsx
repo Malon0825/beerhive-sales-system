@@ -8,6 +8,8 @@ import { ReadyOrderCard } from './ReadyOrderCard';
 import { RefreshCw, CheckCircle, Clock, Volume2, VolumeX } from 'lucide-react';
 import { useToast } from '@/lib/hooks/useToast';
 import { useStationNotification } from '@/lib/hooks/useStationNotification';
+import { useOrderAcknowledgment } from '@/lib/hooks/useOrderAcknowledgment';
+import { AudioEnablePrompt } from '@/components/station/AudioEnablePrompt';
 
 /**
  * WaiterDisplay Component
@@ -16,9 +18,11 @@ import { useStationNotification } from '@/lib/hooks/useStationNotification';
  * 
  * Features:
  * - Shows only orders with status "ready"
+ * - Realtime updates via Supabase subscriptions with DB-level filtering
+ * - Robust notification system (sound repeats 3x, visual alerts, auto re-alert)
+ * - Order acknowledgment tracking for new ready orders
  * - Grouped by table for easy delivery
  * - Mark entire order as served
- * - Realtime updates when kitchen marks items ready
  * - Responsive layout for phone (single column) and tablet (2 columns) screens
  */
 export function WaiterDisplay() {
@@ -28,10 +32,25 @@ export function WaiterDisplay() {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   
-  // Station notification hook for sound and vibration
+  // Station notification hook for sound and vibration (plays 3x at max volume)
   const { playNotification, showBrowserNotification, isMuted, toggleMute } = useStationNotification({
-    soundFile: '/sounds/notification.mp3',
+    soundFile: '/sounds/waiter-alert.mp3', // Waiter-specific sound for ready orders
     vibrationPattern: [150, 100, 150, 100, 150], // Triple vibration for ready orders
+  });
+
+  // Order acknowledgment tracking for re-alerts (ready orders)
+  const { addNewOrder, acknowledgeOrder, removeOrder } = useOrderAcknowledgment({
+    repeatInterval: 30, // Re-alert every 30 seconds
+    maxRepeats: 5, // Up to 5 re-alerts
+    onRepeatAlert: (orderId, count) => {
+      console.log(`✅ Re-alerting for ready order ${orderId} (${count} times)`);
+      playNotification('ready', 2); // Play 2x for re-alerts
+      toast({ 
+        title: 'Order Ready!', 
+        description: `Order ${orderId.slice(0, 8)} ready to serve`, 
+        variant: 'destructive' 
+      });
+    }
   });
 
   /**
@@ -70,6 +89,9 @@ export function WaiterDisplay() {
    * Handle marking order as served
    */
   const handleMarkServed = async (orderId: string, tableName: string) => {
+    // Acknowledge order when staff delivers it
+    acknowledgeOrder(orderId);
+
     try {
       const response = await fetch(`/api/kitchen/orders/${orderId}/status`, {
         method: 'PATCH',
@@ -86,7 +108,9 @@ export function WaiterDisplay() {
           title: 'Order Served', 
           description: `${tableName} order marked as served` 
         });
-        // Orders will be updated via realtime subscription
+        
+        // Remove from tracking when served
+        removeOrder(orderId);
       } else {
         toast({ 
           title: 'Error', 
@@ -111,7 +135,7 @@ export function WaiterDisplay() {
     // Initial fetch
     fetchOrders();
 
-    // Create realtime subscription
+    // Create realtime subscription with DB-level filtering for ready status
     const channel = supabase
       .channel('waiter-orders-realtime')
       .on(
@@ -120,6 +144,7 @@ export function WaiterDisplay() {
           event: '*',
           schema: 'public',
           table: 'kitchen_orders',
+          filter: 'status=eq.ready', // 🎯 Filter for ready orders only
         },
         async (payload) => {
           console.log('Waiter: Kitchen order update:', payload);
@@ -127,10 +152,17 @@ export function WaiterDisplay() {
           // Refetch orders on any change
           await fetchOrders();
           
-          // Show notification for newly ready orders
-          if (payload.eventType === 'UPDATE' && payload.new?.status === 'ready') {
-            // Play sound and vibration for ready order
-            playNotification('ready');
+          // Show robust notification for newly ready orders
+          if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+            const orderId = (payload.new as any)?.id;
+            
+            // Track new ready order for acknowledgment
+            if (orderId) {
+              addNewOrder(orderId);
+            }
+
+            // Play sound 3x at max volume + vibration
+            playNotification('ready', 3);
             
             // Show browser notification (works even when tab is not focused)
             await showBrowserNotification(
@@ -143,6 +175,14 @@ export function WaiterDisplay() {
               title: 'Order Ready!', 
               description: 'New order ready for delivery' 
             });
+          }
+
+          // Remove from tracking when order is deleted or changed status
+          if (payload.eventType === 'DELETE' || (payload.eventType === 'UPDATE' && payload.new?.status !== 'ready')) {
+            const orderId = payload.eventType === 'DELETE' ? (payload.old as any)?.id : (payload.new as any)?.id;
+            if (orderId) {
+              removeOrder(orderId);
+            }
           }
         }
       )
@@ -205,6 +245,8 @@ export function WaiterDisplay() {
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Audio Enable Prompt (one-time setup) */}
+      <AudioEnablePrompt />
       {/* Header - Responsive Layout */}
       <div className="bg-white shadow-md p-2 sm:p-4 sticky top-0 z-10">
         {/* Mobile Layout */}

@@ -34,6 +34,7 @@ export default function PackageForm({
     package_type: existingPackage?.package_type || 'regular',
     base_price: existingPackage?.base_price || '' as any,
     vip_price: existingPackage?.vip_price || undefined,
+    cost_price: existingPackage?.cost_price || undefined,
     valid_from: existingPackage?.valid_from || undefined,
     valid_until: existingPackage?.valid_until || undefined,
     is_addon_eligible: existingPackage?.is_addon_eligible || false,
@@ -212,7 +213,7 @@ export default function PackageForm({
         </div>
 
         {/* Package Type and Pricing */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label htmlFor="package_type">Package Type *</Label>
             <select
@@ -250,6 +251,18 @@ export default function PackageForm({
               value={formData.vip_price || ''}
               onChange={(e) => setFormData({ ...formData, vip_price: parseFloat(e.target.value) || undefined })}
               placeholder="Optional"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="cost_price">Cost Price (₱)</Label>
+            <Input
+              id="cost_price"
+              type="number"
+              step="0.01"
+              value={formData.cost_price || ''}
+              onChange={(e) => setFormData({ ...formData, cost_price: parseFloat(e.target.value) || undefined })}
+              placeholder="For net income calculation"
             />
           </div>
         </div>
