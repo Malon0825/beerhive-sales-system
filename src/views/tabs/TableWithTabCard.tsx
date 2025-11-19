@@ -13,7 +13,8 @@ import {
   CreditCard,
   ShoppingCart,
   Shuffle,
-  Edit3
+  Edit3,
+  AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { ChangeTableDialog } from './ChangeTableDialog';
@@ -48,6 +49,8 @@ interface TableWithTabCardProps {
       tier?: string;
     };
     status: string;
+    _pending_sync?: boolean;
+    _temp_id?: boolean;
   } | null;
   onOpenTab: (tableId: string) => void;
   onViewBill: (sessionId: string) => void;
@@ -155,7 +158,21 @@ export default function TableWithTabCard({
           <div className="space-y-2 mb-3 p-3 bg-white rounded-lg border border-blue-200">
             {/* Session Number */}
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono text-gray-600">{session.session_number}</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-mono text-gray-600">{session.session_number}</span>
+                {session._pending_sync && (
+                  <Badge variant="outline" className="text-xs h-4 px-1 border-yellow-400 text-yellow-700 bg-yellow-50">
+                    <Clock className="w-2 h-2 mr-0.5" />
+                    Syncing
+                  </Badge>
+                )}
+                {session._temp_id && (
+                  <Badge variant="outline" className="text-xs h-4 px-1 border-gray-400 text-gray-600">
+                    <AlertCircle className="w-2 h-2 mr-0.5" />
+                    Temp
+                  </Badge>
+                )}
+              </div>
               <span className="text-xs text-gray-500">{getDuration(session.opened_at)}</span>
             </div>
 

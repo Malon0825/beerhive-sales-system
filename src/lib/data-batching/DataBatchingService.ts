@@ -6,11 +6,15 @@ import {
   OfflinePackage,
   OfflineProduct,
   OfflineTable,
+  OfflineOrderSession,
   bulkPut,
   getMetadataValue,
   readAllRecords,
   setMetadataValue,
   clearStore,
+  putOrderSession,
+  getOrderSessionById,
+  getActiveOrderSessions,
 } from './offlineDb';
 
 const ENTITY_CURSOR_PREFIX = 'lastSync';
@@ -19,13 +23,14 @@ const FULL_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const INCREMENTAL_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (optional background sync)
 const BATCH_SIZE = 100;
 
-type BatchEntity = 'products' | 'categories' | 'packages' | 'tables';
+type BatchEntity = 'products' | 'categories' | 'packages' | 'tables' | 'order_sessions';
 
 type CatalogSnapshot = {
   products: OfflineProduct[];
   categories: OfflineCategory[];
   packages: OfflinePackage[];
   tables: OfflineTable[];
+  order_sessions: OfflineOrderSession[];
 };
 
 type CatalogListener = () => void;
@@ -39,7 +44,7 @@ export interface SyncStatus {
   recordCounts: Record<BatchEntity, number>;
 }
 
-const entityList: BatchEntity[] = ['products', 'categories', 'packages', 'tables'];
+const entityList: BatchEntity[] = ['products', 'categories', 'packages', 'tables', 'order_sessions'];
 
 export class DataBatchingService {
   private static instance: DataBatchingService;
@@ -142,14 +147,15 @@ export class DataBatchingService {
   }
 
   async getCatalogSnapshot(): Promise<CatalogSnapshot> {
-    const [products, categories, packages, tables] = await Promise.all([
+    const [products, categories, packages, tables, order_sessions] = await Promise.all([
       readAllRecords('products'),
       readAllRecords('categories'),
       readAllRecords('packages'),
       readAllRecords('tables'),
+      readAllRecords('order_sessions'),
     ]);
 
-    return { products, categories, packages, tables };
+    return { products, categories, packages, tables, order_sessions };
   }
 
   async getLastSyncMap(): Promise<Record<BatchEntity, string | null>> {
@@ -175,6 +181,7 @@ export class DataBatchingService {
       categories: 0,
       packages: 0,
       tables: 0,
+      order_sessions: 0,
     };
 
     // Get record counts from IndexedDB
@@ -385,6 +392,8 @@ export class DataBatchingService {
         return this.fetchPackages(lastUpdated, limit);
       case 'tables':
         return this.fetchTables(lastUpdated, limit);
+      case 'order_sessions':
+        return this.fetchOrderSessions(lastUpdated, limit);
       default:
         throw new Error(`Unknown entity: ${entity satisfies never}`);
     }
@@ -400,6 +409,8 @@ export class DataBatchingService {
         return 'packages';
       case 'tables':
         return 'restaurant_tables';
+      case 'order_sessions':
+        return 'order_sessions';
       default:
         throw new Error(`Unknown entity: ${entity}`);
     }
@@ -595,6 +606,168 @@ export class DataBatchingService {
       records,
       latestUpdatedAt: records.at(-1)?.updated_at ?? lastUpdated ?? null,
     };
+  }
+
+  /**
+   * Fetch order sessions (Tab module) with batch size limit
+   * Only fetches active sessions to keep cache lean
+   */
+  private async fetchOrderSessions(lastUpdated?: string, limit: number = 1000) {
+    try {
+      let query = supabase
+        .from('order_sessions')
+        .select(`
+          *,
+          table:restaurant_tables!table_id(id, table_number, area),
+          customer:customers(id, full_name, tier)
+        `)
+        .eq('status', 'open') // Only sync active sessions
+        .order('updated_at', { ascending: true })
+        .limit(limit);
+
+      if (lastUpdated) {
+        query = query.gt('updated_at', lastUpdated);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('[DataBatchingService] Supabase error fetching order_sessions:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
+        throw new Error(`Failed to fetch order_sessions: ${error.message}`);
+      }
+      
+      if (!data) {
+        console.warn('[DataBatchingService] No data returned from order_sessions query');
+        return { records: [], latestUpdatedAt: null };
+      }
+
+      const records = (data || []).map((session: any): OfflineOrderSession => ({
+        id: session.id,
+        session_number: session.session_number,
+        table_id: session.table_id,
+        customer_id: session.customer_id ?? undefined,
+        status: session.status,
+        opened_at: session.opened_at,
+        closed_at: session.closed_at ?? undefined,
+        updated_at: session.updated_at ?? new Date().toISOString(),
+        subtotal: Number(session.subtotal ?? 0),
+        discount_amount: Number(session.discount_amount ?? 0),
+        tax_amount: Number(session.tax_amount ?? 0),
+        total_amount: Number(session.total_amount ?? 0),
+        payment_method: session.payment_method ?? undefined,
+        notes: session.notes ?? undefined,
+        opened_by: session.opened_by ?? undefined,
+        closed_by: session.closed_by ?? undefined,
+        table: session.table ? {
+          id: session.table.id,
+          table_number: session.table.table_number,
+          area: session.table.area ?? undefined,
+        } : undefined,
+        customer: session.customer ? {
+          id: session.customer.id,
+          full_name: session.customer.full_name,
+          tier: session.customer.tier ?? undefined,
+        } : undefined,
+        synced_at: new Date().toISOString(),
+      }));
+
+      // Store in IndexedDB with defensive merging to prevent data loss
+      // CRITICAL FIX: If local session has higher totals than server, preserve local totals
+      // This handles race conditions where server trigger hasn't finished calculating totals
+      for (const serverSession of records) {
+        const localSession = await getOrderSessionById(serverSession.id);
+        
+        if (localSession && localSession._pending_sync) {
+          // Local session has pending changes - preserve local totals if higher
+          const mergedSession: OfflineOrderSession = {
+            ...serverSession,
+            // Preserve higher totals (local is more up-to-date if pending sync)
+            subtotal: Math.max(localSession.subtotal ?? 0, serverSession.subtotal),
+            total_amount: Math.max(localSession.total_amount ?? 0, serverSession.total_amount),
+            discount_amount: Math.max(localSession.discount_amount ?? 0, serverSession.discount_amount),
+            tax_amount: Math.max(localSession.tax_amount ?? 0, serverSession.tax_amount),
+            // Keep pending sync flag until sync completes
+            _pending_sync: localSession._pending_sync,
+            _temp_id: localSession._temp_id,
+          };
+          
+          console.log(
+            `🛡️ [DataBatchingService] Defensive merge for session ${serverSession.session_number}: ` +
+            `local total=₱${localSession.total_amount}, server total=₱${serverSession.total_amount}, ` +
+            `using=₱${mergedSession.total_amount}`
+          );
+          
+          await putOrderSession(mergedSession);
+        } else {
+          // No local session or no pending changes - use server data as-is
+          await putOrderSession(serverSession);
+        }
+      }
+
+      if (records.length === 0) {
+        console.log('[DataBatchingService] No open order_sessions found (this is normal if no tabs are open)');
+      } else {
+        console.log(`[DataBatchingService] Fetched ${records.length} order session(s)`);
+      }
+
+      return {
+        records,
+        latestUpdatedAt: records.at(-1)?.updated_at ?? lastUpdated ?? null,
+      };
+    } catch (error) {
+      console.error('[DataBatchingService] Error in fetchOrderSessions:', error);
+      console.error('[DataBatchingService] This may indicate a database permissions issue or missing table');
+      // Return empty result to allow system to continue functioning
+      return { records: [], latestUpdatedAt: null };
+    }
+  }
+
+  /**
+   * Get cached tables from IndexedDB
+   * Used by TabManagementDashboard for instant display
+   */
+  async getCachedTables(): Promise<OfflineTable[]> {
+    try {
+      const tables = await readAllRecords('tables');
+      console.log(`📊 Retrieved ${tables.length} tables from cache`);
+      return tables;
+    } catch (error) {
+      console.error('Failed to get cached tables:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get snapshot of active sessions from IndexedDB
+   * Used by TabManagementDashboard for instant display
+   */
+  async getActiveSessionsSnapshot(): Promise<OfflineOrderSession[]> {
+    try {
+      const sessions = await getActiveOrderSessions();
+      console.log(`📊 Retrieved ${sessions.length} active sessions from cache`);
+      return sessions;
+    } catch (error) {
+      console.error('Failed to get sessions snapshot:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get single session by ID from IndexedDB
+   */
+  async getSessionById(sessionId: string): Promise<OfflineOrderSession | null> {
+    try {
+      const session = await getOrderSessionById(sessionId);
+      return session;
+    } catch (error) {
+      console.error(`Failed to get session ${sessionId}:`, error);
+      return null;
+    }
   }
 
   private notifyListeners() {

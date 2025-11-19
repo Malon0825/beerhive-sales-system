@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PaymentPanel } from '@/views/pos/PaymentPanel';
 import { apiGet } from '@/lib/utils/apiClient';
+import { useOfflineRuntime } from '@/lib/contexts/OfflineRuntimeContext';
 import type {
   PaymentCompleteOptions,
   OfflineReceiptPayload,
@@ -27,6 +28,7 @@ export default function CloseTabPage() {
   const [loading, setLoading] = useState(true);
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptOrderData | null>(null);
+  const { dataBatching, isOnline } = useOfflineRuntime();
 
   /**
    * Fetch session data including orders for item count
@@ -35,42 +37,67 @@ export default function CloseTabPage() {
   useEffect(() => {
     const fetchSession = async () => {
       try {
-        const data = await apiGet(`/api/order-sessions/${sessionId}`);
-        
-        if (data.success) {
-          const session = data.data;
-          setSessionData(session);
-          
-          // Auto-close tabs with zero amount
-          if (session.total_amount === 0 || session.total_amount === null) {
-            console.log('💰 Total is ₱0.00 - Auto-closing tab without payment...');
+        // Try IndexedDB first for offline support
+        const cachedSession = await dataBatching.getSessionById(sessionId);
+
+        if (cachedSession) {
+          setSessionData(cachedSession);
+        } else if (isOnline) {
+          const data = await apiGet(`/api/order-sessions/${sessionId}`);
+          if (data.success) {
+            setSessionData(data.data);
+          }
+        }
+
+        const session = cachedSession ?? (await (async () => {
+          if (!cachedSession && isOnline) {
+            const data = await apiGet(`/api/order-sessions/${sessionId}`);
+            return data.success ? data.data : null;
+          }
+          return null;
+        })());
+
+        // Auto-close tabs with zero amount offline-first (no payment needed)
+        if (session && (session.total_amount === 0 || session.total_amount === null)) {
+          console.log('💰 Total is ₱0.00 - Auto-closing tab offline-first (no payment needed)...');
+
+          try {
+            const { enqueueSyncMutation, deleteOrderSession } = await import('@/lib/data-batching/offlineDb');
+            const { MutationSyncService } = await import('@/lib/data-batching/MutationSyncService');
             
-            try {
-              const closeResponse = await fetch(`/api/order-sessions/${sessionId}/close`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  payment_method: 'none',
-                  amount_tendered: 0,
-                  discount_amount: 0,
-                }),
-              });
-              
-              const closeData = await closeResponse.json();
-              
-              if (closeData.success) {
-                console.log('✅ Tab closed successfully');
-                // Show brief success message and redirect
-                alert('Tab closed successfully (No payment required - ₱0.00)');
-                router.push('/tabs');
-              } else {
-                throw new Error(closeData.error || 'Failed to close tab');
-              }
-            } catch (error) {
-              console.error('Failed to auto-close zero-amount tab:', error);
-              alert('Failed to close tab. Please try again.');
-              router.push('/tabs');
+            // Queue close mutation
+            const queueId = await enqueueSyncMutation('orderSessions.close', {
+              endpoint: `/api/order-sessions/${sessionId}/close`,
+              method: 'POST',
+              body: {
+                payment_method: 'none',
+                amount_tendered: 0,
+                discount_amount: 0,
+              },
+              session_id: sessionId,
+              created_at: new Date().toISOString(),
+            });
+            
+            console.log(`📋 Queued zero-amount tab close: #${queueId}`);
+            
+            // CRITICAL FIX: Delete session from IndexedDB instead of marking as closed
+            // This prevents UI from showing "Occupied + No active tab" state
+            await deleteOrderSession(sessionId);
+            
+            console.log('✅ Session removed from IndexedDB (auto-close)');
+            
+            // Trigger sync if online
+            if (isOnline) {
+              const syncService = MutationSyncService.getInstance();
+              void syncService.processPendingMutations();
             }
+
+            alert('Tab closed successfully (No payment required - ₱0.00)');
+            router.push('/tabs');
+          } catch (error) {
+            console.error('Failed to auto-close zero-amount tab:', error);
+            alert('Failed to close tab. Please try again.');
+            router.push('/tabs');
           }
         }
       } catch (error) {
@@ -80,8 +107,8 @@ export default function CloseTabPage() {
       }
     };
 
-    fetchSession();
-  }, [sessionId, router]);
+    void fetchSession();
+  }, [sessionId, router, dataBatching, isOnline]);
 
   /**
    * Handle dialog close
@@ -103,17 +130,15 @@ export default function CloseTabPage() {
     console.log('✅ Payment successful, session closed:', sessionId);
     
     if (options?.isOffline) {
-      const localOrder = options.localOrder as OfflineReceiptPayload | null | undefined;
-
-      if (localOrder && 'order' in localOrder) {
-        setReceiptData(localOrder);
-      } else if (localOrder) {
-        setReceiptData({ order: localOrder as any });
-      } else {
-        console.warn('⚠️ [CloseTabPage] Offline completion missing localOrder payload');
-      }
-
-      setShowReceipt(true);
+      // Offline mode: Transaction is queued
+      // Navigate back to tabs immediately (offline-first UX)
+      // Receipt will be available after sync completes
+      console.log('💾 [CloseTabPage] Offline payment queued - navigating to tabs');
+      
+      // Small delay to allow toast to show
+      setTimeout(() => {
+        router.push('/tabs');
+      }, 500);
       return;
     }
 

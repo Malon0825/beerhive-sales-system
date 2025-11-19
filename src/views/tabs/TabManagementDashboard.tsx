@@ -15,10 +15,12 @@ import {
   RefreshCw,
   Grid3x3,
   List,
+  WifiOff,
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { useRealtime } from '@/lib/hooks/useRealtime';
 import { apiGet, apiPost } from '@/lib/utils/apiClient';
+import { useOfflineRuntime } from '@/lib/contexts/OfflineRuntimeContext';
 import TableWithTabCard from './TableWithTabCard';
 import QuickOpenTabModal from './QuickOpenTabModal';
 import { useRouter } from 'next/navigation';
@@ -39,6 +41,7 @@ import { useRouter } from 'next/navigation';
  */
 export default function TabManagementDashboard() {
   const router = useRouter();
+  const { dataBatching, isOnline } = useOfflineRuntime();
   const [tables, setTables] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,58 +53,70 @@ export default function TabManagementDashboard() {
   const [showOpenTabModal, setShowOpenTabModal] = useState(false);
 
   /**
-   * Fetch tables from API
-   * Uses authenticated API client to include Bearer token
+   * Load tables from IndexedDB (instant)
+   * Triggers background sync if online
    */
-  const fetchTables = useCallback(async () => {
+  const loadTables = useCallback(async () => {
     try {
-      const data = await apiGet('/api/tables');
+      // ✅ Read from IndexedDB (instant)
+      const cachedTables = await dataBatching.getCachedTables();
+      setTables(cachedTables);
       
-      if (data.success) {
-        setTables(data.data || []);
+      // ✅ Trigger background sync (non-blocking)
+      if (isOnline) {
+        dataBatching.syncAllEntities().catch(err => {
+          console.log('Background table sync failed:', err);
+        });
       }
     } catch (error) {
-      console.error('Failed to fetch tables:', error);
+      console.error('Failed to load tables:', error);
     }
-  }, []);
+  }, [dataBatching, isOnline]);
 
   /**
-   * Fetch active sessions from API
-   * Uses authenticated API client to include Bearer token
+   * Load sessions from IndexedDB (instant)
+   * Triggers background sync if online
    */
-  const fetchSessions = useCallback(async () => {
+  const loadSessions = useCallback(async () => {
     try {
-      const data = await apiGet('/api/order-sessions');
+      // ✅ Read from IndexedDB (instant)
+      const cachedSessions = await dataBatching.getActiveSessionsSnapshot();
+      setSessions(cachedSessions);
+      setLoading(false);
       
-      if (data.success) {
-        setSessions(data.data || []);
+      // ✅ Trigger background sync (non-blocking)
+      if (isOnline) {
+        dataBatching.syncAllEntities().catch(err => {
+          console.log('Background session sync failed:', err);
+        });
       }
     } catch (error) {
-      console.error('Failed to fetch sessions:', error);
-    } finally {
+      console.error('Failed to load sessions:', error);
       setLoading(false);
     }
-  }, []);
+  }, [dataBatching, isOnline]);
 
   /**
-   * Fetch all data
+   * Load all data from IndexedDB
    */
-  const fetchAllData = useCallback(async () => {
-    await Promise.all([fetchTables(), fetchSessions()]);
-  }, [fetchTables, fetchSessions]);
+  const loadAllData = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([loadTables(), loadSessions()]);
+    setLoading(false);
+  }, [loadTables, loadSessions]);
 
   // Initial load
   useEffect(() => {
-    fetchAllData();
-  }, [fetchAllData]);
+    loadAllData();
+  }, [loadAllData]);
 
   // Real-time subscription for tables
   useRealtime({
     table: 'restaurant_tables',
     event: '*',
     onChange: () => {
-      console.log('Table updated, refreshing...');
-      fetchTables();
+      console.log('Table updated, refreshing from IndexedDB...');
+      loadTables();
     },
   });
 
@@ -110,8 +125,8 @@ export default function TabManagementDashboard() {
     table: 'order_sessions',
     event: '*',
     onChange: () => {
-      console.log('Session updated, refreshing...');
-      fetchSessions();
+      console.log('Session updated, refreshing from IndexedDB...');
+      loadSessions();
     },
   });
 
@@ -203,7 +218,7 @@ export default function TabManagementDashboard() {
         router.push(`/tabs/${data.data.id}/add-order`);
         
         // Refresh data in background (won't delay navigation)
-        fetchAllData().catch(err => console.error('Background refresh failed:', err));
+        loadAllData().catch(err => console.error('Background refresh failed:', err));
       } else {
         throw new Error(data.error || 'Failed to open tab');
       }
@@ -229,8 +244,10 @@ export default function TabManagementDashboard() {
 
   /**
    * Handle close tab
-   * If total amount is 0, directly close the tab without payment
+   * If total amount is 0, queue close mutation offline-first (no payment page needed)
    * Otherwise, navigate to payment page
+   * 
+   * Offline-first: All tab closures use mutation queue for consistency
    */
   const handleCloseTab = async (sessionId: string) => {
     // Find the session to check total amount
@@ -241,26 +258,46 @@ export default function TabManagementDashboard() {
       return;
     }
     
-    // If total is 0, close tab immediately without payment
+    // If total is 0, close tab offline-first without payment page
     if (session.total_amount === 0 || session.total_amount === null) {
       try {
-        console.log('💰 Total is ₱0.00 - Closing tab without payment...');
+        console.log('💰 Total is ₱0.00 - Closing tab offline-first (no payment needed)...');
         
-        const response = await apiPost(`/api/order-sessions/${sessionId}/close`, {
-          payment_method: 'none',
-          amount_tendered: 0,
-          discount_amount: 0,
+        // Import offline functions
+        const { enqueueSyncMutation, deleteOrderSession } = await import('@/lib/data-batching/offlineDb');
+        const { MutationSyncService } = await import('@/lib/data-batching/MutationSyncService');
+        
+        // Queue close mutation
+        const queueId = await enqueueSyncMutation('orderSessions.close', {
+          endpoint: `/api/order-sessions/${sessionId}/close`,
+          method: 'POST',
+          body: {
+            payment_method: 'none',
+            amount_tendered: 0,
+            discount_amount: 0,
+          },
+          session_id: sessionId,
+          created_at: new Date().toISOString(),
         });
         
-        if (response.success) {
-          console.log('✅ Tab closed successfully');
-          // Refresh data to update UI
-          await fetchAllData();
-          
-          // Show success message (you could add a toast notification here)
-          alert('Tab closed successfully (No payment required - ₱0.00)');
-        } else {
-          throw new Error(response.error || 'Failed to close tab');
+        console.log(`📋 Queued zero-amount tab close: #${queueId}`);
+        
+        // CRITICAL FIX: Delete session from IndexedDB instead of marking as closed
+        // This prevents UI from showing "Occupied + No active tab" state
+        await deleteOrderSession(sessionId);
+        
+        console.log('✅ Session removed from IndexedDB (zero-amount)');
+        
+        // Refresh UI to remove from list
+        await loadAllData();
+        
+        // Show success message
+        alert(`Tab closed successfully (No payment required - ₱0.00)`);
+        
+        // Trigger sync if online
+        if (isOnline) {
+          const syncService = MutationSyncService.getInstance();
+          void syncService.processPendingMutations();
         }
       } catch (error) {
         console.error('Failed to close zero-amount tab:', error);
@@ -293,14 +330,25 @@ export default function TabManagementDashboard() {
             Manage all tables and customer tabs in one place
           </p>
         </div>
-        <Button
-          onClick={fetchAllData}
-          variant="outline"
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-4">
+          {/* Offline indicator */}
+          {!isOnline && (
+            <Badge variant="secondary" className="flex items-center gap-2">
+              <WifiOff className="w-4 h-4" />
+              Offline Mode
+            </Badge>
+          )}
+          
+          {/* Refresh button */}
+          <Button
+            onClick={loadAllData}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Statistics Cards */}

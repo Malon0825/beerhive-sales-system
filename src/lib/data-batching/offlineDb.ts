@@ -7,7 +7,7 @@
  */
 
 export const OFFLINE_DB_NAME = 'beerhive_pos_offline';
-export const OFFLINE_DB_VERSION = 1;
+export const OFFLINE_DB_VERSION = 2; // Incremented for Tab offline-first support
 
 export type SyncQueueStatus = 'pending' | 'failed' | 'synced';
 
@@ -44,6 +44,12 @@ export async function bulkPut<K extends Exclude<OfflineEntityStore, 'metadata'>>
   }
 
   await withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains(storeName)) {
+      console.warn(`⚠️ Store "${storeName}" does not exist in database. Skipping bulkPut.`);
+      return;
+    }
+    
     const transaction = db.transaction([storeName], 'readwrite');
     const store = transaction.objectStore(storeName);
     records.forEach((record) => store.put(record));
@@ -53,6 +59,12 @@ export async function bulkPut<K extends Exclude<OfflineEntityStore, 'metadata'>>
 
 export async function readAllRecords<K extends OfflineEntityStore>(storeName: K): Promise<OfflineStoreMap[K][]> {
   return withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains(storeName)) {
+      console.warn(`⚠️ Store "${storeName}" does not exist in database. Returning empty array.`);
+      return [];
+    }
+    
     const transaction = db.transaction([storeName], 'readonly');
     const store = transaction.objectStore(storeName);
     const request = store.getAll();
@@ -94,10 +106,17 @@ export async function setMetadataValue(key: string, value: MetadataEntry['value'
 
 export async function clearStore(storeName: OfflineEntityStore): Promise<void> {
   await withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains(storeName)) {
+      console.warn(`⚠️ Store "${storeName}" does not exist in database. Skipping clear.`);
+      return;
+    }
+    
     const transaction = db.transaction([storeName], 'readwrite');
     const store = transaction.objectStore(storeName);
     store.clear();
     await waitForTransaction(transaction);
+    console.log(`🗑️ Cleared store: ${storeName}`);
   });
 }
 
@@ -168,6 +187,29 @@ export async function countMutationsByStatus(status: SyncQueueStatus): Promise<n
 
       request.onsuccess = () => resolve(request.result ?? 0);
       request.onerror = () => reject(request.error ?? new Error('Failed to count sync queue entries.'));
+    });
+  });
+}
+
+/**
+ * Get all pending mutations (pending + failed) for sync status display
+ * Phase 3 Step 7.3 - Global Sync Status
+ */
+export async function getAllPendingMutations(): Promise<SyncQueueEntry[]> {
+  return withOfflineDb(async (db) => {
+    return new Promise<SyncQueueEntry[]>((resolve, reject) => {
+      const transaction = db.transaction(['syncQueue'], 'readonly');
+      const store = transaction.objectStore('syncQueue');
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const all = request.result as SyncQueueEntry[];
+        // Filter to only pending and failed mutations
+        const pending = all.filter(m => m.status === 'pending' || m.status === 'failed');
+        resolve(pending);
+      };
+
+      request.onerror = () => reject(request.error ?? new Error('Failed to get all mutations.'));
     });
   });
 }
@@ -266,6 +308,105 @@ export interface OfflineOrder {
   updated_at: string;
 }
 
+/**
+ * Offline Order Session (Tab)
+ * Cached representation of an active or recent session for the Tab module
+ */
+export interface OfflineOrderSession {
+  // Core fields
+  id: string;
+  session_number: string;
+  table_id: string;
+  customer_id?: string;
+  status: 'open' | 'closed' | 'abandoned';
+  
+  // Timestamps
+  opened_at: string;
+  closed_at?: string;
+  updated_at: string;
+  
+  // Financial
+  subtotal: number;
+  discount_amount: number;
+  tax_amount: number;
+  total_amount: number;
+  payment_method?: string;
+  
+  // Metadata
+  notes?: string;
+  opened_by?: string;
+  closed_by?: string;
+  
+  // Denormalized for offline display
+  table?: {
+    id: string;
+    table_number: string;
+    area?: string;
+  };
+  customer?: {
+    id: string;
+    full_name: string;
+    tier?: string;
+  };
+  
+  // Offline sync metadata
+  _pending_sync?: boolean;
+  _temp_id?: boolean;
+  _synced_id?: string; // Real session ID after temp session syncs to server
+  synced_at?: string;
+  last_sync_error?: string; // Last sync error message for UI display
+  origin?: 'offline' | 'online'; // Whether session originated offline or was fetched from server
+}
+
+/**
+ * Offline Order Item
+ * Individual product/package in an order
+ */
+export interface OfflineOrderItem {
+  id: string;
+  order_id: string;
+  product_id?: string;
+  package_id?: string;
+  item_name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  notes?: string;
+  complex_product_metadata?: any;
+}
+
+/**
+ * Offline Session Order
+ * Individual order within a session
+ */
+export interface OfflineSessionOrder {
+  // Core fields
+  id: string;
+  session_id: string;
+  order_number: string;
+  status: string;
+  
+  // Timestamps
+  created_at: string;
+  confirmed_at?: string;
+  updated_at: string;
+  
+  // Financial
+  subtotal: number;
+  discount_amount: number;
+  total_amount: number;
+  
+  // Items
+  items: OfflineOrderItem[];
+  
+  // Offline sync metadata
+  _pending_sync?: boolean;
+  _temp_id?: boolean;
+  _synced_id?: string; // Real order ID after sync (similar to session _synced_id)
+  synced_at?: string;
+  remote_session_id?: string; // Real session ID if local session_id is still offline temp ID
+}
+
 export interface SyncQueueEntry {
   id?: number;
   mutationType: string;
@@ -289,6 +430,8 @@ type OfflineStoreMap = {
   packages: OfflinePackage;
   tables: OfflineTable;
   orders: OfflineOrder;
+  order_sessions: OfflineOrderSession;
+  session_orders: OfflineSessionOrder;
   syncQueue: SyncQueueEntry;
   metadata: MetadataEntry;
 };
@@ -312,6 +455,9 @@ export function openOfflineDb(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
+      const oldVersion = event.oldVersion;
+
+      console.log(`📦 Upgrading IndexedDB from v${oldVersion} to v${OFFLINE_DB_VERSION}`);
 
       ensureProductsStore(db);
       ensureCategoriesStore(db);
@@ -320,6 +466,11 @@ export function openOfflineDb(): Promise<IDBDatabase> {
       ensureOrdersStore(db);
       ensureSyncQueueStore(db);
       ensureMetadataStore(db);
+      
+      // Version 2: Tab module stores - always ensure they exist
+      console.log('🔄 Ensuring Tab module stores exist');
+      ensureOrderSessionsStore(db);
+      ensureSessionOrdersStore(db);
     };
 
     request.onsuccess = () => {
@@ -396,6 +547,30 @@ function ensureMetadataStore(db: IDBDatabase) {
   }
 
   db.createObjectStore('metadata', { keyPath: 'key' });
+}
+
+function ensureOrderSessionsStore(db: IDBDatabase) {
+  if (db.objectStoreNames.contains('order_sessions')) {
+    return;
+  }
+
+  const store = db.createObjectStore('order_sessions', { keyPath: 'id' });
+  store.createIndex('table_id', 'table_id', { unique: false });
+  store.createIndex('status', 'status', { unique: false });
+  store.createIndex('updated_at', 'updated_at', { unique: false });
+  console.log('✅ Created store: order_sessions');
+}
+
+function ensureSessionOrdersStore(db: IDBDatabase) {
+  if (db.objectStoreNames.contains('session_orders')) {
+    return;
+  }
+
+  const store = db.createObjectStore('session_orders', { keyPath: 'id' });
+  store.createIndex('session_id', 'session_id', { unique: false });
+  store.createIndex('status', 'status', { unique: false });
+  store.createIndex('updated_at', 'updated_at', { unique: false });
+  console.log('✅ Created store: session_orders');
 }
 
 /**
@@ -535,5 +710,291 @@ export async function decreaseStockForOrder(
     await waitForTransaction(transaction);
     
     console.log(`✅ [OfflineDB] Stock decreased for ${items.length} products`);
+  });
+}
+
+/**
+ * Put order session into IndexedDB
+ * Creates or updates a session record
+ */
+export async function putOrderSession(session: OfflineOrderSession): Promise<void> {
+  await withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('order_sessions')) {
+      console.warn('⚠️ Store "order_sessions" does not exist in database. Skipping putOrderSession.');
+      return;
+    }
+    
+    const transaction = db.transaction(['order_sessions'], 'readwrite');
+    const store = transaction.objectStore('order_sessions');
+    store.put(session);
+    await waitForTransaction(transaction);
+    console.log(`💾 Saved session to IndexedDB: ${session.id}`);
+  });
+}
+
+/**
+ * Get order session by ID from IndexedDB
+ */
+export async function getOrderSessionById(sessionId: string): Promise<OfflineOrderSession | null> {
+  return withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('order_sessions')) {
+      console.warn('⚠️ Store "order_sessions" does not exist in database. Returning null.');
+      return null;
+    }
+    
+    return new Promise<OfflineOrderSession | null>((resolve, reject) => {
+      const transaction = db.transaction(['order_sessions'], 'readonly');
+      const store = transaction.objectStore('order_sessions');
+      const request = store.get(sessionId);
+
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error ?? new Error('Failed to get session'));
+    });
+  });
+}
+
+/**
+ * Get all active order sessions from IndexedDB
+ * Returns sessions with status='open'
+ */
+export async function getActiveOrderSessions(): Promise<OfflineOrderSession[]> {
+  return withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('order_sessions')) {
+      console.warn('⚠️ Store "order_sessions" does not exist in database. Returning empty array.');
+      return [];
+    }
+    
+    return new Promise<OfflineOrderSession[]>((resolve, reject) => {
+      const transaction = db.transaction(['order_sessions'], 'readonly');
+      const store = transaction.objectStore('order_sessions');
+      const index = store.index('status');
+      const request = index.getAll('open');
+
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error ?? new Error('Failed to get active sessions'));
+    });
+  });
+}
+
+/**
+ * Get all order sessions (active and closed) from IndexedDB
+ */
+export async function getAllOrderSessions(): Promise<OfflineOrderSession[]> {
+  return withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('order_sessions')) {
+      console.warn('⚠️ Store "order_sessions" does not exist in database. Returning empty array.');
+      return [];
+    }
+    
+    return new Promise<OfflineOrderSession[]>((resolve, reject) => {
+      const transaction = db.transaction(['order_sessions'], 'readonly');
+      const store = transaction.objectStore('order_sessions');
+      const request = store.getAll();
+
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error ?? new Error('Failed to get all sessions'));
+    });
+  });
+}
+
+/**
+ * Update session ID (used when temp session syncs to real session)
+ * CRITICAL: Keeps temp session in IndexedDB for offline-first continuity.
+ * The temp session remains accessible while user is still on the page with temp ID in URL.
+ */
+export async function updateSessionId(tempId: string, realId: string): Promise<void> {
+  await withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('order_sessions')) {
+      console.warn('⚠️ Store "order_sessions" does not exist in database. Skipping updateSessionId.');
+      return;
+    }
+    
+    // Get the temp session
+    const session = await getOrderSessionById(tempId);
+    if (!session) {
+      console.warn(`⚠️ Temp session not found: ${tempId}`);
+      return;
+    }
+
+    // CRITICAL FIX: Keep temp session but mark it as synced with reference to real ID
+    // This allows user to continue working with temp ID while background sync completes
+    // The temp session acts as a redirect/alias to the real session
+    const transaction = db.transaction(['order_sessions'], 'readwrite');
+    const store = transaction.objectStore('order_sessions');
+
+    // Update temp session to reference the real ID (but don't delete it)
+    const updatedTempSession = {
+      ...session,
+      _synced_id: realId, // Reference to real session
+      _pending_sync: false,
+      synced_at: new Date().toISOString(),
+    };
+    store.put(updatedTempSession);
+
+    // Also create/update the real session with server data
+    const realSession = {
+      ...session,
+      id: realId,
+      _temp_id: false,
+      _pending_sync: false,
+      synced_at: new Date().toISOString(),
+    };
+    store.put(realSession);
+
+    await waitForTransaction(transaction);
+    console.log(`✅ Updated session ID (kept temp): ${tempId} → ${realId}`);
+  });
+}
+
+/**
+ * Update order session fields
+ */
+export async function updateOrderSession(
+  sessionId: string,
+  updates: Partial<OfflineOrderSession>
+): Promise<void> {
+  await withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('order_sessions')) {
+      console.warn('⚠️ Store "order_sessions" does not exist in database. Skipping updateOrderSession.');
+      return;
+    }
+    
+    const session = await getOrderSessionById(sessionId);
+
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    const updated = { ...session, ...updates, updated_at: new Date().toISOString() };
+
+    const transaction = db.transaction(['order_sessions'], 'readwrite');
+    const store = transaction.objectStore('order_sessions');
+    store.put(updated);
+    await waitForTransaction(transaction);
+
+    console.log(`✅ Updated session: ${sessionId}`, Object.keys(updates));
+  });
+}
+
+/**
+ * Delete order session from IndexedDB
+ */
+export async function deleteOrderSession(sessionId: string): Promise<void> {
+  await withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('order_sessions')) {
+      console.warn('⚠️ Store "order_sessions" does not exist in database. Skipping deleteOrderSession.');
+      return;
+    }
+    
+    const transaction = db.transaction(['order_sessions'], 'readwrite');
+    const store = transaction.objectStore('order_sessions');
+    store.delete(sessionId);
+    await waitForTransaction(transaction);
+    console.log(`🗑️ Deleted session: ${sessionId}`);
+  });
+}
+
+/**
+ * Put session order into IndexedDB
+ */
+export async function putSessionOrder(order: OfflineSessionOrder): Promise<void> {
+  await withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('session_orders')) {
+      console.warn('⚠️ Store "session_orders" does not exist in database. Skipping putSessionOrder.');
+      return;
+    }
+    
+    const transaction = db.transaction(['session_orders'], 'readwrite');
+    const store = transaction.objectStore('session_orders');
+    store.put(order);
+    await waitForTransaction(transaction);
+    console.log(`💾 Saved session order to IndexedDB: ${order.id}`);
+  });
+}
+
+/**
+ * Get session order by ID
+ */
+export async function getSessionOrderById(orderId: string): Promise<OfflineSessionOrder | null> {
+  return withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('session_orders')) {
+      console.warn('⚠️ Store "session_orders" does not exist in database. Returning null.');
+      return null;
+    }
+    
+    return new Promise<OfflineSessionOrder | null>((resolve, reject) => {
+      const transaction = db.transaction(['session_orders'], 'readonly');
+      const store = transaction.objectStore('session_orders');
+      const request = store.get(orderId);
+
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error ?? new Error('Failed to get session order'));
+    });
+  });
+}
+
+/**
+ * Get all orders for a session
+ */
+export async function getOrdersBySession(sessionId: string): Promise<OfflineSessionOrder[]> {
+  return withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('session_orders')) {
+      console.warn('⚠️ Store "session_orders" does not exist in database. Returning empty array.');
+      return [];
+    }
+    
+    return new Promise<OfflineSessionOrder[]>((resolve, reject) => {
+      const transaction = db.transaction(['session_orders'], 'readonly');
+      const store = transaction.objectStore('session_orders');
+      const index = store.index('session_id');
+      const request = index.getAll(sessionId);
+
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error ?? new Error('Failed to get orders by session'));
+    });
+  });
+}
+
+/**
+ * Migrate orders from temp session to real session
+ * Used when temp session ID is replaced with real ID after sync
+ */
+export async function migrateOrdersToSession(
+  tempSessionId: string,
+  realSessionId: string
+): Promise<void> {
+  const orders = await getOrdersBySession(tempSessionId);
+
+  if (orders.length === 0) {
+    return;
+  }
+
+  await withOfflineDb(async (db) => {
+    // Safety check: verify store exists before accessing
+    if (!db.objectStoreNames.contains('session_orders')) {
+      console.warn('⚠️ Store "session_orders" does not exist in database. Skipping migrateOrdersToSession.');
+      return;
+    }
+    
+    const transaction = db.transaction(['session_orders'], 'readwrite');
+    const store = transaction.objectStore('session_orders');
+
+    for (const order of orders) {
+      order.session_id = realSessionId;
+      store.put(order);
+    }
+
+    await waitForTransaction(transaction);
+    console.log(`✅ Migrated ${orders.length} orders: ${tempSessionId} → ${realSessionId}`);
   });
 }

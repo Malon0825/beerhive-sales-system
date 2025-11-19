@@ -62,6 +62,10 @@ interface OfflineRuntimeContextValue {
   refreshSyncStatus(): Promise<void>;
   /** Retries failed mutations in the offline queue. */
   retryFailedMutations(): Promise<void>;
+  /** DataBatchingService instance for catalog sync and offline reads. */
+  readonly dataBatching: DataBatchingService;
+  /** MutationSyncService instance for mutation queue operations. */
+  readonly mutationSync: MutationSyncService;
 }
 
 const OfflineRuntimeContext = createContext<OfflineRuntimeContextValue | undefined>(undefined);
@@ -255,6 +259,8 @@ export function OfflineRuntimeProvider({ children }: { children: ReactNode }) {
       lastSyncUpdate,
       refreshSyncStatus,
       retryFailedMutations,
+      dataBatching,
+      mutationSync,
     }),
     [
       isSupported,
@@ -268,6 +274,8 @@ export function OfflineRuntimeProvider({ children }: { children: ReactNode }) {
       lastSyncUpdate,
       refreshSyncStatus,
       retryFailedMutations,
+      dataBatching,
+      mutationSync,
     ]
   );
 

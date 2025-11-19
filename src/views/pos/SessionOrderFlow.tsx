@@ -26,6 +26,17 @@ import { CustomerSearch } from './CustomerSearch';
 import { CustomerTier } from '@/models/enums/CustomerTier';
 import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
 import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
+import { useOfflineRuntime } from '@/lib/contexts/OfflineRuntimeContext';
+import {
+  enqueueSyncMutation,
+  putSessionOrder,
+  decreaseStockForOrder,
+  updateOrderSession,
+  type OfflineSessionOrder,
+} from '@/lib/data-batching/offlineDb';
+import { MutationSyncService } from '@/lib/data-batching/MutationSyncService';
+import { toast } from '@/lib/hooks/useToast';
+import { OfflineToasts } from '@/lib/utils/toastMessages';
 
 /**
  * SessionOrderFlow Component
@@ -115,6 +126,7 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
   
   // Access stock tracker context
   const stockTracker = useStockTracker();
+  const { dataBatching, isOnline } = useOfflineRuntime();
 
   // Find the header container for portal rendering
   useEffect(() => {
@@ -124,18 +136,37 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
 
   /**
    * Fetch session details
+   * Tries IndexedDB first, then falls back to API when online.
    */
   const fetchSession = async () => {
     try {
-      const response = await fetch(`/api/order-sessions/${sessionId}`);
-      const data = await response.json();
-      
-      if (data.success) {
-        setSession(data.data);
-        // Set customer from session if exists
-        if (data.data.customer) {
-          setSelectedCustomer(data.data.customer);
+      // Try IndexedDB cache first for offline support
+      const cachedSession = await dataBatching.getSessionById(sessionId);
+
+      if (cachedSession) {
+        setSession(cachedSession);
+        if (cachedSession.customer) {
+          setSelectedCustomer(cachedSession.customer);
         }
+        setLoading(false);
+        console.log('📊 [SessionOrderFlow] Loaded session from cache:', sessionId);
+        return;
+      }
+
+      // Fallback to API when online
+      if (isOnline) {
+        const response = await fetch(`/api/order-sessions/${sessionId}`);
+        const data = await response.json();
+
+        if (data.success) {
+          setSession(data.data);
+          if (data.data.customer) {
+            setSelectedCustomer(data.data.customer);
+          }
+        }
+      } else {
+        console.error('Session not available offline:', sessionId);
+        toast(OfflineToasts.sessionUnavailable());
       }
     } catch (error) {
       console.error('Failed to fetch session:', error);
@@ -146,9 +177,9 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
 
   useEffect(() => {
     if (sessionId) {
-      fetchSession();
+      void fetchSession();
     }
-  }, [sessionId]);
+  }, [sessionId, dataBatching, isOnline]);
 
   /**
    * Update session with customer
@@ -478,60 +509,135 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
 
   /**
    * Confirm order and send to kitchen
-   * Stock has already been reserved in memory, this saves it to DB
+   * Offline-first implementation: creates a temp order locally, queues
+   * mutations for server sync, and adjusts local stock.
    */
   const confirmOrder = async () => {
     setConfirming(true);
 
     try {
-      // Create draft order if not already created
-      let orderId = currentOrder?.id;
-      if (!orderId) {
-        orderId = await createDraftOrder();
-        if (!orderId) {
-          setConfirming(false);
-          return;
-        }
-      }
-
-      // Confirm the order (this triggers kitchen notification)
-      const response = await fetch(`/api/orders/${orderId}/confirm`, {
-        method: 'PATCH',
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        // Show success message
-        setSuccessMessage('Order confirmed and sent to kitchen!');
-        
-        // Reset stock tracker (stock is now saved to DB via order confirmation)
-        // The reserved stock in memory becomes permanent
-        console.log('✅ [SessionOrderFlow] Order confirmed, stock committed to DB');
-        
-        // Clear local state
-        setCurrentOrder(null);
-        
-        // Hide success message after 4 seconds
-        setTimeout(() => {
-          setSuccessMessage(null);
-        }, 4000);
-        
-        // Navigate back if callback provided
-        if (onOrderConfirmed) {
-          onOrderConfirmed(orderId);
-        }
-
-        // Refresh session data
-        fetchSession();
-      } else {
+      if (cart.length === 0) {
         setAlertDialog({
           open: true,
-          title: 'Order Confirmation Failed',
-          description: data.error || 'Failed to confirm order. Please try again.',
-          variant: 'error',
+          title: 'Empty Cart',
+          description: 'Please add items to cart before confirming an order.',
+          variant: 'warning',
         });
+        setConfirming(false);
+        return;
       }
+
+      // Optional: validate stock against offline catalog if needed
+      // (StockTracker already guards most flows; can extend later if required.)
+
+      // Generate temp order identifiers
+      const tempOrderId = `offline-order-${Date.now()}`;
+      const tempOrderNumber = `TEMP-ORD-${Date.now().toString().slice(-6)}`;
+
+      // Calculate totals
+      const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
+
+      // Build offline session order payload
+      const draftOrder: OfflineSessionOrder = {
+        id: tempOrderId,
+        session_id: sessionId,
+        order_number: tempOrderNumber,
+        status: 'draft',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        subtotal,
+        discount_amount: 0,
+        total_amount: subtotal,
+        items: cart.map((item) => ({
+          id: `item-${Date.now()}-${Math.random()}`,
+          order_id: tempOrderId,
+          product_id: item.product_id,
+          package_id: item.package_id,
+          item_name: item.item_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total: item.total,
+          notes: item.notes,
+        })),
+        _pending_sync: true,
+        _temp_id: true,
+      };
+
+      // Save order to IndexedDB
+      await putSessionOrder(draftOrder);
+      console.log('💾 [SessionOrderFlow] Created temp order:', tempOrderId);
+
+      // Queue order creation mutation
+      const createQueueId = await enqueueSyncMutation('orders.create', {
+        endpoint: '/api/orders',
+        method: 'POST',
+        body: {
+          session_id: sessionId,
+          items: cart.map((item) => ({
+            product_id: item.product_id,
+            package_id: item.package_id,
+            quantity: item.quantity,
+            notes: item.notes,
+          })),
+        },
+        local_order_id: tempOrderId,
+        created_at: new Date().toISOString(),
+      });
+
+      console.log(`📋 [SessionOrderFlow] Queued order creation: #${createQueueId}`);
+
+      // Queue order confirmation mutation (depends on create)
+      const confirmQueueId = await enqueueSyncMutation('orders.confirm', {
+        endpoint: '/api/orders/{{ORDER_ID}}/confirm',
+        method: 'PATCH',
+        body: {},
+        depends_on: createQueueId,
+        local_order_id: tempOrderId,
+        created_at: new Date().toISOString(),
+      });
+
+      console.log(`📋 [SessionOrderFlow] Queued order confirmation: #${confirmQueueId}`);
+
+      // Decrease stock locally in IndexedDB (optimistic)
+      const stockItems = cart
+        .filter((item) => !item.is_package && item.product_id)
+        .map((item) => ({
+          productId: item.product_id!,
+          quantity: item.quantity,
+          itemName: item.item_name,
+        }));
+
+      if (stockItems.length > 0) {
+        await decreaseStockForOrder(stockItems);
+        console.log('✅ [SessionOrderFlow] Local stock decreased for order');
+      }
+
+      // Update session totals locally with pending sync flag
+      // This ensures defensive merging preserves these totals during background sync
+      await updateOrderSession(sessionId, {
+        subtotal: (session?.subtotal || 0) + subtotal,
+        total_amount: (session?.total_amount || 0) + subtotal,
+        _pending_sync: true, // Mark as pending until orders fully sync
+      });
+
+      // Clear cart
+      setCart([]);
+
+      toast(OfflineToasts.orderConfirmed(isOnline));
+
+      // Trigger sync if online
+      if (isOnline) {
+        const syncService = MutationSyncService.getInstance();
+        void syncService.processPendingMutations();
+      }
+
+      // Callback for parent
+      if (onOrderConfirmed) {
+        onOrderConfirmed(tempOrderId);
+      }
+
+      // Refresh session from latest cache/server
+      await fetchSession();
     } catch (error) {
       console.error('❌ [SessionOrderFlow] Failed to confirm order:', error);
       setAlertDialog({

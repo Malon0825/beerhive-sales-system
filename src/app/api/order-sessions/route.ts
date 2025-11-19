@@ -50,9 +50,29 @@ export async function POST(request: NextRequest) {
 /**
  * GET /api/order-sessions
  * Get all active order sessions (tabs)
+ * 
+ * Query params:
+ * - table_id: Filter by table ID (returns active session for that table)
+ * - active: Filter by active status (default: true)
  */
 export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const tableId = searchParams.get('table_id');
+    const activeOnly = searchParams.get('active') !== 'false'; // Default to true
+
+    // If table_id is provided, get the active session for that specific table
+    if (tableId) {
+      const session = await OrderSessionService.getActiveSessionForTable(tableId);
+      
+      return NextResponse.json({
+        success: true,
+        data: session ? [session] : [],
+        count: session ? 1 : 0,
+      });
+    }
+
+    // Otherwise, get all active sessions
     const sessions = await OrderSessionService.getAllActiveTabs();
 
     return NextResponse.json({

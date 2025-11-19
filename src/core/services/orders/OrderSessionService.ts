@@ -20,18 +20,22 @@ export class OrderSessionService {
    * Open a new tab for a table
    * Creates a new session and marks the table as occupied
    * 
+   * **Idempotent**: If table already has an active session, returns the existing session
+   * instead of throwing an error. This allows safe retries and prevents duplicate sessions.
+   * 
    * @param data - Session creation data
-   * @returns Created session
+   * @returns Created or existing session
    */
   static async openTab(data: CreateOrderSessionDto): Promise<OrderSession> {
     try {
       console.log('🎯 [OrderSessionService.openTab] Opening new tab:', data);
 
-      // Check if table already has an active session
+      // Check if table already has an active session (idempotent check)
       if (data.table_id) {
         const existingSession = await OrderSessionRepository.getActiveSessionByTable(data.table_id);
         if (existingSession) {
-          throw new AppError('Table already has an active session', 400);
+          console.log(`ℹ️ [OrderSessionService.openTab] Table already has active session (idempotent) - returning existing session: ${existingSession.session_number}`);
+          return existingSession;
         }
       }
 

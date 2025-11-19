@@ -463,6 +463,9 @@ export function PaymentPanel({
         method: 'POST',
         body: requestBody,
         created_at: new Date().toISOString(),
+        ...(mode === 'close-tab' && sessionId
+          ? { session_id: sessionId }
+          : {}),
       };
 
       const queueId = await enqueueSyncMutation(mutationType, mutationPayload);
@@ -472,6 +475,20 @@ export function PaymentPanel({
       const localOrderPayload = mode === 'pos'
         ? buildOfflineOrderSnapshot(tempOrderId, queueId)
         : buildOfflineSessionReceiptSnapshot();
+
+      // CRITICAL: Delete session from IndexedDB for offline-first UX
+      // This ensures the tab disappears from active tabs list immediately
+      // and prevents "Occupied + No active tab" state
+      if (mode === 'close-tab' && sessionId) {
+        try {
+          const { deleteOrderSession } = await import('@/lib/data-batching/offlineDb');
+          await deleteOrderSession(sessionId);
+          console.log('✅ [PaymentPanel] Session removed from IndexedDB:', sessionId);
+        } catch (error) {
+          console.error('⚠️ [PaymentPanel] Failed to remove session from cache:', error);
+          // Don't block payment - sync will clean up eventually
+        }
+      }
 
       // CRITICAL: Decrease stock locally for immediate UI updates
       // This ensures accurate stock visibility without waiting for server sync
