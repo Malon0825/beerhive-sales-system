@@ -298,6 +298,42 @@ export interface OfflineTable {
   updated_at: string;
 }
 
+export async function updateTableStatus(
+  tableId: string,
+  status: string
+): Promise<void> {
+  await withOfflineDb(async (db) => {
+    if (!db.objectStoreNames.contains('tables')) {
+      console.warn('⚠️ Store "tables" does not exist in database. Skipping updateTableStatus.');
+      return;
+    }
+
+    const transaction = db.transaction(['tables'], 'readwrite');
+    const store = transaction.objectStore('tables');
+
+    const table = await new Promise<OfflineTable | undefined>((resolve, reject) => {
+      const getRequest = store.get(tableId);
+      getRequest.onsuccess = () => resolve(getRequest.result as OfflineTable | undefined);
+      getRequest.onerror = () =>
+        reject(getRequest.error ?? new Error('Failed to get table for updateTableStatus'));
+    });
+
+    if (!table) {
+      return;
+    }
+
+    const updated: OfflineTable = {
+      ...table,
+      status,
+      updated_at: new Date().toISOString(),
+    };
+
+    store.put(updated);
+    await waitForTransaction(transaction);
+    console.log(`✅ Updated table status in IndexedDB: ${tableId} → ${status}`);
+  });
+}
+
 export interface OfflineOrder {
   id: string;
   status: string;

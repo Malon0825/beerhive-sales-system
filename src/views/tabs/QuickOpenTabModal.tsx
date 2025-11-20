@@ -16,10 +16,9 @@ import { CustomerSearch } from '../pos/CustomerSearch';
 import { Users, X, WifiOff } from 'lucide-react';
 import { Badge } from '@/views/shared/ui/badge';
 import { useOfflineRuntime } from '@/lib/contexts/OfflineRuntimeContext';
-import { enqueueSyncMutation, putOrderSession, type OfflineOrderSession } from '@/lib/data-batching/offlineDb';
-import { MutationSyncService } from '@/lib/data-batching/MutationSyncService';
 import { toast } from '@/lib/hooks/useToast';
 import { OfflineToasts } from '@/lib/utils/toastMessages';
+import { OfflineTabService } from '@/services/OfflineTabService';
 import { useRouter } from 'next/navigation';
 
 /**
@@ -83,80 +82,31 @@ export default function QuickOpenTabModal({
 
     setLoading(true);
     try {
-      // Generate temp session ID for offline/optimistic flow
-      const tempSessionId = `offline-session-${Date.now()}`;
-      const tempSessionNumber = `TEMP-${Date.now().toString().slice(-6)}`;
-
-      // Create optimistic session payload for IndexedDB
-      const now = new Date().toISOString();
-      const tempSession: OfflineOrderSession = {
-        id: tempSessionId,
-        session_number: tempSessionNumber,
-        table_id: table.id,
-        customer_id: selectedCustomer?.id,
-        status: 'open',
-        opened_at: now,
-        updated_at: now,
-        subtotal: 0,
-        discount_amount: 0,
-        tax_amount: 0,
-        total_amount: 0,
-        notes: notes || undefined,
-        table: {
-          id: table.id,
-          table_number: table.table_number,
-          area: table.area,
-        },
-        customer: selectedCustomer
+      const session = await OfflineTabService.openTab(table.id, {
+        customerId: selectedCustomer?.id,
+        tableNumber: table.table_number,
+        notes,
+        area: table.area,
+        customerSnapshot: selectedCustomer
           ? {
               id: selectedCustomer.id,
               full_name: selectedCustomer.full_name,
               tier: selectedCustomer.tier,
             }
           : undefined,
-        _pending_sync: true,
-        _temp_id: true,
-      };
-
-      // Save optimistic session locally for instant offline use
-      await putOrderSession(tempSession);
-      console.log('💾 [QuickOpenTabModal] Created temp session:', tempSessionId);
-
-      // Queue mutation for server-side session creation
-      const queueId = await enqueueSyncMutation('orderSessions.create', {
-        endpoint: '/api/order-sessions',
-        method: 'POST',
-        body: {
-          table_id: table.id,
-          customer_id: selectedCustomer?.id,
-          notes: notes || undefined,
-        },
-        local_id: tempSessionId,
-        created_at: now,
       });
-
-      console.log(`📋 [QuickOpenTabModal] Queued session creation mutation: #${queueId}`);
 
       toast(OfflineToasts.tabOpened(isOnline));
 
       // Navigate immediately using the temp session ID; this will be
       // reconciled to the real ID by MutationSyncService once synced.
-      router.push(`/tabs/${tempSessionId}/add-order`);
-
-      // Trigger background sync if online
-      if (isOnline) {
-        const syncService = MutationSyncService.getInstance();
-        void syncService.processPendingMutations();
-      }
+      router.push(`/tabs/${session.id}/add-order`);
 
       // Close modal after navigation
       onClose();
-
-      // NOTE: onConfirm callback removed - session creation now handled via mutation queue
-      // The offline-first flow queues the mutation and syncs it, so calling onConfirm
-      // would create a duplicate session (causing "duplicate key" database errors)
     } catch (error) {
       console.error('Failed to open tab:', error);
+      console.error(error);
       alert('Failed to open tab. Please try again.');
       setLoading(false);
     }

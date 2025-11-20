@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/views/shared/ui/card';
@@ -12,12 +12,13 @@ import GridColumnSelector from '@/views/shared/ui/GridColumnSelector';
 import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
 import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { 
-  fetchAllPackageAvailability,
+import { DataBatchingService } from '@/lib/data-batching/DataBatchingService';
+import {
   getAvailabilityStatus,
   getAvailabilityColor,
-  type PackageAvailabilityItem
+  type PackageAvailabilityItem,
 } from '@/data/queries/package-availability.queries';
+import { OfflinePackageAvailability } from '@/core/services/inventory/OfflinePackageAvailability';
 import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
 
 /**
@@ -81,7 +82,7 @@ interface SessionProductSelectorProps {
   onPackageSelect?: (pkg: Package, price: number) => void;
 }
 
-export default function SessionProductSelector({ 
+export default function SessionProductSelector({
   customerTier = 'regular',
   onProductSelect,
   onPackageSelect
@@ -93,6 +94,7 @@ export default function SessionProductSelector({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'all' | 'featured' | 'packages'>('all');
+  const dataBatching = useMemo(() => DataBatchingService.getInstance(), []);
   
   // Grid columns with session storage persistence (default: 5 columns)
   const [gridColumns, setGridColumns] = useSessionStorage<number>('tab-product-grid-columns', 5);
@@ -117,26 +119,36 @@ export default function SessionProductSelector({
   const [packageAvailability, setPackageAvailability] = useState<PackageAvailabilityItem[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
 
-  // Load package availability on mount and refresh every 30 seconds
+  // Load package availability and refresh every 30 seconds
+  // Tab module is offline-first: always compute from IndexedDB snapshot
   useEffect(() => {
+    let isCancelled = false;
+
     const loadAvailability = async () => {
       try {
         setAvailabilityLoading(true);
-        const data = await fetchAllPackageAvailability();
-        setPackageAvailability(data);
+
+        const data = await OfflinePackageAvailability.getAllPackageAvailability();
+        if (!isCancelled) {
+          setPackageAvailability(data);
+        }
       } catch (error) {
         console.error('Failed to load package availability:', error);
       } finally {
-        setAvailabilityLoading(false);
+        if (!isCancelled) {
+          setAvailabilityLoading(false);
+        }
       }
     };
 
     loadAvailability();
 
-    // Refresh every 30 seconds for real-time updates
     const intervalId = setInterval(loadAvailability, 30000);
 
-    return () => clearInterval(intervalId);
+    return () => {
+      isCancelled = true;
+      clearInterval(intervalId);
+    };
   }, []);
 
   /**
@@ -156,58 +168,85 @@ export default function SessionProductSelector({
    * Fetch active products, packages, and initialize stock tracker
    */
   useEffect(() => {
-    fetchProducts();
-    fetchPackages();
-  }, []);
+    const loadCatalogFromSnapshot = async () => {
+      try {
+        setLoading(true);
+        setPackagesLoading(true);
+        console.log('💾 [SessionProductSelector] Reading catalog from IndexedDB (offline-first)...');
 
-  /**
-   * Fetch products from API
-   * Initializes stock tracker with loaded products
-   */
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch('/api/products?isActive=true');
-      const result = await response.json();
+        const snapshot = await dataBatching.getCatalogSnapshot();
 
-      if (result.success) {
-        const productData = result.data || [];
-        setProducts(productData);
-        
-        // Initialize stock tracker with fetched products
-        stockTracker.initializeStock(productData);
-        console.log('📊 [SessionProductSelector] Stock tracker initialized with', productData.length, 'products');
+        // Map OfflineProduct to local Product type
+        const mappedProducts: Product[] = snapshot.products.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          sku: p.sku,
+          base_price: p.base_price,
+          vip_price: p.vip_price ?? undefined,
+          current_stock: p.current_stock ?? 0,
+          reorder_point: p.reorder_point ?? 0,
+          category_id: p.category_id ?? undefined,
+          image_url: p.image_url ?? undefined,
+          is_active: true,
+          is_featured: p.is_featured ?? false,
+          category: p.category_name
+            ? {
+                name: p.category_name,
+                color_code: p.category_color ?? undefined,
+              }
+            : undefined,
+        }));
+
+        setProducts(mappedProducts);
+        // Cast is safe here because mappedProducts contains the fields
+        // required by the stock tracker (id, name, current_stock, etc.).
+        stockTracker.initializeStock(mappedProducts as any);
+        console.log('📊 [SessionProductSelector] Stock tracker initialized from IndexedDB with', mappedProducts.length, 'products');
+
+        // Index products by id for package item mapping
+        const productsById = new Map<string, Product>(
+          mappedProducts.map((prod) => [prod.id, prod])
+        );
+
+        // Map OfflinePackage to local Package type
+        const mappedPackages: Package[] = snapshot.packages.map((pkg: any) => ({
+          id: pkg.id,
+          name: pkg.name,
+          description: pkg.description ?? undefined,
+          package_type: pkg.package_type ?? 'regular',
+          base_price: pkg.base_price,
+          vip_price: pkg.vip_price ?? undefined,
+          is_active: true,
+          items: (pkg.items || []).map((item: any) => {
+            const productRef = productsById.get(item.product_id);
+            return {
+              product_id: item.product_id,
+              quantity: item.quantity ?? 1,
+              product: productRef
+                ? {
+                    id: productRef.id,
+                    name: productRef.name,
+                    current_stock: productRef.current_stock,
+                  }
+                : undefined,
+            };
+          }),
+        }));
+
+        setPackages(mappedPackages);
+        console.log('📦 [SessionProductSelector] Loaded', mappedPackages.length, 'packages from IndexedDB');
+      } catch (error) {
+        console.error('❌ [SessionProductSelector] Error reading catalog from IndexedDB:', error);
+        setProducts([]);
+        setPackages([]);
+      } finally {
+        setLoading(false);
+        setPackagesLoading(false);
       }
-    } catch (error) {
-      console.error('❌ [SessionProductSelector] Error fetching products:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
-  /**
-   * Fetch active packages from API
-   */
-  const fetchPackages = async () => {
-    try {
-      setPackagesLoading(true);
-      console.log('🔄 [SessionProductSelector] Fetching packages...');
-      
-      const response = await fetch('/api/packages?active=true');
-      const result = await response.json();
-      
-      if (result.success) {
-        console.log('✅ [SessionProductSelector] Packages fetched:', result.data.length);
-        setPackages(result.data || []);
-      } else {
-        console.error('❌ [SessionProductSelector] Failed to fetch packages:', result);
-      }
-    } catch (error) {
-      console.error('❌ [SessionProductSelector] Error fetching packages:', error);
-    } finally {
-      setPackagesLoading(false);
-    }
-  };
+    loadCatalogFromSnapshot();
+  }, [dataBatching, stockTracker]);
 
   /**
    * Check if product is a drink/beverage

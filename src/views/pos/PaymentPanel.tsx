@@ -6,6 +6,7 @@ import { useCart } from '@/lib/contexts/CartContext';
 import { useOfflineRuntime } from '@/lib/contexts/OfflineRuntimeContext';
 import { enqueueSyncMutation, decreaseStockForOrder } from '@/lib/data-batching/offlineDb';
 import { MutationSyncService } from '@/lib/data-batching/MutationSyncService';
+import { OfflineTabService } from '@/services/OfflineTabService';
 import {
   Dialog,
   DialogContent,
@@ -414,14 +415,12 @@ export function PaymentPanel({
       setProcessing(true);
       setError(null);
 
-      let apiUrl: string;
-      let requestBody: Record<string, unknown>;
-
       const parsedDiscountValue = parseFloat(discountValue);
 
       if (mode === 'pos') {
-        apiUrl = '/api/orders';
-        requestBody = {
+        // POS flow: keep existing offline-first order mutation behavior
+        const apiUrl = '/api/orders';
+        const requestBody: Record<string, unknown> = {
           customer_id: cart?.customer?.id,
           table_id: cart?.table?.id,
           items: cart?.items.map((item) => ({
@@ -440,99 +439,96 @@ export function PaymentPanel({
             discountAmount > 0 && !isNaN(parsedDiscountValue) ? parsedDiscountValue : undefined,
           notes: referenceNumber ? `Ref: ${referenceNumber}` : undefined,
         };
-      } else {
-        apiUrl = `/api/order-sessions/${sessionId}/close`;
-        requestBody = {
-          payment_method: selectedMethod,
-          amount_tendered:
-            selectedMethod === PaymentMethod.CASH ? parseFloat(amountTendered) : total,
-          reference_number: referenceNumber || undefined,
-          ...(discountAmount > 0
-            ? {
-                discount_type: discountType,
-                discount_value: !isNaN(parsedDiscountValue) ? parsedDiscountValue : undefined,
-                discount_amount: discountAmount,
-              }
-            : {}),
+
+        const mutationPayload = {
+          endpoint: apiUrl,
+          method: 'POST',
+          body: requestBody,
+          created_at: new Date().toISOString(),
         };
-      }
 
-      const mutationType = mode === 'pos' ? 'orders.create' : 'orderSessions.close';
-      const mutationPayload = {
-        endpoint: apiUrl,
-        method: 'POST',
-        body: requestBody,
-        created_at: new Date().toISOString(),
-        ...(mode === 'close-tab' && sessionId
-          ? { session_id: sessionId }
-          : {}),
-      };
+        const queueId = await enqueueSyncMutation('orders.create', mutationPayload);
+        const tempOrderId = `offline-${queueId}-${Date.now()}`;
+        const localOrderPayload = buildOfflineOrderSnapshot(tempOrderId, queueId);
 
-      const queueId = await enqueueSyncMutation(mutationType, mutationPayload);
-      const tempOrderId = mode === 'pos'
-        ? `offline-${queueId}-${Date.now()}`
-        : sessionId || `session-offline-${queueId}`;
-      const localOrderPayload = mode === 'pos'
-        ? buildOfflineOrderSnapshot(tempOrderId, queueId)
-        : buildOfflineSessionReceiptSnapshot();
+        // CRITICAL: Decrease stock locally for immediate UI updates
+        if (cart?.items && cart.items.length > 0) {
+          try {
+            const stockItems = cart.items
+              .filter(item => !item.isPackage && item.product?.id)
+              .map(item => ({
+                productId: item.product!.id,
+                quantity: item.quantity,
+                itemName: item.itemName,
+              }));
 
-      // CRITICAL: Delete session from IndexedDB for offline-first UX
-      // This ensures the tab disappears from active tabs list immediately
-      // and prevents "Occupied + No active tab" state
-      if (mode === 'close-tab' && sessionId) {
-        try {
-          const { deleteOrderSession } = await import('@/lib/data-batching/offlineDb');
-          await deleteOrderSession(sessionId);
-          console.log('✅ [PaymentPanel] Session removed from IndexedDB:', sessionId);
-        } catch (error) {
-          console.error('⚠️ [PaymentPanel] Failed to remove session from cache:', error);
-          // Don't block payment - sync will clean up eventually
-        }
-      }
-
-      // CRITICAL: Decrease stock locally for immediate UI updates
-      // This ensures accurate stock visibility without waiting for server sync
-      if (mode === 'pos' && cart?.items && cart.items.length > 0) {
-        try {
-          const stockItems = cart.items
-            .filter(item => !item.isPackage && item.product?.id) // Only products (not packages)
-            .map(item => ({
-              productId: item.product!.id,
-              quantity: item.quantity,
-              itemName: item.itemName,
-            }));
-
-          if (stockItems.length > 0) {
-            await decreaseStockForOrder(stockItems);
-            console.log('✅ [PaymentPanel] Local stock decreased for order');
+            if (stockItems.length > 0) {
+              await decreaseStockForOrder(stockItems);
+              console.log('✅ [PaymentPanel] Local stock decreased for order');
+            }
+          } catch (stockError) {
+            console.error('⚠️ [PaymentPanel] Failed to decrease local stock:', stockError);
           }
-        } catch (stockError) {
-          console.error('⚠️ [PaymentPanel] Failed to decrease local stock:', stockError);
-          // Don't block payment - stock will sync from server eventually
         }
-      }
 
-      toast({
-        title: '💾 Transaction Queued',
-        description: isOnline
-          ? 'Synced orders will appear automatically once confirmed.'
-          : 'Device is offline. Order will sync when connection returns.',
-        variant: 'default',
-      });
+        toast({
+          title: '💾 Transaction Queued',
+          description: isOnline
+            ? 'Synced orders will appear automatically once confirmed.'
+            : 'Device is offline. Order will sync when connection returns.',
+          variant: 'default',
+        });
 
-      onPaymentComplete(mode === 'pos' ? tempOrderId : sessionId || tempOrderId, {
-        isOffline: true,
-        queueId,
-        localOrder: localOrderPayload,
-      });
+        onPaymentComplete(tempOrderId, {
+          isOffline: true,
+          queueId,
+          localOrder: localOrderPayload,
+        });
 
-      cart?.clearCart();
-      resetForm();
-      onOpenChange(false);
+        cart?.clearCart();
+        resetForm();
+        onOpenChange(false);
 
-      if (isOnline) {
-        const syncService = MutationSyncService.getInstance();
-        void syncService.processPendingMutations();
+        if (isOnline) {
+          const syncService = MutationSyncService.getInstance();
+          void syncService.processPendingMutations();
+        }
+      } else {
+        // Close-tab flow: delegate to OfflineTabService.closeTab
+        if (!sessionId) {
+          throw new Error('Missing sessionId for close-tab payment');
+        }
+
+        const amountTenderedValue =
+          selectedMethod === PaymentMethod.CASH ? parseFloat(amountTendered) : total;
+
+        const { queueId } = await OfflineTabService.closeTab(sessionId, {
+          amount_tendered: amountTenderedValue,
+          payment_method: selectedMethod ?? PaymentMethod.CASH,
+          discount_type: discountAmount > 0 ? discountType : undefined,
+          discount_value:
+            discountAmount > 0 && !isNaN(parsedDiscountValue) ? parsedDiscountValue : undefined,
+          notes: referenceNumber || undefined,
+        });
+
+        const localOrderPayload = buildOfflineSessionReceiptSnapshot();
+
+        toast({
+          title: '💾 Tab Close Queued',
+          description: isOnline
+            ? 'Tab will sync and close on the server shortly.'
+            : 'Device is offline. Tab close will sync when connection returns.',
+          variant: 'default',
+        });
+
+        onPaymentComplete(sessionId, {
+          isOffline: true,
+          queueId,
+          localOrder: localOrderPayload,
+        });
+
+        resetForm();
+        onOpenChange(false);
       }
     } catch (err: any) {
       console.error('Payment error:', err);

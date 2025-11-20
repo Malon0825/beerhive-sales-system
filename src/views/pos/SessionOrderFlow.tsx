@@ -27,14 +27,7 @@ import { CustomerTier } from '@/models/enums/CustomerTier';
 import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
 import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
 import { useOfflineRuntime } from '@/lib/contexts/OfflineRuntimeContext';
-import {
-  enqueueSyncMutation,
-  putSessionOrder,
-  decreaseStockForOrder,
-  updateOrderSession,
-  type OfflineSessionOrder,
-} from '@/lib/data-batching/offlineDb';
-import { MutationSyncService } from '@/lib/data-batching/MutationSyncService';
+import { OfflineTabService } from '@/services/OfflineTabService';
 import { toast } from '@/lib/hooks/useToast';
 import { OfflineToasts } from '@/lib/utils/toastMessages';
 
@@ -527,30 +520,10 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
         return;
       }
 
-      // Optional: validate stock against offline catalog if needed
-      // (StockTracker already guards most flows; can extend later if required.)
-
-      // Generate temp order identifiers
-      const tempOrderId = `offline-order-${Date.now()}`;
-      const tempOrderNumber = `TEMP-ORD-${Date.now().toString().slice(-6)}`;
-
-      // Calculate totals
-      const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-
-      // Build offline session order payload
-      const draftOrder: OfflineSessionOrder = {
-        id: tempOrderId,
-        session_id: sessionId,
-        order_number: tempOrderNumber,
-        status: 'draft',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        subtotal,
-        discount_amount: 0,
-        total_amount: subtotal,
-        items: cart.map((item) => ({
-          id: `item-${Date.now()}-${Math.random()}`,
-          order_id: tempOrderId,
+      // Delegate offline-first order creation to OfflineTabService
+      const order = await OfflineTabService.addOrderToTab(
+        sessionId,
+        cart.map((item) => ({
           product_id: item.product_id,
           package_id: item.package_id,
           item_name: item.item_name,
@@ -558,82 +531,23 @@ export default function SessionOrderFlow({ sessionId, onOrderConfirmed }: Sessio
           unit_price: item.unit_price,
           total: item.total,
           notes: item.notes,
-        })),
-        _pending_sync: true,
-        _temp_id: true,
-      };
-
-      // Save order to IndexedDB
-      await putSessionOrder(draftOrder);
-      console.log('💾 [SessionOrderFlow] Created temp order:', tempOrderId);
-
-      // Queue order creation mutation
-      const createQueueId = await enqueueSyncMutation('orders.create', {
-        endpoint: '/api/orders',
-        method: 'POST',
-        body: {
-          session_id: sessionId,
-          items: cart.map((item) => ({
-            product_id: item.product_id,
-            package_id: item.package_id,
-            quantity: item.quantity,
-            notes: item.notes,
+          is_package: item.is_package,
+          package_components: item.package_components?.map((comp) => ({
+            product_id: comp.product_id,
+            product_name: comp.product_name,
+            quantity: comp.quantity,
           })),
-        },
-        local_order_id: tempOrderId,
-        created_at: new Date().toISOString(),
-      });
-
-      console.log(`📋 [SessionOrderFlow] Queued order creation: #${createQueueId}`);
-
-      // Queue order confirmation mutation (depends on create)
-      const confirmQueueId = await enqueueSyncMutation('orders.confirm', {
-        endpoint: '/api/orders/{{ORDER_ID}}/confirm',
-        method: 'PATCH',
-        body: {},
-        depends_on: createQueueId,
-        local_order_id: tempOrderId,
-        created_at: new Date().toISOString(),
-      });
-
-      console.log(`📋 [SessionOrderFlow] Queued order confirmation: #${confirmQueueId}`);
-
-      // Decrease stock locally in IndexedDB (optimistic)
-      const stockItems = cart
-        .filter((item) => !item.is_package && item.product_id)
-        .map((item) => ({
-          productId: item.product_id!,
-          quantity: item.quantity,
-          itemName: item.item_name,
-        }));
-
-      if (stockItems.length > 0) {
-        await decreaseStockForOrder(stockItems);
-        console.log('✅ [SessionOrderFlow] Local stock decreased for order');
-      }
-
-      // Update session totals locally with pending sync flag
-      // This ensures defensive merging preserves these totals during background sync
-      await updateOrderSession(sessionId, {
-        subtotal: (session?.subtotal || 0) + subtotal,
-        total_amount: (session?.total_amount || 0) + subtotal,
-        _pending_sync: true, // Mark as pending until orders fully sync
-      });
+        }))
+      );
 
       // Clear cart
       setCart([]);
 
       toast(OfflineToasts.orderConfirmed(isOnline));
 
-      // Trigger sync if online
-      if (isOnline) {
-        const syncService = MutationSyncService.getInstance();
-        void syncService.processPendingMutations();
-      }
-
       // Callback for parent
       if (onOrderConfirmed) {
-        onOrderConfirmed(tempOrderId);
+        onOrderConfirmed(order.id);
       }
 
       // Refresh session from latest cache/server

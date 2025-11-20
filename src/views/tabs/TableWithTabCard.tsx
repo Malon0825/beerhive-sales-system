@@ -163,13 +163,13 @@ export default function TableWithTabCard({
                 {session._pending_sync && (
                   <Badge variant="outline" className="text-xs h-4 px-1 border-yellow-400 text-yellow-700 bg-yellow-50">
                     <Clock className="w-2 h-2 mr-0.5" />
-                    Syncing
+                    Saving…
                   </Badge>
                 )}
                 {session._temp_id && (
                   <Badge variant="outline" className="text-xs h-4 px-1 border-gray-400 text-gray-600">
                     <AlertCircle className="w-2 h-2 mr-0.5" />
-                    Temp
+                    Offline tab
                   </Badge>
                 )}
               </div>

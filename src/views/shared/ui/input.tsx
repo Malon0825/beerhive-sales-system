@@ -12,8 +12,8 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
      * Keeps focus behaviour consistent across browsers
      */
     const handleWheel = (event: React.WheelEvent<HTMLInputElement>) => {
-      if (type === 'number') {
-        event.preventDefault()
+      if (type === 'number' && document.activeElement === event.currentTarget) {
+        event.currentTarget.blur()
       }
       onWheel?.(event)
     }

@@ -21,6 +21,8 @@ import { formatCurrency } from '@/lib/utils/formatters';
 import { useRealtime } from '@/lib/hooks/useRealtime';
 import { apiGet, apiPost } from '@/lib/utils/apiClient';
 import { useOfflineRuntime } from '@/lib/contexts/OfflineRuntimeContext';
+import { OfflineStatusBadge } from '@/views/pos/OfflineStatusBadge';
+import { OfflineTabService } from '@/services/OfflineTabService';
 import TableWithTabCard from './TableWithTabCard';
 import QuickOpenTabModal from './QuickOpenTabModal';
 import { useRouter } from 'next/navigation';
@@ -133,8 +135,58 @@ export default function TabManagementDashboard() {
   /**
    * Map sessions to tables
    */
+  const selectBestSessionForTable = useCallback(
+    (tableId: string) => {
+      const tableSessions = sessions.filter((s) => s.table_id === tableId);
+      if (tableSessions.length === 0) {
+        return null;
+      }
+
+      const tempSessions = tableSessions.filter(
+        (s) =>
+          s._temp_id ||
+          (typeof s.id === 'string' && s.id.startsWith('offline-session-')) ||
+          s._pending_sync
+      );
+      const realSessions = tableSessions.filter(
+        (s) => !s._temp_id && !(typeof s.id === 'string' && s.id.startsWith('offline-session-'))
+      );
+
+      const getMaxTotal = (list: any[]) =>
+        list.reduce((best, current) => {
+          if (!best) return current;
+          const bestTotal = best.total_amount ?? 0;
+          const currentTotal = current.total_amount ?? 0;
+          return currentTotal > bestTotal ? current : best;
+        }, null as any);
+
+      const bestTemp = tempSessions.length > 0 ? getMaxTotal(tempSessions) : null;
+      const bestReal = realSessions.length > 0 ? getMaxTotal(realSessions) : null;
+
+      if (!bestReal && bestTemp) {
+        return bestTemp;
+      }
+      if (!bestTemp && bestReal) {
+        return bestReal;
+      }
+      if (!bestReal && !bestTemp) {
+        return tableSessions[0];
+      }
+
+      const tempTotal = bestTemp.total_amount ?? 0;
+      const realTotal = bestReal.total_amount ?? 0;
+
+      if (!bestReal._pending_sync && realTotal >= tempTotal) {
+        return bestReal;
+      }
+
+      return bestTemp;
+    },
+    [sessions]
+  );
+
   const tablesWithSessions = tables.map((table) => {
-    const session = sessions.find((s) => s.table_id === table.id);
+    const session = selectBestSessionForTable(table.id);
     return {
       ...table,
       session,
@@ -251,54 +303,31 @@ export default function TabManagementDashboard() {
    */
   const handleCloseTab = async (sessionId: string) => {
     // Find the session to check total amount
-    const session = sessions.find(s => s.id === sessionId);
-    
+    const session = sessions.find((s) => s.id === sessionId);
+
     if (!session) {
       console.error('Session not found:', sessionId);
       return;
     }
-    
+
     // If total is 0, close tab offline-first without payment page
     if (session.total_amount === 0 || session.total_amount === null) {
       try {
         console.log('💰 Total is ₱0.00 - Closing tab offline-first (no payment needed)...');
-        
-        // Import offline functions
-        const { enqueueSyncMutation, deleteOrderSession } = await import('@/lib/data-batching/offlineDb');
-        const { MutationSyncService } = await import('@/lib/data-batching/MutationSyncService');
-        
-        // Queue close mutation
-        const queueId = await enqueueSyncMutation('orderSessions.close', {
-          endpoint: `/api/order-sessions/${sessionId}/close`,
-          method: 'POST',
-          body: {
-            payment_method: 'none',
-            amount_tendered: 0,
-            discount_amount: 0,
-          },
-          session_id: sessionId,
-          created_at: new Date().toISOString(),
+
+        const { queueId } = await OfflineTabService.closeTab(sessionId, {
+          amount_tendered: 0,
+          payment_method: 'none',
+          notes: 'Zero-amount tab close',
         });
-        
-        console.log(`📋 Queued zero-amount tab close: #${queueId}`);
-        
-        // CRITICAL FIX: Delete session from IndexedDB instead of marking as closed
-        // This prevents UI from showing "Occupied + No active tab" state
-        await deleteOrderSession(sessionId);
-        
-        console.log('✅ Session removed from IndexedDB (zero-amount)');
-        
+
+        console.log(`📋 Queued zero-amount tab close via OfflineTabService: #${queueId}`);
+
         // Refresh UI to remove from list
         await loadAllData();
-        
+
         // Show success message
-        alert(`Tab closed successfully (No payment required - ₱0.00)`);
-        
-        // Trigger sync if online
-        if (isOnline) {
-          const syncService = MutationSyncService.getInstance();
-          void syncService.processPendingMutations();
-        }
+        alert('Tab closed successfully (No payment required - ₱0.00)');
       } catch (error) {
         console.error('Failed to close zero-amount tab:', error);
         alert('Failed to close tab. Please try again.');
@@ -350,6 +379,9 @@ export default function TabManagementDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* Global offline/sync status for Tab module */}
+      <OfflineStatusBadge />
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
