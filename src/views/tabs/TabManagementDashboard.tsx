@@ -21,7 +21,6 @@ import { formatCurrency } from '@/lib/utils/formatters';
 import { useRealtime } from '@/lib/hooks/useRealtime';
 import { apiGet, apiPost } from '@/lib/utils/apiClient';
 import { useOfflineRuntime } from '@/lib/contexts/OfflineRuntimeContext';
-import { OfflineStatusBadge } from '@/views/pos/OfflineStatusBadge';
 import { OfflineTabService } from '@/services/OfflineTabService';
 import TableWithTabCard from './TableWithTabCard';
 import QuickOpenTabModal from './QuickOpenTabModal';
@@ -58,13 +57,16 @@ export default function TabManagementDashboard() {
    * Load tables from IndexedDB (instant)
    * Triggers background sync if online
    */
+  const reloadTablesFromCache = useCallback(async () => {
+    const cachedTables = await dataBatching.getCachedTables();
+    setTables(cachedTables);
+  }, [dataBatching]);
+
   const loadTables = useCallback(async () => {
     try {
-      // ✅ Read from IndexedDB (instant)
-      const cachedTables = await dataBatching.getCachedTables();
-      setTables(cachedTables);
+      await reloadTablesFromCache();
       
-      // ✅ Trigger background sync (non-blocking)
+      // Trigger background sync (non-blocking)
       if (isOnline) {
         dataBatching.syncAllEntities().catch(err => {
           console.log('Background table sync failed:', err);
@@ -73,20 +75,23 @@ export default function TabManagementDashboard() {
     } catch (error) {
       console.error('Failed to load tables:', error);
     }
-  }, [dataBatching, isOnline]);
+  }, [dataBatching, isOnline, reloadTablesFromCache]);
 
   /**
    * Load sessions from IndexedDB (instant)
    * Triggers background sync if online
    */
+  const reloadSessionsFromCache = useCallback(async () => {
+    const cachedSessions = await dataBatching.getActiveSessionsSnapshot();
+    setSessions(cachedSessions);
+    setLoading(false);
+  }, [dataBatching]);
+
   const loadSessions = useCallback(async () => {
     try {
-      // ✅ Read from IndexedDB (instant)
-      const cachedSessions = await dataBatching.getActiveSessionsSnapshot();
-      setSessions(cachedSessions);
-      setLoading(false);
+      await reloadSessionsFromCache();
       
-      // ✅ Trigger background sync (non-blocking)
+      // Trigger background sync (non-blocking)
       if (isOnline) {
         dataBatching.syncAllEntities().catch(err => {
           console.log('Background session sync failed:', err);
@@ -96,7 +101,7 @@ export default function TabManagementDashboard() {
       console.error('Failed to load sessions:', error);
       setLoading(false);
     }
-  }, [dataBatching, isOnline]);
+  }, [dataBatching, isOnline, reloadSessionsFromCache]);
 
   /**
    * Load all data from IndexedDB
@@ -117,8 +122,21 @@ export default function TabManagementDashboard() {
     table: 'restaurant_tables',
     event: '*',
     onChange: () => {
-      console.log('Table updated, refreshing from IndexedDB...');
-      loadTables();
+      console.log('Table updated, syncing and refreshing from IndexedDB...');
+      if (!isOnline) {
+        reloadTablesFromCache().catch(err => {
+          console.error('Failed to reload tables from cache after realtime update:', err);
+        });
+        return;
+      }
+
+      dataBatching
+        .syncAllEntities()
+        .then(() => reloadTablesFromCache())
+        .catch(err => {
+          console.log('Realtime table sync failed:', err);
+          return reloadTablesFromCache();
+        });
     },
   });
 
@@ -127,8 +145,21 @@ export default function TabManagementDashboard() {
     table: 'order_sessions',
     event: '*',
     onChange: () => {
-      console.log('Session updated, refreshing from IndexedDB...');
-      loadSessions();
+      console.log('Session updated, syncing and refreshing from IndexedDB...');
+      if (!isOnline) {
+        reloadSessionsFromCache().catch(err => {
+          console.error('Failed to reload sessions from cache after realtime update:', err);
+        });
+        return;
+      }
+
+      dataBatching
+        .syncAllEntities()
+        .then(() => reloadSessionsFromCache())
+        .catch(err => {
+          console.log('Realtime session sync failed:', err);
+          return reloadSessionsFromCache();
+        });
     },
   });
 
@@ -313,7 +344,7 @@ export default function TabManagementDashboard() {
     // If total is 0, close tab offline-first without payment page
     if (session.total_amount === 0 || session.total_amount === null) {
       try {
-        console.log('💰 Total is ₱0.00 - Closing tab offline-first (no payment needed)...');
+        console.log('Total is ₱0.00 - Closing tab offline-first (no payment needed)...');
 
         const { queueId } = await OfflineTabService.closeTab(sessionId, {
           amount_tendered: 0,
@@ -321,7 +352,7 @@ export default function TabManagementDashboard() {
           notes: 'Zero-amount tab close',
         });
 
-        console.log(`📋 Queued zero-amount tab close via OfflineTabService: #${queueId}`);
+        console.log(`Queued zero-amount tab close via OfflineTabService: #${queueId}`);
 
         // Refresh UI to remove from list
         await loadAllData();
@@ -379,9 +410,6 @@ export default function TabManagementDashboard() {
           </Button>
         </div>
       </div>
-
-      {/* Global offline/sync status for Tab module */}
-      <OfflineStatusBadge />
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

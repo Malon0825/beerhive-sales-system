@@ -257,8 +257,8 @@ export class OfflineTabService {
     // 2. Update Session Status Locally (Close it)
     // We DON'T delete it yet, we update it to closed so the UI updates
     // The MutationSyncService will delete it after successful sync.
-    await updateOrderSession(sessionId, {
-      status: 'closed', // Cast to any if strict enum prevents string
+    const closeUpdates: Partial<OfflineOrderSession> = {
+      status: 'closed' as any, // Cast to any if strict enum prevents string
       closed_at: new Date().toISOString(),
       // Preserve existing closed_by if none provided
       ...(paymentData.closed_by ? { closed_by: paymentData.closed_by } : {}),
@@ -266,7 +266,52 @@ export class OfflineTabService {
       total_amount: finalTotal,
       payment_method: paymentData.payment_method,
       _pending_sync: true,
-    });
+    };
+
+    // Always close the session referenced by sessionId
+    await updateOrderSession(sessionId, closeUpdates);
+
+    // If this is a temp/offline session that has already been synced to a real
+    // server ID, also close the real session record locally. This prevents the
+    // real alias from still appearing as an open tab on the initiating browser.
+    if ((session as any)._synced_id && (session as any)._synced_id !== sessionId) {
+      const realId = (session as any)._synced_id as string;
+      try {
+        await updateOrderSession(realId, closeUpdates);
+        console.log(
+          `✅ [OfflineTabService] Also closed synced real session locally: ${sessionId} → ${realId}`
+        );
+      } catch (e) {
+        console.warn(
+          `⚠️ [OfflineTabService] Failed to close synced real session locally for ${sessionId} → ${realId}`,
+          e
+        );
+      }
+    } else {
+      // Reverse lookup: If we are closing a REAL session, check if there is a TEMP session
+      // that points to this real session and close it too.
+      try {
+        const { getActiveOrderSessions } = await import('@/lib/data-batching/offlineDb');
+        const activeSessions = await getActiveOrderSessions();
+        const linkedTempSession = activeSessions.find(
+          s => (s._synced_id === sessionId && s.id !== sessionId) ||
+               // Fallback: Match by table_id if temp session exists for same table
+               (session.table_id && s.table_id === session.table_id && s._temp_id && s.id !== sessionId)
+        );
+
+        if (linkedTempSession) {
+          await updateOrderSession(linkedTempSession.id, closeUpdates);
+          console.log(
+            `✅ [OfflineTabService] Also closed linked temp session locally: ${linkedTempSession.id} → ${sessionId}`
+          );
+        }
+      } catch (e) {
+        console.warn(
+          `⚠️ [OfflineTabService] Failed to close linked temp session locally for real session ${sessionId}`,
+          e
+        );
+      }
+    }
 
     // 2b. Optimistically mark table as available in IndexedDB so UI updates immediately
     if (session.table_id) {

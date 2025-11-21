@@ -15,6 +15,7 @@ import {
   putOrderSession,
   getOrderSessionById,
   getActiveOrderSessions,
+  deleteOrderSession,
 } from './offlineDb';
 
 const ENTITY_CURSOR_PREFIX = 'lastSync';
@@ -621,7 +622,6 @@ export class DataBatchingService {
           table:restaurant_tables!table_id(id, table_number, area),
           customer:customers(id, full_name, tier)
         `)
-        .eq('status', 'open') // Only sync active sessions
         .order('updated_at', { ascending: true })
         .limit(limit);
 
@@ -681,6 +681,24 @@ export class DataBatchingService {
       // This handles race conditions where server trigger hasn't finished calculating totals
       for (const serverSession of records) {
         const localSession = await getOrderSessionById(serverSession.id);
+
+        // If server reports this session as closed (or any non-open status),
+        // remove it from the local cache so other browsers stop showing it.
+        if (serverSession.status !== 'open') {
+          await deleteOrderSession(serverSession.id);
+          continue;
+        }
+
+        // If this browser has already marked the session as closed locally and
+        // is waiting for sync (_pending_sync), treat the local closed state as
+        // authoritative and DO NOT re-open it from an "open" server copy.
+        if (localSession && localSession._pending_sync && localSession.status === 'closed') {
+          console.log(
+            `🛡️ [DataBatchingService] Skipping reopen for locally-closed session ${localSession.session_number} ` +
+            `(server status=open, local status=closed, pending_sync=true)`
+          );
+          continue;
+        }
         
         if (localSession && localSession._pending_sync) {
           // Local session has pending changes - preserve local totals if higher
