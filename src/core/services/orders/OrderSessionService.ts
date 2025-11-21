@@ -206,6 +206,42 @@ export class OrderSessionService {
         throw new AppError('Session not found', 404);
       }
 
+      if (session.status === SessionStatus.CLOSED) {
+        console.log(
+          `ℹ️  [OrderSessionService.closeTab] Session already closed, treating as idempotent success: ${session.session_number}`
+        );
+
+        const orders = session.orders || [];
+        const finalTotalAmount = session.total_amount || 0;
+        const change = paymentData.amount_tendered - finalTotalAmount;
+
+        return {
+          session,
+          receipt: {
+            session_number: session.session_number,
+            orders: orders.map(o => ({
+              order_number: o.order_number,
+              items: o.order_items || [],
+              total: o.total_amount,
+            })),
+            totals: {
+              subtotal: session.subtotal,
+              discount: session.discount_amount,
+              tax: session.tax_amount,
+              total: session.total_amount,
+            },
+            payment: {
+              method: paymentData.payment_method,
+              amount_tendered: paymentData.amount_tendered,
+              change,
+            },
+            table: session.table,
+            customer: session.customer,
+            closed_at: session.closed_at,
+          },
+        };
+      }
+
       if (session.status !== SessionStatus.OPEN) {
         throw new AppError('Session is not open', 400);
       }

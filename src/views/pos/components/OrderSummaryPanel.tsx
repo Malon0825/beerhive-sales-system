@@ -194,21 +194,21 @@ export function OrderSummaryPanel({
                   </span>
                 </div>
 
-                {/* Item Notes Input */}
-                <div className="mt-3 pt-3 border-t border-gray-100">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <FileText className="w-3 h-3 text-gray-500" />
-                    <Label htmlFor={`item-notes-${item.id}`} className="text-xs text-gray-600">
-                      Special instructions (flavor, cooking style, etc.)
+                {/* Item Notes Input - Highlighted */}
+                <div className="mt-3 p-2 bg-yellow-50/80 rounded border border-yellow-100">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <FileText className="w-3.5 h-3.5 text-amber-500" />
+                    <Label htmlFor={`item-notes-${item.id}`} className="text-xs font-medium text-amber-800">
+                      Note / Instructions
                     </Label>
                   </div>
                   <Input
                     id={`item-notes-${item.id}`}
                     type="text"
-                    placeholder="e.g., BBQ flavor, Well done, Extra spicy..."
+                    placeholder="e.g., BBQ flavor, Well done..."
                     value={item.notes || ''}
                     onChange={(e) => onUpdateItemNotes(item.id, e.target.value)}
-                    className="h-8 text-xs"
+                    className="h-8 text-xs bg-white border-amber-200 focus-visible:ring-amber-500 focus-visible:border-amber-500 placeholder:text-gray-400"
                   />
                 </div>
               </Card>

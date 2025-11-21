@@ -11,6 +11,7 @@ import type {
 } from '@/views/pos/PaymentPanel';
 import { SalesReceipt } from '@/views/pos/SalesReceipt';
 import type { ReceiptOrderData } from '@/views/pos/SalesReceipt';
+import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
 
 /**
  * Close Tab Page
@@ -31,6 +32,16 @@ export default function CloseTabPage() {
   const showReceiptRef = useRef(false);
   const [receiptData, setReceiptData] = useState<ReceiptOrderData | null>(null);
   const { dataBatching, isOnline } = useOfflineRuntime();
+  const [alertDialog, setAlertDialog] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    variant: 'error' | 'warning' | 'success' | 'info' | 'stock-error';
+  }>({
+    open: false,
+    title: '',
+    variant: 'info',
+  });
 
   /**
    * Fetch session data including orders for item count
@@ -93,13 +104,22 @@ export default function CloseTabPage() {
               const syncService = MutationSyncService.getInstance();
               void syncService.processPendingMutations();
             }
-
-            alert('Tab closed successfully (No payment required - ₱0.00)');
-            router.push('/tabs');
+            setAlertDialog({
+              open: true,
+              title: 'Tab Closed  No Payment Required',
+              description:
+                'This tab has a total of 0.00. It has been closed without payment. You can now return to Tab Management.',
+              variant: 'success',
+            });
           } catch (error) {
             console.error('Failed to auto-close zero-amount tab:', error);
-            alert('Failed to close tab. Please try again.');
-            router.push('/tabs');
+            setAlertDialog({
+              open: true,
+              title: 'Unable to Close Tab',
+              description:
+                'We were unable to close this tab. Please try again. If the issue persists, contact your system administrator.',
+              variant: 'error',
+            });
           }
         }
       } catch (error) {
@@ -198,6 +218,19 @@ export default function CloseTabPage() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Closing tab...</p>
           <p className="mt-2 text-sm text-gray-500">No payment required (₱0.00)</p>
+
+          <AlertDialogSimple
+            open={alertDialog.open}
+            onOpenChange={(open) => {
+              setAlertDialog((prev) => ({ ...prev, open }));
+              if (!open) {
+                router.push('/tabs');
+              }
+            }}
+            title={alertDialog.title}
+            description={alertDialog.description}
+            variant={alertDialog.variant}
+          />
         </div>
       </div>
     );
@@ -227,6 +260,19 @@ export default function CloseTabPage() {
           onClose={handleCloseReceipt}
         />
       )}
+
+      <AlertDialogSimple
+        open={alertDialog.open}
+        onOpenChange={(open) => {
+          setAlertDialog((prev) => ({ ...prev, open }));
+          if (!open) {
+            router.push('/tabs');
+          }
+        }}
+        title={alertDialog.title}
+        description={alertDialog.description}
+        variant={alertDialog.variant}
+      />
     </>
   );
 }

@@ -25,6 +25,7 @@ import { OfflineTabService } from '@/services/OfflineTabService';
 import TableWithTabCard from './TableWithTabCard';
 import QuickOpenTabModal from './QuickOpenTabModal';
 import { useRouter } from 'next/navigation';
+import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
 
 /**
  * TabManagementDashboard Component
@@ -52,6 +53,16 @@ export default function TabManagementDashboard() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedTable, setSelectedTable] = useState<any>(null);
   const [showOpenTabModal, setShowOpenTabModal] = useState(false);
+  const [alertDialog, setAlertDialog] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    variant: 'error' | 'warning' | 'success' | 'info' | 'stock-error';
+  }>({
+    open: false,
+    title: '',
+    variant: 'info',
+  });
 
   /**
    * Load tables from IndexedDB (instant)
@@ -357,11 +368,23 @@ export default function TabManagementDashboard() {
         // Refresh UI to remove from list
         await loadAllData();
 
-        // Show success message
-        alert('Tab closed successfully (No payment required - ₱0.00)');
+        // Show professional in-app dialog
+        setAlertDialog({
+          open: true,
+          title: 'Tab Closed – No Payment Required',
+          description:
+            'This tab has a total of ₱0.00. It has been closed without payment. The table is now available for a new tab.',
+          variant: 'success',
+        });
       } catch (error) {
         console.error('Failed to close zero-amount tab:', error);
-        alert('Failed to close tab. Please try again.');
+        setAlertDialog({
+          open: true,
+          title: 'Unable to Close Tab',
+          description:
+            'We were unable to close this tab. Please try again. If the issue persists, contact your system administrator.',
+          variant: 'error',
+        });
       }
     } else {
       // Normal flow - navigate to payment page
@@ -599,6 +622,14 @@ export default function TabManagementDashboard() {
         }}
         table={selectedTable}
         onConfirm={handleConfirmOpenTab}
+      />
+
+      <AlertDialogSimple
+        open={alertDialog.open}
+        onOpenChange={(open) => setAlertDialog((prev) => ({ ...prev, open }))}
+        title={alertDialog.title}
+        description={alertDialog.description}
+        variant={alertDialog.variant}
       />
     </div>
   );

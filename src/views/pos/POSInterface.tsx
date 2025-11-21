@@ -256,8 +256,9 @@ export function POSInterface() {
    */
   useEffect(() => {
     if (cart.items.length === 0 && cartRestorationCompleteRef.current) {
-      console.log('🔄 [POSInterface] Cart cleared, resetting restoration flag');
-      cartRestorationCompleteRef.current = false;
+      console.log('🔄 [POSInterface] Cart cleared');
+      // IMPORTANT: Do NOT reset cartRestorationCompleteRef here.
+      // Re-reservation of restored cart items should run only once per POS mount.
     }
   }, [cart.items.length]);
 
@@ -612,9 +613,11 @@ export function POSInterface() {
       if (item.isPackage && item.package?.items) {
         // Release stock for all items in the package
         item.package.items.forEach((packageItem: any) => {
-          if (packageItem.product?.id) {
-            stockTracker.releaseStock(packageItem.product.id, packageItem.quantity * item.quantity);
-            console.log('📦 [POSInterface] Stock released for package item:', packageItem.product.name);
+          // Check for product ID either in product object or directly on item
+          const productId = packageItem.product?.id || packageItem.product_id;
+          if (productId) {
+            stockTracker.releaseStock(productId, packageItem.quantity * item.quantity);
+            console.log('📦 [POSInterface] Stock released for package item:', packageItem.product?.name || productId);
           }
         });
       } else if (item.product) {
@@ -1038,29 +1041,36 @@ export function POSInterface() {
                       return (
                         <Card
                           key={`pkg-${pkg.id}`}
-                          className={`p-4 transition-all duration-300 animate-in fade-in zoom-in-95 ${
-                            canPurchase ? 'cursor-pointer hover:shadow-lg hover:border-amber-400' : 'opacity-60 cursor-not-allowed'
+                          className={`p-4 border-2 border-amber-600 transition-all duration-300 animate-in fade-in zoom-in-95 ${
+                            canPurchase ? 'cursor-pointer hover:shadow-lg hover:border-amber-700' : 'opacity-60 cursor-not-allowed'
                           }`}
                           onClick={() => canPurchase && handleAddPackage(pkg)}
                         >
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex-1">
                               <h3 className="font-bold text-base mb-1">{pkg.name}</h3>
-                              <div className="flex gap-1 mt-1">
-                                <span className="inline-block px-2 py-1 text-xs font-medium bg-amber-500 text-white rounded">PKG</span>
-                                {pkg.package_type === 'vip_only' && (
-                                  <span className="inline-block px-2 py-1 text-xs font-medium bg-purple-600 text-white rounded">VIP Only</span>
-                                )}
-                                {pkg.package_type === 'promotional' && (
-                                  <span className="inline-block px-2 py-1 text-xs font-medium bg-orange-600 text-white rounded">Promo</span>
-                                )}
-                              </div>
                             </div>
                             <PackageIcon className="w-6 h-6 text-amber-600" />
                           </div>
-                          {pkg.description && (
-                            <p className="text-xs text-gray-600 mb-3 line-clamp-2">{pkg.description}</p>
+
+                          {pkg.items && pkg.items.length > 0 && (
+                            <div className="mb-3 p-2 bg-gray-50 rounded-md">
+                              <p className="text-xs font-semibold text-gray-700 mb-1">Includes:</p>
+                              <ul className="text-xs text-gray-600 space-y-0.5">
+                                {pkg.items.slice(0, 3).map((item: any, idx: number) => (
+                                  <li key={idx}>
+                                    • {item.quantity}x {item.product?.name || 'Product'}
+                                  </li>
+                                ))}
+                                {pkg.items.length > 3 && (
+                                  <li className="text-blue-600 font-medium">
+                                    + {pkg.items.length - 3} more items
+                                  </li>
+                                )}
+                              </ul>
+                            </div>
                           )}
+
                           <div className="border-t pt-3">
                             <div className="flex justify-between items-center">
                               <span className="text-sm font-medium text-gray-700">Price:</span>
@@ -1068,6 +1078,9 @@ export function POSInterface() {
                                 ₱{(customerIsVIP && pkg.vip_price ? pkg.vip_price : pkg.base_price).toFixed(2)}
                               </span>
                             </div>
+                            {customerIsVIP && pkg.vip_price && (
+                              <p className="text-xs text-purple-600 text-right mt-1">VIP Price Applied!</p>
+                            )}
                           </div>
                         </Card>
                       );
@@ -1112,7 +1125,7 @@ export function POSInterface() {
                       return (
                         <Card
                           key={pkg.id}
-                          className={`p-4 transition-all duration-300 animate-in fade-in zoom-in-95 ${
+                          className={`p-4 border-2 transition-all duration-300 animate-in fade-in zoom-in-95 ${
                             canPurchase ? 'cursor-pointer hover:shadow-lg hover:border-amber-400' : 'opacity-60 cursor-not-allowed'
                           }`}
                           onClick={() => canPurchase && handleAddPackage(pkg)}
@@ -1120,20 +1133,28 @@ export function POSInterface() {
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex-1">
                               <h3 className="font-bold text-base mb-1">{pkg.name}</h3>
-                              <div className="flex gap-1 mt-1">
-                                {pkg.package_type === 'vip_only' && (
-                                  <span className="inline-block px-2 py-1 text-xs font-medium bg-purple-600 text-white rounded">VIP Only</span>
-                                )}
-                                {pkg.package_type === 'promotional' && (
-                                  <span className="inline-block px-2 py-1 text-xs font-medium bg-orange-600 text-white rounded">Promo</span>
-                                )}
-                              </div>
                             </div>
                             <PackageIcon className="w-6 h-6 text-amber-600" />
                           </div>
-                          {pkg.description && (
-                            <p className="text-xs text-gray-600 mb-3 line-clamp-2">{pkg.description}</p>
+
+                          {pkg.items && pkg.items.length > 0 && (
+                            <div className="mb-3 p-2 bg-gray-50 rounded-md">
+                              <p className="text-xs font-semibold text-gray-700 mb-1">Includes:</p>
+                              <ul className="text-xs text-gray-600 space-y-0.5">
+                                {pkg.items.slice(0, 3).map((item: any, idx: number) => (
+                                  <li key={idx}>
+                                    • {item.quantity}x {item.product?.name || 'Product'}
+                                  </li>
+                                ))}
+                                {pkg.items.length > 3 && (
+                                  <li className="text-blue-600 font-medium">
+                                    + {pkg.items.length - 3} more items
+                                  </li>
+                                )}
+                              </ul>
+                            </div>
                           )}
+
                           <div className="border-t pt-3">
                             <div className="flex justify-between items-center">
                               <span className="text-sm font-medium text-gray-700">Price:</span>

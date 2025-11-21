@@ -159,6 +159,7 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
               description: null,
               package_type: 'regular' as const,
               vip_price: null,
+              cost_price: null,
               valid_from: null,
               valid_until: null,
               is_addon_eligible: false,
@@ -571,6 +572,86 @@ export function CartProvider({ children, userId }: { children: React.ReactNode; 
       const orderId = await ensureCurrentOrder();
       if (!orderId) {
         console.warn('[CartContext] Could not create order');
+        return;
+      }
+      
+      // Check if package already exists in cart
+      const existingItem = items.find(item => item.isPackage && item.package?.id === pkg.id);
+      
+      if (existingItem) {
+        console.log('📦 [CartContext] Package already in cart, updating quantity');
+        const newQuantity = existingItem.quantity + 1;
+        const newSubtotal = pkg.base_price * newQuantity;
+        
+        // STEP 1: Update local state (UI) FIRST for immediate feedback
+        setItems(prevItems =>
+          prevItems.map(item => 
+            item.isPackage && item.package?.id === pkg.id
+              ? { ...item, quantity: newQuantity, subtotal: newSubtotal }
+              : item
+          )
+        );
+        
+        // STEP 2: Save item to IndexedDB
+        const localItem: LocalOrderItem = {
+          id: existingItem.id,
+          orderId,
+          packageId: pkg.id,
+          itemName: pkg.name,
+          quantity: newQuantity,
+          unitPrice: pkg.base_price,
+          subtotal: newSubtotal,
+          discountAmount: 0,
+          total: newSubtotal,
+          isVipPrice: false,
+          isComplimentary: false,
+          createdAt: new Date().toISOString(),
+        };
+        
+        await saveOrderItem(localItem);
+        console.log('💾 [CartContext] Package quantity updated in IndexedDB:', newQuantity);
+        
+        // STEP 3: Calculate and save order totals BEFORE broadcasting
+        const allItems = items.map(item => 
+          item.isPackage && item.package?.id === pkg.id
+            ? { ...item, quantity: newQuantity, subtotal: newSubtotal }
+            : item
+        );
+        
+        const subtotal = allItems.reduce((sum, item) => sum + item.subtotal, 0);
+        const discountAmount = allItems.reduce((sum, item) => sum + item.discount, 0);
+        const totalAmount = subtotal - discountAmount;
+        
+        const localOrder: LocalOrder = {
+          id: orderId,
+          cashierId: cashierId || undefined,
+          tableNumber: table?.table_number,
+          customerId: customer?.id,
+          customerName: customer?.full_name,
+          customerTier: customer?.tier,
+          orderNumber: orderId,
+          subtotal,
+          discountAmount,
+          taxAmount: 0,
+          totalAmount,
+          status: 'draft',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        await saveOrder(localOrder);
+        console.log('💾 [CartContext] Order totals synced BEFORE broadcast:', totalAmount);
+        
+        // STEP 4: NOW broadcast (customer display will read correct totals)
+        const broadcastIdentifier = table?.table_number || `takeout_${cashierId}`;
+        broadcastItemUpdated(orderId, broadcastIdentifier, existingItem.id, localItem);
+        
+        if (table?.table_number) {
+          console.log('📡 [CartContext] DINE-IN package broadcast to table:', table.table_number);
+        } else {
+          console.log('📡 [CartContext] TAKEOUT package broadcast for cashier:', cashierId);
+        }
+        
         return;
       }
       
