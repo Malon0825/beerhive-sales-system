@@ -242,7 +242,7 @@ export function StockTrackerProvider({ children }: { children: React.ReactNode }
     return Boolean(stockState[productId]);
   }, [stockState]);
 
-  const value: StockTrackerContextType = {
+  const value = React.useMemo<StockTrackerContextType>(() => ({
     initializeStock,
     getCurrentStock,
     reserveStock,
@@ -250,7 +250,15 @@ export function StockTrackerProvider({ children }: { children: React.ReactNode }
     resetAllStock,
     hasStock,
     isProductTracked,
-  };
+  }), [
+    initializeStock,
+    getCurrentStock,
+    reserveStock,
+    releaseStock,
+    resetAllStock,
+    hasStock,
+    isProductTracked,
+  ]);
 
   return (
     <StockTrackerContext.Provider value={value}>

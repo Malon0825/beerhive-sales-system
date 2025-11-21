@@ -114,6 +114,7 @@ export default function SessionProductSelector({
   
   // Access stock tracker context
   const stockTracker = useStockTracker();
+  const { initializeStock } = stockTracker;
 
   // Fetch package availability (Phase 4 - POS Integration)
   const [packageAvailability, setPackageAvailability] = useState<PackageAvailabilityItem[]>([]);
@@ -246,7 +247,7 @@ export default function SessionProductSelector({
     };
 
     loadCatalogFromSnapshot();
-  }, [dataBatching, stockTracker]);
+  }, [dataBatching, initializeStock]);
 
   /**
    * Check if product is a drink/beverage

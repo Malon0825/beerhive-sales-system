@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PaymentPanel } from '@/views/pos/PaymentPanel';
 import { apiGet } from '@/lib/utils/apiClient';
@@ -27,6 +27,8 @@ export default function CloseTabPage() {
   const [sessionData, setSessionData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showReceipt, setShowReceipt] = useState(false);
+  // Use ref to track receipt state synchronously for handleClose race condition
+  const showReceiptRef = useRef(false);
   const [receiptData, setReceiptData] = useState<ReceiptOrderData | null>(null);
   const { dataBatching, isOnline } = useOfflineRuntime();
 
@@ -116,7 +118,8 @@ export default function CloseTabPage() {
    */
   const handleClose = (open: boolean) => {
     setIsOpen(open);
-    if (!open && !showReceipt) {
+    // Check ref instead of state for immediate updates to avoid race condition
+    if (!open && !showReceiptRef.current) {
       router.push('/tabs'); // Redirect to unified tab management
     }
   };
@@ -129,49 +132,24 @@ export default function CloseTabPage() {
   const handleSuccess = (sessionId: string, options?: PaymentCompleteOptions) => {
     console.log('✅ Payment successful, session closed:', sessionId);
     
-    if (options?.isOffline) {
-      // Offline mode: Transaction is queued
-      // Navigate back to tabs immediately (offline-first UX)
-      // Receipt will be available after sync completes
-      console.log('💾 [CloseTabPage] Offline payment queued - navigating to tabs');
-      
-      // Small delay to allow toast to show
-      setTimeout(() => {
-        router.push('/tabs');
-      }, 500);
+    // Check if we have local order data for the receipt (Offline-First approach)
+    // This works for both online and offline modes since PaymentPanel always provides a snapshot
+    if (options?.localOrder) {
+      console.log('📄 Showing session receipt using local data snapshot');
+      setReceiptData(options.localOrder as ReceiptOrderData);
+      setShowReceipt(true);
+      showReceiptRef.current = true; // Update ref immediately
       return;
     }
 
-    // Extract result data containing orders
-    const resultData = options?.resultData;
-    
-    if (resultData) {
-      const receiptUrl = `/order-sessions/${sessionId}/receipt`;
-      console.log('📄 Auto-printing consolidated session receipt:', receiptUrl);
-
-      setTimeout(() => {
-        const printWindow = window.open(receiptUrl, '_blank', 'width=420,height=680');
-
-        if (printWindow) {
-          printWindow.addEventListener('load', () => {
-            try {
-              printWindow.focus();
-            } catch {}
-          });
-        }
-      }, 200);
-
-      // Redirect after a brief delay to allow print dialogs to open
-      setTimeout(() => {
-        router.push('/tabs');
-      }, 1500);
-    } else {
-      router.push('/tabs');
-    }
+    // Fallback for legacy behavior or missing data
+    console.log('⚠️ No local receipt data found, redirecting to tabs');
+    router.push('/tabs');
   };
 
   const handleCloseReceipt = () => {
     setShowReceipt(false);
+    showReceiptRef.current = false;
     setReceiptData(null);
     router.push('/tabs');
   };
