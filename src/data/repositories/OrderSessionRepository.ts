@@ -2,6 +2,7 @@
 import { supabaseAdmin } from '../supabase/server-client';
 import { OrderSession, CreateOrderSessionDto, UpdateOrderSessionDto } from '@/models/entities/OrderSession';
 import { SessionStatus } from '@/models/enums/SessionStatus';
+import { AppError } from '@/lib/errors/AppError';
 
 /**
  * OrderSessionRepository
@@ -16,32 +17,54 @@ export class OrderSessionRepository {
    * @returns Created session
    */
   static async create(data: CreateOrderSessionDto): Promise<OrderSession> {
-    const { data: session, error } = await supabaseAdmin
-      .from(this.TABLE)
-      .insert({
-        table_id: data.table_id,
-        customer_id: data.customer_id,
-        notes: data.notes,
-        opened_by: data.opened_by,
-        status: SessionStatus.OPEN,
-        subtotal: 0,
-        discount_amount: 0,
-        tax_amount: 0,
-        total_amount: 0,
-      })
-      .select(`
-        *,
-        table:restaurant_tables!order_sessions_table_id_fkey(id, table_number, area),
-        customer:customers(id, full_name, tier)
-      `)
-      .single();
+    try {
+      const { data: session, error } = await supabaseAdmin
+        .from(this.TABLE)
+        .insert({
+          table_id: data.table_id,
+          customer_id: data.customer_id,
+          notes: data.notes,
+          opened_by: data.opened_by,
+          status: SessionStatus.OPEN,
+          subtotal: 0,
+          discount_amount: 0,
+          tax_amount: 0,
+          total_amount: 0,
+        })
+        .select(`
+          *,
+          table:restaurant_tables!order_sessions_table_id_fkey(id, table_number, area),
+          customer:customers(id, full_name, tier)
+        `)
+        .single();
 
-    if (error) {
-      console.error('Create order session error:', error);
-      throw new Error(`Failed to create order session: ${error.message}`);
+      if (error) {
+        console.error('Create order session error:', error);
+
+        const message = error.message || '';
+        const isNetwork = /fetch failed|network request|Failed to fetch/i.test(message);
+
+        if (isNetwork) {
+          throw new AppError('Network unavailable while creating tab', 503, 'NETWORK_UNAVAILABLE', error);
+        }
+
+        throw new AppError(`Failed to create order session: ${message}`, 500, 'ORDER_SESSION_CREATE_FAILED', error);
+      }
+
+      return session as OrderSession;
+    } catch (err: any) {
+      // Supabase client itself can throw (e.g. TypeError: fetch failed)
+      const message = err?.message || String(err ?? 'Unknown error');
+      const isNetwork = /fetch failed|network request|Failed to fetch/i.test(message);
+
+      if (isNetwork) {
+        console.error('Create order session network error:', err);
+        throw new AppError('Network unavailable while creating tab', 503, 'NETWORK_UNAVAILABLE', err);
+      }
+
+      console.error('Create order session unexpected error:', err);
+      throw new AppError('Failed to create order session', 500, 'ORDER_SESSION_CREATE_FAILED', err);
     }
-
-    return session as OrderSession;
   }
 
   /**

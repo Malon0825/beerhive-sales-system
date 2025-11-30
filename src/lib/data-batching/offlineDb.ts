@@ -141,6 +141,7 @@ export async function enqueueSyncMutation(
         last_attempt_at: null,
         status: 'pending' as SyncQueueStatus,
         error: null,
+        next_attempt_at: null,
       });
 
       request.onsuccess = () => resolve(request.result as number);
@@ -452,6 +453,7 @@ export interface SyncQueueEntry {
   last_attempt_at: string | null;
   status: SyncQueueStatus;
   error?: string | null;
+  next_attempt_at?: string | null;
 }
 
 export interface MetadataEntry {

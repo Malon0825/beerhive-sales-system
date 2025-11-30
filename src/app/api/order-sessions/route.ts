@@ -35,13 +35,13 @@ export async function POST(request: NextRequest) {
     
     if (error instanceof AppError) {
       return NextResponse.json(
-        { success: false, error: error.message },
+        { success: false, error: error.message, code: error.code, details: error.details },
         { status: error.statusCode }
       );
     }
 
     return NextResponse.json(
-      { success: false, error: 'Failed to create order session' },
+      { success: false, error: 'Failed to create order session', code: 'ORDER_SESSION_CREATE_FAILED' },
       { status: 500 }
     );
   }

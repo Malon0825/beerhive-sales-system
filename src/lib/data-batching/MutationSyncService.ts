@@ -15,6 +15,8 @@ import {
 
 const MAX_RETRIES = 3;
 const BATCH_SIZE = 25;
+const NETWORK_BACKOFF_BASE_MS = 60_000;
+const NETWORK_BACKOFF_MAX_MS = 24 * 60 * 60 * 1000;
 
 export interface SyncStatus {
   syncing: boolean;
@@ -29,6 +31,7 @@ export class MutationSyncService {
   private syncing = false;
   private listeners = new Set<SyncListener>();
   private offlineNoticeShown = false;
+  private retryTimer: number | null = null;
   private orderIdMap = new Map<string, string>();
   private sessionIdMap = new Map<string, string>();
 
@@ -49,12 +52,15 @@ export class MutationSyncService {
     if (navigator.onLine) {
       await this.processPendingMutations();
     }
+
+    this.startRetryTimer();
   }
 
   destroy(): void {
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.handleOnline);
     }
+    this.stopRetryTimer();
     this.listeners.clear();
   }
 
@@ -120,7 +126,20 @@ export class MutationSyncService {
       let pending = await getMutationsByStatus('pending', BATCH_SIZE);
 
       while (pending.length > 0) {
-        for (const mutation of pending) {
+        const now = Date.now();
+        const dueMutations = pending.filter((mutation) => {
+          if (!mutation.next_attempt_at) {
+            return true;
+          }
+          const nextTime = new Date(mutation.next_attempt_at).getTime();
+          return Number.isNaN(nextTime) || nextTime <= now;
+        });
+
+        if (dueMutations.length === 0) {
+          break;
+        }
+
+        for (const mutation of dueMutations) {
           await this.processMutation(mutation);
         }
 
@@ -219,15 +238,24 @@ export class MutationSyncService {
       }
 
       if (response && response.success === false) {
-        throw new Error(response.error || 'Mutation replay failed');
+        const errorCode = (response as any).code as string | undefined;
+        const errorMessage = (response as any).error as string | undefined;
+
+        if (errorCode === 'NETWORK_UNAVAILABLE') {
+          // Tag as network error so it follows exponential backoff path
+          throw new Error('NETWORK_UNAVAILABLE');
+        }
+
+        throw new Error(errorMessage || 'Mutation replay failed');
       }
 
       await deleteSyncQueueEntry(mutation.id);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      const isNetwork = this.isNetworkError(error);
       
       // Differentiate between expected network errors and unexpected errors
-      if (this.isNetworkError(error)) {
+      if (isNetwork) {
         // Network errors are expected when offline - use warn instead of error
         console.warn(`[MutationSyncService] Mutation ${mutation.id} paused (network unavailable):`, errorMessage);
         
@@ -238,6 +266,20 @@ export class MutationSyncService {
             description: 'Network connection lost. Your queued orders will sync automatically when connection is restored.',
           });
           this.offlineNoticeShown = true;
+        }
+
+        if (mutation.id) {
+          const attempt = mutation.retry_count + 1;
+          const backoffMs = Math.min(
+            NETWORK_BACKOFF_BASE_MS * Math.pow(2, attempt - 1),
+            NETWORK_BACKOFF_MAX_MS
+          );
+          const nextAttemptAt = new Date(Date.now() + backoffMs).toISOString();
+          await updateSyncQueueEntry(mutation.id, {
+            status: 'pending',
+            error: null,
+            next_attempt_at: nextAttemptAt,
+          });
         }
       } else {
         // Unexpected errors - log as error for debugging
@@ -253,7 +295,7 @@ export class MutationSyncService {
         });
       }
 
-      if (mutation.retry_count + 1 >= MAX_RETRIES) {
+      if (!isNetwork && mutation.retry_count + 1 >= MAX_RETRIES) {
         await updateSyncQueueEntry(mutation.id, {
           status: 'failed',
           error: errorMessage,
@@ -270,6 +312,31 @@ export class MutationSyncService {
         console.error('[MutationSyncService] Listener error', error);
       }
     });
+  }
+
+  private startRetryTimer(): void {
+    if (this.retryTimer !== null) {
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    this.retryTimer = window.setInterval(() => {
+      if (this.syncing || this.isOffline()) {
+        return;
+      }
+
+      void this.processPendingMutations();
+    }, 60_000);
+  }
+
+  private stopRetryTimer(): void {
+    if (this.retryTimer !== null && typeof window !== 'undefined') {
+      window.clearInterval(this.retryTimer);
+      this.retryTimer = null;
+    }
   }
 
   private isOffline(): boolean {
@@ -299,6 +366,12 @@ export class MutationSyncService {
     }
 
     const message = error instanceof Error ? error.message : String(error ?? '');
+
+    // Treat explicit backend network marker as network error
+    if (/NETWORK_UNAVAILABLE/i.test(message)) {
+      return true;
+    }
+
     return /networkerror|failed to fetch|fetch failed|network request/i.test(message);
   }
 

@@ -9,6 +9,7 @@ import {
   createSessionReceiptOrderData,
   SessionBillData,
 } from '@/views/orders/sessionReceiptMapper';
+import { buildOfflineSessionBillData } from '@/views/orders/offlineSessionBillBuilder';
 
 /**
  * BillPreviewModal Component
@@ -47,24 +48,62 @@ export default function BillPreviewModal({
   }, []);
 
   /**
-   * Fetch bill preview data from API
+   * Fetch bill preview data from API, with offline fallback to IndexedDB.
    */
   const fetchBillPreview = async () => {
     try {
       setLoading(true);
       setError(null);
 
+      // For purely offline temp sessions, skip network and read from IndexedDB.
+      if (sessionId.startsWith('offline-session-') || typeof navigator !== 'undefined' && navigator.onLine === false) {
+        const offlineData = await buildOfflineSessionBillData(sessionId);
+        if (offlineData) {
+          setBillData(offlineData);
+        } else {
+          setError('Bill data is not available offline for this tab.');
+        }
+        return;
+      }
+
       const response = await fetch(`/api/order-sessions/${sessionId}/bill-preview`);
+
+      if (!response.ok) {
+        // If API fails (e.g., backend unreachable) and we have offline cache, try fallback
+        const offlineData = await buildOfflineSessionBillData(sessionId);
+        if (offlineData) {
+          setBillData(offlineData);
+          return;
+        }
+
+        const data = await response.json().catch(() => null);
+        setError(data?.error || 'Failed to load bill preview');
+        return;
+      }
+
       const data = await response.json();
 
       if (data.success) {
         setBillData(data.data);
       } else {
-        setError(data.error || 'Failed to load bill preview');
+        // Final fallback: try offline builder if network returned a logical error and device might be offline
+        const offlineData = await buildOfflineSessionBillData(sessionId);
+        if (offlineData) {
+          setBillData(offlineData);
+        } else {
+          setError(data.error || 'Failed to load bill preview');
+        }
       }
     } catch (err) {
       console.error('Failed to fetch bill preview:', err);
-      setError('Failed to load bill preview');
+
+      // Network/other error - attempt offline fallback
+      const offlineData = await buildOfflineSessionBillData(sessionId);
+      if (offlineData) {
+        setBillData(offlineData);
+      } else {
+        setError('Failed to load bill preview');
+      }
     } finally {
       setLoading(false);
     }
