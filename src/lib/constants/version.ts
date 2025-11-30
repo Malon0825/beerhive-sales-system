@@ -11,4 +11,4 @@ export const APP_NAME = 'BeerHive POS';
  * Semantic application version.
  * Visible on the login page and the sidebar.
  */
-export const APP_VERSION = '1.1.1';
+export const APP_VERSION = '1.1.2';

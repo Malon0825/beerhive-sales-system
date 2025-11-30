@@ -130,7 +130,7 @@ export async function getDailySalesSummary(startDate: string, endDate: string) {
     .from('order_items')
     .select(`
       quantity,
-      order:order_id(completed_at, status),
+      order:orders!inner(completed_at, status),
       product:product_id(base_price, cost_price)
     `)
     .gte('order.completed_at', startDate)
@@ -237,7 +237,7 @@ export async function getTopProducts(startDate: string, endDate: string, limit =
       item_name,
       quantity,
       total,
-      order:order_id(completed_at, status)
+      order:orders!inner(completed_at, status)
     `)
     .gte('order.completed_at', startDate)
     .lte('order.completed_at', endDate)
@@ -286,7 +286,7 @@ export async function getAllProductsSold(startDate: string, endDate: string) {
       item_name,
       quantity,
       total,
-      order:order_id(completed_at, status)
+      order:orders!inner(completed_at, status)
     `)
     .gte('order.completed_at', startDate)
     .lte('order.completed_at', endDate)
@@ -334,7 +334,7 @@ export async function getAllProductsAndPackagesSold(startDate: string, endDate: 
       item_name,
       quantity,
       total,
-      order:order_id(completed_at, status),
+      order:orders!inner(completed_at, status),
       product:product_id(base_price, cost_price)
     `)
     .gte('order.completed_at', startDate)
@@ -376,7 +376,7 @@ export async function getAllProductsAndPackagesSold(startDate: string, endDate: 
       item_name,
       quantity,
       total,
-      order:order_id(completed_at, status),
+      order:orders!inner(completed_at, status),
       package:package_id(base_price, cost_price)
     `)
     .gte('order.completed_at', startDate)
@@ -433,7 +433,7 @@ export async function getAllProductsSoldCombined(startDate: string, endDate: str
       product_id,
       item_name,
       quantity,
-      order:order_id(completed_at, status)
+      order:orders!inner(completed_at, status)
     `)
     .gte('order.completed_at', startDate)
     .lte('order.completed_at', endDate)
@@ -467,7 +467,7 @@ export async function getAllProductsSoldCombined(startDate: string, endDate: str
     .from('order_items')
     .select(`
       quantity,
-      order:order_id(completed_at, status),
+      order:orders!inner(completed_at, status),
       package:packages!inner(
         id,
         name,
@@ -588,7 +588,7 @@ export async function getSalesByCategory(startDate: string, endDate: string) {
       product:product_id(
         category:category_id(id, name)
       ),
-      order:order_id(completed_at, status)
+      order:orders!inner(completed_at, status)
     `)
     .gte('order.completed_at', startDate)
     .lte('order.completed_at', endDate)
@@ -848,7 +848,7 @@ export async function getInventoryTurnover(startDate: string, endDate: string) {
       product_id,
       item_name,
       quantity,
-      order:order_id(completed_at, status)
+      order:orders!inner(completed_at, status)
     `)
     .gte('order.completed_at', startDate)
     .lte('order.completed_at', endDate)
