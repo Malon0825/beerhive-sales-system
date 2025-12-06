@@ -286,7 +286,8 @@ export async function getAllProductsSold(startDate: string, endDate: string) {
       item_name,
       quantity,
       total,
-      order:orders!inner(completed_at, status)
+      order:orders!inner(completed_at, status),
+      product:product_id(base_price, cost_price)
     `)
     .gte('order.completed_at', startDate)
     .lte('order.completed_at', endDate)
@@ -307,12 +308,34 @@ export async function getAllProductsSold(startDate: string, endDate: string) {
         total_quantity: 0,
         total_revenue: 0,
         order_count: 0,
+        item_type: 'product',
+        base_price: item.product?.base_price,
+        cost_price:
+          item.product?.cost_price != null
+            ? parseFloat(item.product.cost_price)
+            : null,
+        net_income: null,
       });
     }
     const product = productMap.get(key);
     product.total_quantity += parseFloat(item.quantity);
     product.total_revenue += parseFloat(item.total);
     product.order_count += 1;
+  });
+
+  // Compute net income for standalone products where cost and base prices are known
+  productMap.forEach((val: any) => {
+    if (
+      val.cost_price === null ||
+      val.cost_price === undefined ||
+      val.base_price === undefined
+    ) {
+      val.net_income = null;
+    } else {
+      val.net_income =
+        (parseFloat(val.base_price) - parseFloat(val.cost_price)) *
+        val.total_quantity;
+    }
   });
 
   return Array.from(productMap.values())
