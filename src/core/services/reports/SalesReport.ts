@@ -250,8 +250,11 @@ export class SalesReportService {
       payment_methods: paymentMethods,
       categories,
       cashiers,
+      // Keep package-inclusive dataset exposed for backwards compatibility
       all_products_sold: allProductsAndPackagesSold,
-      all_products_sold_standalone: allProductsAndPackagesSold,
+      // Standalone view should list actual individual products only
+      all_products_sold_standalone: allProductsSold,
+      // Combined view expands packages into their component products for consumption tracking
       all_products_sold_combined: allProductsSoldCombined,
     };
   }

@@ -472,13 +472,6 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
             </>
           )}
           
-          {order.table && (
-            <>
-              <div className="text-black">Table:</div>
-              <div className="text-right font-semibold">Table {order.table.table_number}</div>
-            </>
-          )}
-          
           {order.customer && (
             <>
               <div className="text-black">Customer:</div>
@@ -486,6 +479,30 @@ export function PrintableReceipt({ orderData, isPrintMode = false, variant = 'br
             </>
           )}
         </div>
+
+        {order.table && (
+          <div
+            className="border border-black rounded-md text-center"
+            style={{
+              marginTop: '6px',
+              padding: '6px 8px',
+              backgroundColor: isPrintMode ? '#f5f5f5' : undefined,
+            }}
+          >
+            <p
+              className="font-semibold uppercase text-black"
+              style={{ fontSize: '10px', letterSpacing: '0.08em', marginBottom: '2px' }}
+            >
+              Table Assignment
+            </p>
+            <p
+              className="font-black text-black tracking-widest"
+              style={{ fontSize: '20px', lineHeight: '1' }}
+            >
+              {order.table.table_number}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Divider - Minimal */}
