@@ -87,7 +87,23 @@ export default function TabManagementDashboard() {
    * Fetch all data
    */
   const fetchAllData = useCallback(async () => {
-    await Promise.all([fetchTables(), fetchSessions()]);
+    try {
+      const data = await apiGet('/api/tabs/dashboard');
+
+      if (data.success) {
+        setTables(data.data?.tables || []);
+        setSessions(data.data?.sessions || []);
+        setLoading(false);
+        return;
+      }
+
+      throw new Error(data.error || 'Failed to load tab dashboard');
+    } catch (error) {
+      // Keep the established endpoints as a compatibility fallback while older
+      // deployments roll forward.
+      console.warn('Combined tab dashboard request failed; using fallback endpoints:', error);
+      await Promise.all([fetchTables(), fetchSessions()]);
+    }
   }, [fetchTables, fetchSessions]);
 
   // Initial load
@@ -95,24 +111,54 @@ export default function TabManagementDashboard() {
     fetchAllData();
   }, [fetchAllData]);
 
-  // Real-time subscription for tables
+  const handleTableChange = useCallback((payload: any) => {
+    const row = payload.eventType === 'DELETE' ? payload.old : payload.new;
+    if (!row?.id) return;
+
+    setTables((current) => {
+      if (payload.eventType === 'DELETE' || row.is_active === false) {
+        return current.filter((table) => table.id !== row.id);
+      }
+
+      const exists = current.some((table) => table.id === row.id);
+      return exists
+        ? current.map((table) => (table.id === row.id ? { ...table, ...row } : table))
+        : [...current, row].sort((a, b) =>
+            String(a.table_number).localeCompare(String(b.table_number), undefined, { numeric: true })
+          );
+    });
+  }, []);
+
+  const handleSessionChange = useCallback((payload: any) => {
+    const row = payload.eventType === 'DELETE' ? payload.old : payload.new;
+    if (!row?.id) return;
+
+    setSessions((current) => {
+      if (payload.eventType === 'DELETE' || row.status !== 'open') {
+        return current.filter((session) => session.id !== row.id);
+      }
+
+      const exists = current.some((session) => session.id === row.id);
+      return exists
+        ? current.map((session) =>
+            session.id === row.id ? { ...session, ...row } : session
+          )
+        : [row, ...current];
+    });
+  }, []);
+
+  // Realtime payloads update local state directly. This avoids invoking a
+  // Netlify Function after every table/session database change.
   useRealtime({
     table: 'restaurant_tables',
     event: '*',
-    onChange: () => {
-      console.log('Table updated, refreshing...');
-      fetchTables();
-    },
+    onChange: handleTableChange,
   });
 
-  // Real-time subscription for sessions
   useRealtime({
     table: 'order_sessions',
     event: '*',
-    onChange: () => {
-      console.log('Session updated, refreshing...');
-      fetchSessions();
-    },
+    onChange: handleSessionChange,
   });
 
   /**
