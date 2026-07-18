@@ -62,7 +62,6 @@ export function POSInterface() {
   const [receiptData, setReceiptData] = useState<any>(null);
   const [categories, setCategories] = useState<Array<{id: string; name: string; color_code?: string}>>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
-  const [topSellingMap, setTopSellingMap] = useState<Record<string, number>>({});
   
   // Grid columns with session storage persistence (default: 5 columns)
   const [gridColumns, setGridColumns] = useSessionStorage<number>('pos-product-grid-columns', 5);
@@ -251,30 +250,6 @@ export function POSInterface() {
   }, [cart.items.length]);
 
   /**
-   * Fetch top selling products (last 30 days by default via 'month' period)
-   * Used to sort product lists by popularity
-   */
-  const fetchTopSelling = async () => {
-    try {
-      const response = await fetch('/api/reports/sales?type=top-products&period=month&limit=500');
-      const result = await response.json();
-      if (result?.success && Array.isArray(result.data)) {
-        const map: Record<string, number> = {};
-        for (const item of result.data) {
-          const id = item.product_id || item.id;
-          if (!id) continue;
-          const qty = Number(item.total_quantity ?? item.total_quantity_sold ?? 0);
-          map[id] = qty;
-        }
-        setTopSellingMap(map);
-        console.log('📈 [POSInterface] Top-selling map loaded with', Object.keys(map).length, 'items');
-      }
-    } catch (error) {
-      console.error('❌ [POSInterface] Error fetching top products:', error);
-    }
-  };
-
-  /**
    * Fetch products and packages from API on mount only
    * Using refs to prevent duplicate calls during React strict mode double-mounting
    */
@@ -289,7 +264,6 @@ export function POSInterface() {
     fetchProducts();
     fetchPackages();
     fetchCategories();
-    fetchTopSelling();
   }, []);
 
   /**

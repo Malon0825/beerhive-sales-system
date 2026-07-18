@@ -30,6 +30,13 @@ export function useRealtime({
   onChange,
 }: UseRealtimeOptions) {
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const handlersRef = useRef({ onInsert, onUpdate, onDelete, onChange });
+
+  // Keep the latest callbacks without rebuilding the websocket subscription
+  // every time a consuming component renders.
+  useEffect(() => {
+    handlersRef.current = { onInsert, onUpdate, onDelete, onChange };
+  }, [onInsert, onUpdate, onDelete, onChange]);
 
   useEffect(() => {
     // Create channel name
@@ -50,18 +57,20 @@ export function useRealtime({
       (payload: any) => {
         console.log(`Realtime event on ${table}:`, payload);
 
+        const handlers = handlersRef.current;
+
         // Call appropriate callback
-        if (payload.eventType === 'INSERT' && onInsert) {
-          onInsert(payload);
-        } else if (payload.eventType === 'UPDATE' && onUpdate) {
-          onUpdate(payload);
-        } else if (payload.eventType === 'DELETE' && onDelete) {
-          onDelete(payload);
+        if (payload.eventType === 'INSERT' && handlers.onInsert) {
+          handlers.onInsert(payload);
+        } else if (payload.eventType === 'UPDATE' && handlers.onUpdate) {
+          handlers.onUpdate(payload);
+        } else if (payload.eventType === 'DELETE' && handlers.onDelete) {
+          handlers.onDelete(payload);
         }
 
         // Call generic onChange callback
-        if (onChange) {
-          onChange(payload);
+        if (handlers.onChange) {
+          handlers.onChange(payload);
         }
       }
     );
@@ -80,7 +89,7 @@ export function useRealtime({
         channelRef.current = null;
       }
     };
-  }, [table, event, filter, onInsert, onUpdate, onDelete, onChange]);
+  }, [table, event, filter]);
 
   return {
     unsubscribe: () => {

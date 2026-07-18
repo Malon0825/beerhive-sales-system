@@ -162,11 +162,15 @@ export class PackageAvailabilityService {
 
       const availabilityMap = new Map<string, number>();
 
-      // Calculate availability for each package
+      // getActivePackages already includes component products and stock. Do the
+      // arithmetic in memory instead of issuing one getById query per package.
       for (const pkg of packages) {
         try {
-          const result = await this.calculatePackageAvailability(pkg.id, params.forceRefresh);
-          availabilityMap.set(pkg.id, result.max_sellable);
+          const components = this.calculateComponentAvailability(
+            pkg as Package & { items: any[] }
+          );
+          const bottleneck = this.identifyBottleneck(components);
+          availabilityMap.set(pkg.id, bottleneck.maxPackages);
         } catch (error) {
           console.error(`[PackageAvailabilityService] Error calculating for package ${pkg.id}:`, error);
           // Continue with other packages even if one fails
@@ -203,17 +207,20 @@ export class PackageAvailabilityService {
 
       for (const pkg of packages) {
         try {
-          const availability = await this.calculatePackageAvailability(pkg.id, params.forceRefresh);
+          const components = this.calculateComponentAvailability(
+            pkg as Package & { items: any[] }
+          );
+          const bottleneck = this.identifyBottleneck(components);
           
           summaries.push({
-            package_id: availability.package_id,
-            package_name: availability.package_name,
-            max_sellable: availability.max_sellable,
-            status: this.determineStatus(availability.max_sellable),
-            bottleneck: availability.bottleneck_product
+            package_id: pkg.id,
+            package_name: pkg.name,
+            max_sellable: bottleneck.maxPackages,
+            status: this.determineStatus(bottleneck.maxPackages),
+            bottleneck: bottleneck.product
               ? {
-                  product_name: availability.bottleneck_product.product_name,
-                  current_stock: availability.bottleneck_product.current_stock,
+                  product_name: bottleneck.product.product_name,
+                  current_stock: bottleneck.product.current_stock,
                 }
               : undefined,
           });

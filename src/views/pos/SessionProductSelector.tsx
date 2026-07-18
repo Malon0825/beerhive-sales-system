@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/views/shared/ui/card';
 import { Input } from '@/views/shared/ui/input';
 import { Button } from '@/views/shared/ui/button';
@@ -12,13 +12,9 @@ import GridColumnSelector from '@/views/shared/ui/GridColumnSelector';
 import { useStockTracker } from '@/lib/contexts/StockTrackerContext';
 import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { 
-  fetchAllPackageAvailability,
-  getAvailabilityStatus,
-  getAvailabilityColor,
-  type PackageAvailabilityItem
-} from '@/data/queries/package-availability.queries';
+import type { PackageAvailabilityItem } from '@/data/queries/package-availability.queries';
 import { AlertDialogSimple } from '@/views/shared/ui/alert-dialog-simple';
+import { useRealtime } from '@/lib/hooks/useRealtime';
 
 /**
  * SessionProductSelector Component
@@ -93,7 +89,6 @@ export default function SessionProductSelector({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'all' | 'featured' | 'packages'>('all');
-  const [topSellingMap, setTopSellingMap] = useState<Record<string, number>>({});
   
   // Grid columns with session storage persistence (default: 5 columns)
   const [gridColumns, setGridColumns] = useSessionStorage<number>('tab-product-grid-columns', 5);
@@ -114,31 +109,75 @@ export default function SessionProductSelector({
   // Access stock tracker context
   const stockTracker = useStockTracker();
 
-  // Fetch package availability (Phase 4 - POS Integration)
-  const [packageAvailability, setPackageAvailability] = useState<PackageAvailabilityItem[]>([]);
-  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  // Package data already contains component stock. Calculate availability in
+  // memory instead of polling a Netlify Function every 30 seconds.
+  const packageAvailability = useMemo<PackageAvailabilityItem[]>(() => {
+    return packages.map((pkg) => {
+      const components = (pkg.items || []).filter(
+        (item) => item.product && Number(item.quantity) > 0
+      );
 
-  // Load package availability on mount and refresh every 30 seconds
-  useEffect(() => {
-    const loadAvailability = async () => {
-      try {
-        setAvailabilityLoading(true);
-        const data = await fetchAllPackageAvailability();
-        setPackageAvailability(data);
-      } catch (error) {
-        console.error('Failed to load package availability:', error);
-      } finally {
-        setAvailabilityLoading(false);
+      if (components.length === 0) {
+        return {
+          package_id: pkg.id,
+          package_name: pkg.name,
+          max_sellable: Number.MAX_SAFE_INTEGER,
+        };
       }
-    };
 
-    loadAvailability();
+      const availability = components.map((item) => ({
+        item,
+        maxSellable: Math.floor(
+          Number(item.product?.current_stock || 0) / Number(item.quantity)
+        ),
+      }));
+      const bottleneck = availability.reduce((lowest, current) =>
+        current.maxSellable < lowest.maxSellable ? current : lowest
+      );
 
-    // Refresh every 30 seconds for real-time updates
-    const intervalId = setInterval(loadAvailability, 30000);
+      return {
+        package_id: pkg.id,
+        package_name: pkg.name,
+        max_sellable: bottleneck.maxSellable,
+        bottleneck: {
+          product_id: bottleneck.item.product_id,
+          product_name: bottleneck.item.product?.name || 'Unknown product',
+          current_stock: Number(bottleneck.item.product?.current_stock || 0),
+          required_per_package: Number(bottleneck.item.quantity),
+        },
+      };
+    });
+  }, [packages]);
 
-    return () => clearInterval(intervalId);
+  // Patch package component stock directly from Realtime payloads. This keeps
+  // availability current without generating another serverless request.
+  const handleProductStockUpdate = useCallback((payload: any) => {
+    const updatedProduct = payload.new;
+    if (!updatedProduct?.id) return;
+
+    setPackages((currentPackages) =>
+      currentPackages.map((pkg) => ({
+        ...pkg,
+        items: pkg.items?.map((item) =>
+          item.product_id === updatedProduct.id && item.product
+            ? {
+                ...item,
+                product: {
+                  ...item.product,
+                  current_stock: Number(updatedProduct.current_stock || 0),
+                },
+              }
+            : item
+        ),
+      }))
+    );
   }, []);
+
+  useRealtime({
+    table: 'products',
+    event: 'UPDATE',
+    onUpdate: handleProductStockUpdate,
+  });
 
   /**
    * Generate dynamic grid class based on selected columns
@@ -159,7 +198,6 @@ export default function SessionProductSelector({
   useEffect(() => {
     fetchProducts();
     fetchPackages();
-    fetchTopSelling();
   }, []);
 
   /**
@@ -184,25 +222,6 @@ export default function SessionProductSelector({
       console.error('❌ [SessionProductSelector] Error fetching products:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchTopSelling = async () => {
-    try {
-      const response = await fetch('/api/reports/sales?type=top-products&period=month&limit=500');
-      const result = await response.json();
-      if (result?.success && Array.isArray(result.data)) {
-        const map: Record<string, number> = {};
-        for (const item of result.data) {
-          const id = item.product_id || item.id;
-          if (!id) continue;
-          const qty = Number(item.total_quantity ?? item.total_quantity_sold ?? 0);
-          map[id] = qty;
-        }
-        setTopSellingMap(map);
-      }
-    } catch (error) {
-      console.error('Error fetching top products:', error);
     }
   };
 

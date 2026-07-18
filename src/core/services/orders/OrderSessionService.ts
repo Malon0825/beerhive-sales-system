@@ -1,11 +1,7 @@
 import { OrderSessionRepository } from '@/data/repositories/OrderSessionRepository';
 import { OrderRepository } from '@/data/repositories/OrderRepository';
-import { DiscountRepository } from '@/data/repositories/DiscountRepository';
 import { OrderSession, CreateOrderSessionDto, CloseOrderSessionDto } from '@/models/entities/OrderSession';
 import { SessionStatus } from '@/models/enums/SessionStatus';
-import { OrderStatus } from '@/models/enums/OrderStatus';
-import { StockDeduction } from '@/core/services/inventory/StockDeduction';
-import { OrderCalculation } from '@/core/services/orders/OrderCalculation';
 import { AppError } from '@/lib/errors/AppError';
 
 /**
@@ -194,276 +190,90 @@ export class OrderSessionService {
    */
   static async closeTab(sessionId: string, paymentData: CloseOrderSessionDto) {
     try {
-      console.log(`💰 [OrderSessionService.closeTab] Closing tab: ${sessionId}`);
+      console.log(`[OrderSessionService.closeTab] Closing tab atomically: ${sessionId}`);
 
-      // Get session
-      const session = await OrderSessionRepository.getById(sessionId);
-      if (!session) {
-        throw new AppError('Session not found', 404);
-      }
-
-      if (session.status !== SessionStatus.OPEN) {
-        throw new AppError('Session is not open', 400);
-      }
-
-      // Base financials
-      const baseSubtotal = session.subtotal || 0;
-      const existingDiscount = session.discount_amount || 0;
-      const taxAmount = session.tax_amount || 0;
-      const netBeforeAdditionalDiscount = Math.max(0, baseSubtotal - existingDiscount);
-
-      // Derive additional discount from payload (if any)
-      let additionalDiscount = 0;
-
-      if (paymentData.discount_type && paymentData.discount_value) {
-        const { discountAmount } = OrderCalculation.applyDiscount(
-          netBeforeAdditionalDiscount,
-          paymentData.discount_type,
-          paymentData.discount_value
-        );
-        additionalDiscount = discountAmount;
-      } else if (typeof paymentData.discount_amount === 'number' && paymentData.discount_amount > 0) {
-        additionalDiscount = Math.min(paymentData.discount_amount, netBeforeAdditionalDiscount);
-      }
-
-      additionalDiscount = Math.min(additionalDiscount, netBeforeAdditionalDiscount);
-
-      const finalDiscountTotal = existingDiscount + additionalDiscount;
-      const finalTotalAmount = OrderCalculation.calculateTotal(baseSubtotal, finalDiscountTotal, taxAmount);
-
-      // Validate payment amount
-      if (paymentData.amount_tendered < finalTotalAmount) {
-        throw new AppError('Payment amount is less than total', 400);
-      }
-
-      // Validate closed_by user ID is provided
       if (!paymentData.closed_by) {
         throw new AppError('User ID (closed_by) is required to close tab', 400);
       }
 
-      // Calculate change
-      const change = paymentData.amount_tendered - finalTotalAmount;
+      const closeResult = await OrderSessionRepository.closeAtomically(sessionId, {
+        payment_method: paymentData.payment_method,
+        amount_tendered: paymentData.amount_tendered,
+        closed_by: paymentData.closed_by,
+        discount_type: paymentData.discount_type,
+        discount_value: paymentData.discount_value,
+        discount_amount: paymentData.discount_amount,
+        notes: paymentData.notes,
+      });
 
-      // Update in-memory session object for receipt generation
-      session.discount_amount = finalDiscountTotal;
-      session.total_amount = finalTotalAmount;
-
-      // NOTE: Session discount will be persisted AFTER order updates
-      // to prevent database trigger from overwriting it
-
-      // Update all orders in session to COMPLETED and ensure inventory is deducted
-      const orders = session.orders || [];
-      const performedByUserId = paymentData.closed_by;
-      
-      console.log(`👤 [OrderSessionService.closeTab] Closing tab as user: ${performedByUserId}`);
-      console.log(`📋 [OrderSessionService.closeTab] Processing ${orders.length} orders in session`);
-      
-      for (const order of orders) {
-        if (order.status !== OrderStatus.COMPLETED && order.status !== OrderStatus.VOIDED) {
-          console.log(
-            `🔍 [OrderSessionService.closeTab] Processing order ${order.order_number} ` +
-            `(current status: ${order.status})`
-          );
-
-          // CRITICAL FIX: Check if stock was already deducted (order was CONFIRMED)
-          // If order is still DRAFT/PENDING, stock was NEVER deducted - we must deduct now!
-          const wasConfirmed = order.status === OrderStatus.CONFIRMED || 
-                              order.status === OrderStatus.PREPARING ||
-                              order.status === OrderStatus.READY ||
-                              order.status === OrderStatus.SERVED;
-
-          if (!wasConfirmed) {
-            // Order was never confirmed - stock was NEVER deducted!
-            // Deduct stock now before completing the order
-            console.warn(
-              `⚠️  [OrderSessionService.closeTab] Order ${order.order_number} was never confirmed! ` +
-              `Stock was NOT deducted yet. Deducting now...`
-            );
-
-            try {
-              // Get order items for stock deduction
-              const orderItems = order.order_items || [];
-              
-              if (orderItems.length > 0) {
-                await StockDeduction.deductForOrder(
-                  order.id,
-                  orderItems.map((item: any) => ({
-                    product_id: item.product_id,
-                    package_id: item.package_id,
-                    quantity: item.quantity,
-                  })),
-                  performedByUserId
-                );
-                console.log(
-                  `✅ [OrderSessionService.closeTab] Stock successfully deducted for order ${order.order_number}`
-                );
-              } else {
-                console.warn(
-                  `⚠️  [OrderSessionService.closeTab] Order ${order.order_number} has no items - nothing to deduct`
-                );
-              }
-            } catch (stockError) {
-              // Stock deduction failed - this is CRITICAL
-              // Log error but continue (payment already collected)
-              console.error(
-                `❌ [OrderSessionService.closeTab] CRITICAL: Stock deduction failed for order ${order.order_number}:`,
-                stockError
-              );
-              console.error(
-                `⚠️  [OrderSessionService.closeTab] Manual inventory adjustment required for order ${order.order_number}`
-              );
-              // Don't throw - we'll still mark order as completed
-              // Admin should review inventory movements and adjust manually
-            }
-          } else {
-            // Stock was already deducted when order was CONFIRMED
-            console.log(
-              `ℹ️  [OrderSessionService.closeTab] Stock for order ${order.order_number} ` +
-              `was already deducted at confirmation time (status: ${order.status}). No additional deduction needed.`
-            );
-          }
-
-          // Update order status to COMPLETED
-          await OrderRepository.updateStatus(order.id, OrderStatus.COMPLETED);
-          
-          // Update cashier and completion timestamp
-          // Payment details (amount_tendered, change_amount) are NOT set on individual orders
-          // because payment is handled at the SESSION level for tabs
-          // This prevents duplication of payment amounts across multiple orders in a session
-          await OrderRepository.update(order.id, {
-            cashier_id: performedByUserId, // This ensures the user who closed the tab is credited in reports
-            payment_method: paymentData.payment_method as any,
-            completed_at: new Date().toISOString(),
-          });
-        }
+      // Fetch once after the transaction so the receipt contains finalized
+      // orders and relations. The close path now uses two database round trips.
+      const closedSession = await OrderSessionRepository.getById(sessionId);
+      if (!closedSession) {
+        throw new AppError('Session not found after closing', 500);
       }
 
-      console.log(`✅ [OrderSessionService.closeTab] ${orders.length} orders marked as completed`);
-      
-      // Close the session (marks as closed, sets closed_at and closed_by)
-      // This must happen BEFORE updating discount to prevent trigger overwrite
-      const closedSession = await OrderSessionRepository.close(sessionId, paymentData.closed_by);
+      const orders = closedSession.orders || [];
 
-      // CRITICAL FIX: Update session discount and total AFTER all order updates
-      // The update_session_totals() trigger recalculates totals when orders are updated
-      // If we set the discount before order updates, the trigger overwrites it to 0
-      // By updating AFTER order completion, we preserve the tab-level discount
-      if (additionalDiscount > 0 || finalDiscountTotal !== (closedSession.discount_amount || 0)) {
-        console.log(`💰 [OrderSessionService.closeTab] Updating session totals with discount:`, {
-          finalDiscountTotal,
-          finalTotalAmount,
-          additionalDiscount,
-        });
-        
-        await OrderSessionRepository.update(sessionId, {
-          discount_amount: finalDiscountTotal,
-          total_amount: finalTotalAmount,
-        });
-      }
-
-      // Persist discount entry for reporting (align with POS behavior)
-      // Only log NEW discounts applied at closure (additionalDiscount), not existing discounts
-      if (additionalDiscount > 0) {
-        try {
-          // Determine discount type and value
-          const discountType = paymentData.discount_type ?? 'fixed_amount';
-          const discountValue = paymentData.discount_value ?? additionalDiscount;
-
-          // Create descriptive reason and notes
-          const sessionReason = paymentData.notes?.trim() || 'Tab discount applied at closure';
-          const sessionNotes = [
-            `Session: ${session.session_number}`,
-            `Amount: ₱${additionalDiscount.toFixed(2)}`,
-            `Type: ${discountType}`,
-            `Value: ${discountValue}`,
-          ];
-          if (session.customer) {
-            sessionNotes.push(`Customer: ${session.customer.full_name}`);
-          }
-          if (session.table) {
-            sessionNotes.push(`Table: ${session.table.table_number}`);
-          }
-
-          console.log(`🧾 [OrderSessionService.closeTab] Persisting discount to discounts table:`, {
-            session_id: session.id,
-            session_number: session.session_number,
-            discount_amount: additionalDiscount,
-            discount_type: discountType,
-            discount_value: discountValue,
-            cashier_id: paymentData.closed_by,
-            order_id: orders[0]?.id ?? null,
-          });
-
-          await DiscountRepository.create({
-            discount_amount: additionalDiscount,
-            discount_type: discountType,
-            discount_value: discountValue,
-            reason: sessionReason,
-            cashier_id: paymentData.closed_by,
-            manager_id: null,
-            order_id: orders[0]?.id ?? null,
-            order_item_id: null,
-            notes: sessionNotes.join(' | '),
-          });
-
-          console.log(
-            `✅ [OrderSessionService.closeTab] Successfully logged discount for session ${session.session_number}: ₱${additionalDiscount.toFixed(
-              2
-            )} (${discountType}: ${discountValue})`
-          );
-        } catch (discountLogError) {
-          // Log error but don't fail the tab closure
-          console.error(
-            `❌ [OrderSessionService.closeTab] Failed to log discount to discounts table:`,
-            discountLogError
-          );
-          console.error(
-            `⚠️  [OrderSessionService.closeTab] Tab closed successfully but discount not recorded in reports.`
-          );
-          // Don't throw - tab is already closed
-        }
-      } else {
-        console.log(
-          `ℹ️  [OrderSessionService.closeTab] No additional discount applied at closure (additionalDiscount: ${additionalDiscount}, existingDiscount: ${existingDiscount})`
-        );
-      }
-
-      // Clear table session reference
-      if (session.table_id) {
-        await OrderSessionRepository.updateTableSession(session.table_id, null);
-        console.log(`✅ [OrderSessionService.closeTab] Table marked as available`);
-      }
-
-      console.log(`🎉 [OrderSessionService.closeTab] Tab closed successfully`);
+      console.log('[OrderSessionService.closeTab] Atomic close completed', {
+        sessionId,
+        alreadyClosed: closeResult.already_closed,
+        adjustedProducts: closeResult.stock_products_adjusted,
+        completedOrders: closeResult.orders_completed,
+      });
 
       return {
         session: closedSession,
+        already_closed: closeResult.already_closed,
         receipt: {
-          session_number: session.session_number,
-          orders: orders.map(o => ({
-            order_number: o.order_number,
-            items: o.order_items || [],
-            total: o.total_amount,
+          session_number: closedSession.session_number,
+          orders: orders.map(order => ({
+            order_number: order.order_number,
+            items: order.order_items || [],
+            total: order.total_amount,
           })),
           totals: {
-            subtotal: session.subtotal,
-            discount: session.discount_amount,
-            tax: session.tax_amount,
-            total: session.total_amount,
+            subtotal: closedSession.subtotal,
+            discount: closeResult.final_discount_total,
+            tax: closedSession.tax_amount,
+            total: closeResult.final_total_amount,
           },
           payment: {
             method: paymentData.payment_method,
             amount_tendered: paymentData.amount_tendered,
-            change: change,
+            change: closeResult.change_amount,
           },
-          table: session.table,
-          customer: session.customer,
+          table: closedSession.table,
+          customer: closedSession.customer,
           closed_at: closedSession.closed_at,
         },
       };
     } catch (error) {
-      console.error('❌ [OrderSessionService.closeTab] Error:', error);
-      throw error instanceof AppError ? error : new AppError('Failed to close tab', 500);
+      console.error('[OrderSessionService.closeTab] Error:', error);
+
+      if (error instanceof AppError) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : 'Failed to close tab';
+
+      if (message.includes('not installed')) {
+        throw new AppError(message, 503);
+      }
+      if (message.includes('Session not found')) {
+        throw new AppError('Session not found', 404);
+      }
+      if (
+        message.includes('Insufficient stock') ||
+        message.includes('Payment amount') ||
+        message.includes('Payment method') ||
+        message.includes('Discount') ||
+        message.includes('Session is not open')
+      ) {
+        throw new AppError(message, 400);
+      }
+
+      throw new AppError('Failed to close tab', 500);
     }
   }
 

@@ -164,6 +164,58 @@ export class OrderSessionRepository {
   }
 
   /**
+   * Close a session through the database transaction installed by
+   * optimize_atomic_tab_close. The RPC owns inventory, order, session, and
+   * table mutations so a timeout or retry cannot leave partial work behind.
+   */
+  static async closeAtomically(
+    sessionId: string,
+    paymentData: {
+      payment_method: string;
+      amount_tendered: number;
+      closed_by: string;
+      discount_type?: 'percentage' | 'fixed_amount';
+      discount_value?: number;
+      discount_amount?: number;
+      notes?: string;
+    }
+  ): Promise<{
+    success: boolean;
+    already_closed: boolean;
+    session_id: string;
+    final_discount_total: number;
+    final_total_amount: number;
+    change_amount: number;
+    stock_products_adjusted: number;
+    orders_completed: number;
+  }> {
+    const { data, error } = await supabaseAdmin.rpc('close_order_session_atomic', {
+      p_session_id: sessionId,
+      p_payment_method: paymentData.payment_method,
+      p_amount_tendered: paymentData.amount_tendered,
+      p_closed_by: paymentData.closed_by,
+      p_discount_type: paymentData.discount_type ?? null,
+      p_discount_value: paymentData.discount_value ?? null,
+      p_discount_amount: paymentData.discount_amount ?? null,
+      p_notes: paymentData.notes ?? null,
+    });
+
+    if (error) {
+      console.error('Atomic close session error:', error);
+
+      if (error.code === 'PGRST202' || error.message?.includes('close_order_session_atomic')) {
+        throw new Error(
+          'Atomic tab closing is not installed. Apply the latest Supabase migration before accepting payments.'
+        );
+      }
+
+      throw new Error(error.message || 'Failed to close session atomically');
+    }
+
+    return data as any;
+  }
+
+  /**
    * Close a session (mark as closed)
    * @param sessionId - Session ID
    * @param closedBy - User ID who closed the session
